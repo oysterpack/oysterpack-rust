@@ -1,3 +1,6 @@
+//! OysterPack Rust Platform
+//!
+
 #[cfg(test)]
 mod tests {
     #[test]

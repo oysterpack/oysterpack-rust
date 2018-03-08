@@ -2,6 +2,8 @@
 name = "oysterpack"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+description = "OysterPack Rust Platform"
+license = "Apache-2.0"
 
 [dependencies]
 
