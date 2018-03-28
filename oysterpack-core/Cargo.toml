@@ -1,0 +1,8 @@
+[package]
+name = "oysterpack-core"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+
+[dependencies]
+uuid = { version = "0.6", features = ["v4","v5","serde"] }
+rand = "0.4.2"

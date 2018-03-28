@@ -8,6 +8,16 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 
 [dependencies]
+oysterpack-app = {path = "oysterpack-app"}
+oysterpack-config = {path = "oysterpack-config"}
+oysterpack-core = {path = "oysterpack-core"}
+oysterpack-errors = {path = "oysterpack-errors"}
+oysterpack-events = {path = "oysterpack-events"}
+oysterpack-health = {path = "oysterpack-health"}
+oysterpack-logging = {path = "oysterpack-logging"}
+oysterpack-messaging = {path = "oysterpack-messaging"}
+oysterpack-metrics = {path = "oysterpack-metrics"}
+oysterpack-service = {path = "oysterpack-service"}
 
 [workspace]
 

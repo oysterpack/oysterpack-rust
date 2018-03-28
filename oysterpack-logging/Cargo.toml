@@ -1,0 +1,6 @@
+[package]
+name = "oysterpack-logging"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+
+[dependencies]
