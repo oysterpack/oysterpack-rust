@@ -1,8 +1,10 @@
 # Code Review Checklist
 
+[API Guidelines](https://rust-lang-nursery.github.io/api-guidelines/checklist.html)
+
 # Public API
 
-## Comments
+## Documentation
 - [ ] The public API must have Doc comments
 ```rust
 /// Generate library docs for the following public item.
@@ -10,6 +12,19 @@
 - [ ] Public modules must have Doc comments
 ```rust
 //! Generate library docs for the enclosing public item.
+```
+- [ ] All changes should be documented in **CHANGELOG.md**
+    - see [Diesel change log](https://github.com/diesel-rs/diesel/blob/master/CHANGELOG.md) as an example
+```
+### Added
+
+### Changed
+
+### Removed
+
+### Deprecated
+
+### Fixed
 ```
 
 ## Stucts and Enums
