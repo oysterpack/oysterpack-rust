@@ -43,6 +43,8 @@ impl PanicId {
 mod tests {
     use super::*;
 
+    const DATABASE_DOWN : Panic = Panic(PanicId(1));
+
     #[test]
     #[should_panic]
     fn panic() {

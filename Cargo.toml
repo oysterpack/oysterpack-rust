@@ -1,26 +1,34 @@
 [package]
 name = "oysterpack"
-version = "0.1.1"
+version = "0.1.1" # remember to update html_root_url
 authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
 description = "OysterPack Rust Reactive Platform"
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
+readme = "README.md"
 
 [dependencies]
-oysterpack-app = {path = "oysterpack-app"}
-oysterpack-config = {path = "oysterpack-config"}
-oysterpack-core = {path = "oysterpack-core"}
-oysterpack-errors = {path = "oysterpack-errors"}
-oysterpack-events = {path = "oysterpack-events"}
-oysterpack-health = {path = "oysterpack-health"}
-oysterpack-logging = {path = "oysterpack-logging"}
-oysterpack-messaging = {path = "oysterpack-messaging"}
-oysterpack-metrics = {path = "oysterpack-metrics"}
-oysterpack-service = {path = "oysterpack-service"}
+oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
+oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}
+oysterpack-core = {path = "oysterpack-core", version = "0.1.0"}
+oysterpack-errors = {path = "oysterpack-errors", version = "0.1.0"}
+oysterpack-events = {path = "oysterpack-events", version = "0.1.0"}
+oysterpack-health = {path = "oysterpack-health", version = "0.1.0"}
+oysterpack-logging = {path = "oysterpack-logging", version = "0.1.0"}
+oysterpack-messaging = {path = "oysterpack-messaging", version = "0.1.0"}
+oysterpack-metrics = {path = "oysterpack-metrics", version = "0.1.0"}
+oysterpack-service = {path = "oysterpack-service", version = "0.1.0"}
+
+[dev-dependencies]
+version-sync = "0.5"
 
 [workspace]
+members = ["oysterpack-*"]
 
 [profile.release]
 debug = true
 lto = true
+
+[badges]
+maintenance = { status = "actively-developed" }
