@@ -9,16 +9,16 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
-oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
-oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}
-oysterpack-core = {path = "oysterpack-core", version = "0.1.0"}
-oysterpack-errors = {path = "oysterpack-errors", version = "0.1.0"}
-oysterpack-events = {path = "oysterpack-events", version = "0.1.0"}
-oysterpack-health = {path = "oysterpack-health", version = "0.1.0"}
-oysterpack-logging = {path = "oysterpack-logging", version = "0.1.0"}
-oysterpack-messaging = {path = "oysterpack-messaging", version = "0.1.0"}
-oysterpack-metrics = {path = "oysterpack-metrics", version = "0.1.0"}
-oysterpack-service = {path = "oysterpack-service", version = "0.1.0"}
+#oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
+#oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}
+#oysterpack-core = {path = "oysterpack-core", version = "0.1.0"}
+#oysterpack-errors = {path = "oysterpack-errors", version = "0.1.0"}
+#oysterpack-events = {path = "oysterpack-events", version = "0.1.0"}
+#oysterpack-health = {path = "oysterpack-health", version = "0.1.0"}
+#oysterpack-logging = {path = "oysterpack-logging", version = "0.1.0"}
+#oysterpack-messaging = {path = "oysterpack-messaging", version = "0.1.0"}
+#oysterpack-metrics = {path = "oysterpack-metrics", version = "0.1.0"}
+#oysterpack-service = {path = "oysterpack-service", version = "0.1.0"}
 
 [dev-dependencies]
 version-sync = "0.5"
