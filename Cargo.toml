@@ -1,7 +1,7 @@
 [package]
 name = "oysterpack"
 version = "0.1.1" # remember to update html_root_url
-authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Rust Reactive Platform"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
@@ -9,6 +9,8 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
+uuid = { version = "0.6", features = ["v4","v5","serde"] }
+
 #oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
 #oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}
 #oysterpack-core = {path = "oysterpack-core", version = "0.1.0"}

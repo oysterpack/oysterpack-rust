@@ -9,6 +9,10 @@
 
 ## Documentation
 - [ ] [Crate level docs are thorough and include examples (C-CRATE-DOC)](https://rust-lang-nursery.github.io/api-guidelines/documentation.html#crate-level-docs-are-thorough-and-include-examples-c-crate-doc)
+    - [ ] Generate an error if any public item is missing documentation. Add the following attribute to every library.
+    ```
+    #![deny(missing_docs)]
+    ```
 - [ ] [All items have a rustdoc example (C-EXAMPLE)](https://rust-lang-nursery.github.io/api-guidelines/documentation.html#all-items-have-a-rustdoc-example-c-example)
 - [ ] [Examples use ?, not try!, not unwrap (C-QUESTION-MARK)](https://rust-lang-nursery.github.io/api-guidelines/documentation.html#examples-use--not-try-not-unwrap-c-question-mark)
 - [ ] [Function docs include error, panic, and safety considerations (C-FAILURE)](https://rust-lang-nursery.github.io/api-guidelines/documentation.html#function-docs-include-error-panic-and-safety-considerations-c-failure)

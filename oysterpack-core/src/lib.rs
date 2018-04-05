@@ -11,6 +11,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+#![deny(missing_docs)]
+#![doc(html_root_url = "https://docs.rs/oysterpack-core/0.1.0")]
+
+//! The oysterpack-core module
+
 extern crate rand;
 extern crate uuid;
 
@@ -29,6 +35,11 @@ mod tests {
         println!("v4 {}", id);
 
         println!("v5 DNS {}", Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string()));
+        println!("v5 OID {}", Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()));
+        println!("v5 URL {}", Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()));
+        println!("v5 X500 {}", Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()));
+
+        println!("v5 DNS {}", Uuid::new_v5(&id, &Uuid::new_v4().to_string()));
         println!("v5 OID {}", Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()));
         println!("v5 URL {}", Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()));
         println!("v5 X500 {}", Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()));
