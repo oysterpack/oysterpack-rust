@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The platform module defines the model used to represent platform concepts.
+//! Defines the platform model.
+
+use ::utils::id::Id;
 
 /// Domain is used to group a set of Applications underneath it.
 ///
@@ -20,5 +22,6 @@ pub struct Domain {
 
 }
 
-/// DomainId is the unique Domain identifier
-pub struct DomainId(u64);
+/// Domain Id
+pub type DomainId = Id<Domain>;
+

@@ -14,4 +14,4 @@
 
 //! The *utils* module provide util sub-modules
 
-pub mod uid;
+pub mod id;
