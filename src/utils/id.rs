@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The *uid* module provides support to generate unique identifiers.
+//! Provides support to generate unique identifiers.
 
 extern crate uuid;
 
@@ -22,20 +22,32 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::cmp::Ordering;
 
-/// Id represents an identifier for some type T
+/// Id represents an identifier for some type T. Id(s) are threadsafe.
 ///
-/// # Example
-///```rust
+/// # Examples
+///
+/// ## Defining an Id for a struct
+/// ```rust
+/// # use oysterpack::Id;
 /// struct Domain;
 /// type DomainId = Id<Domain>;
 /// let id = DomainId::new();
+/// ```
+/// ## Defining an Id for a trait
+/// ```rust
+/// # use oysterpack::Id;
+/// trait Foo{}
+/// // NOTE: Send + Sync must be added to the type def in order to satisfy Id's type constraints.
+/// type FooId = Id<Foo + Send + Sync>;
+/// let id = FooId::new();
+/// ```
 ///
-pub struct Id<T> {
+pub struct Id<T: Send + Sync + ? Sized> {
     id: u64,
     _type: PhantomData<T>,
 }
 
-impl<T> Id<T> {
+impl<T: Send + Sync + ? Sized> Id<T> {
     /// Constructs a new random unique Id. The odds for collision are the same as for a version 4 UUID.
     /// The algorithm generates a version 4 UUID and then hashes it.
     pub fn new() -> Id<T> {
@@ -54,68 +66,98 @@ impl<T> Id<T> {
     pub fn get(&self) -> u64 { self.id }
 }
 
-impl<T> fmt::Display for Id<T> {
+impl<T: Send + Sync + ? Sized> fmt::Display for Id<T> {
     /// Displays the id in lower hex format
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:x} = {0}", self.id) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:x}", self.id) }
 }
 
-impl<T> PartialEq for Id<T> {
+impl<T: Send + Sync + ? Sized> PartialEq for Id<T> {
     fn eq(&self, other: &Id<T>) -> bool { self.id == other.id }
 }
 
-impl<T> PartialOrd for Id<T> {
+impl<T: Send + Sync + ? Sized> PartialOrd for Id<T> {
     fn partial_cmp(&self, other: &Id<T>) -> Option<Ordering> { Some(self.id.cmp(&other.id)) }
 }
 
-impl<T> Eq for Id<T> {}
+impl<T: Send + Sync + ? Sized> Eq for Id<T> {}
 
-impl<T> Ord for Id<T> {
+impl<T: Send + Sync + ? Sized> Ord for Id<T> {
     fn cmp(&self, other: &Self) -> Ordering { self.id.cmp(&other.id) }
 }
 
-impl<T> Hash for Id<T> {
+impl<T: Send + Sync + ? Sized> Hash for Id<T> {
     fn hash<H: Hasher>(&self, state: &mut H) { self.id.hash(state); }
 }
 
-impl<T> fmt::Debug for Id<T> {
+impl<T: Send + Sync + ? Sized> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> { fmt::Display::fmt(self, f) }
 }
 
-impl<T> Copy for Id<T> {}
+impl<T: Send + Sync + ? Sized> Copy for Id<T> {}
 
-impl<T> Clone for Id<T> {
+impl<T: Send + Sync + ? Sized> Clone for Id<T> {
     fn clone(&self) -> Id<T> { *self }
 }
-
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    struct Domain;
+    struct Unique;
 
-    type DomainId = Id<Domain>;
+    type Uid = Id<Unique>;
 
+    // New Ids should be unique
     #[test]
-    fn test_uid_hash() {
+    fn id_hash_uniqueness() {
         use std::collections::HashSet;
 
         let mut hashes = HashSet::new();
-        for _ in 0..10000 {
-            assert!(hashes.insert(DomainId::new()))
+        for _ in 0..100000 {
+            assert!(hashes.insert(Uid::new()))
         }
     }
 
     #[test]
     fn test_display() {
-        let id = DomainId::new();
+        let id = Uid::new();
         println!("{}", id);
     }
 
     #[test]
     fn test_from() {
-        let id1 = DomainId::new();
-        let id2 = DomainId::from(id1.get());
+        let id1 = Uid::new();
+        let id2 = Uid::from(id1.get());
         assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn uid_is_thread_safe() {
+        use std::thread;
+
+        let id = Uid::new();
+        let t = thread::spawn(move || {
+            id
+        });
+
+        assert!(t.join().unwrap() == id);
+    }
+
+    #[test]
+    fn using_ids_in_threads() {
+        use std::thread;
+        use std::sync::RwLock;
+
+        trait Foo {}
+        // traits are not Send or Sync. Send + Sync are added to the type def in order to satisfy Id type constraints.
+        type FooId = Id<Foo + Send + Sync>;
+
+        let id = FooId::new();
+        let t = thread::spawn(move || {
+            id.get()
+        });
+
+        // id is still usable here because it implements Copy. The id was copied into the thread
+        assert!(t.join().unwrap() == id.get());
     }
 }

@@ -9,7 +9,8 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
-uuid = { version = "0.6", features = ["v4","v5","serde"] }
+uuid = { version = "0.6", features = ["v4","serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 #oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
 #oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}

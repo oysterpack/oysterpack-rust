@@ -21,3 +21,5 @@
 
 pub mod platform;
 pub mod utils;
+
+pub use utils::id::Id;

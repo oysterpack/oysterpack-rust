@@ -14,14 +14,59 @@
 
 //! Defines the platform model.
 
+extern crate chrono;
+
 use ::utils::id::Id;
+use std::fmt;
+
 
 /// Domain is used to group a set of Applications underneath it.
 ///
 pub struct Domain {
-
+    id: DomainId,
+    name: DomainName,
+    created_on: chrono::DateTime<chrono::Utc>,
 }
 
 /// Domain Id
 pub type DomainId = Id<Domain>;
+
+/// Domain Name
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct DomainName(String);
+
+impl fmt::Display for DomainName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.0) }
+}
+
+impl DomainName {
+    /// DomainName constructor. name will be trimmed.
+    ///
+    /// # Panics
+    /// Panics if name is blank.
+    pub fn new(name: &str) -> DomainName {
+        let name = name.trim();
+        assert!(name.len() > 0,"name cannot be blank");
+        DomainName(name.to_string())
+    }
+
+    /// returns the Domain name
+    pub fn get(&self) -> &str { &self.0 }
+}
+
+/// DomainName Errors
+pub enum DomainNameError {
+    /// Domain names cannot be blank
+    BlankName
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn domain_name_get() {
+        let name = DomainName::new("OysterPack");
+    }
+}
 
