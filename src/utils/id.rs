@@ -119,13 +119,13 @@ mod test {
     }
 
     #[test]
-    fn test_display() {
+    fn display() {
         let id = Uid::new();
         println!("{}", id);
     }
 
     #[test]
-    fn test_from() {
+    fn from() {
         let id1 = Uid::new();
         let id2 = Uid::from(id1.get());
         assert_eq!(id1, id2);
@@ -144,9 +144,8 @@ mod test {
     }
 
     #[test]
-    fn using_ids_in_threads() {
+    fn ids_are_threadsafe() {
         use std::thread;
-        use std::sync::RwLock;
 
         trait Foo {}
         // traits are not Send or Sync. Send + Sync are added to the type def in order to satisfy Id type constraints.

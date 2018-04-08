@@ -11,6 +11,11 @@ readme = "README.md"
 [dependencies]
 uuid = { version = "0.6", features = ["v4","serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1.0.0"
+regex = "0.2.10"
+
+failure = {version = "0.1.1", features= ["std","derive"]}
+failure_derive = "0.1.1"
 
 #oysterpack-app = {path = "oysterpack-app", version = "0.1.0"}
 #oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}

@@ -19,6 +19,10 @@
 #![deny(missing_docs)]
 #![doc(html_root_url = "https://docs.rs/oysterpack/0.1.1")]
 
+#[macro_use] extern crate failure;
+#[macro_use] extern crate failure_derive;
+#[macro_use] extern crate lazy_static;
+
 pub mod platform;
 pub mod utils;
 
