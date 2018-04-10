@@ -15,6 +15,7 @@
 //! Provides support to generate unique identifiers.
 
 extern crate uuid;
+extern crate serde;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -41,9 +42,10 @@ use std::cmp::Ordering;
 /// type FooId = Id<Foo + Send + Sync>;
 /// let id = FooId::new();
 /// ```
-///
+#[derive(Serialize, Deserialize)]
 pub struct Id<T: Send + Sync + ? Sized> {
     id: u64,
+    #[serde(skip)]
     _type: PhantomData<T>,
 }
 
@@ -101,6 +103,11 @@ impl<T: Send + Sync + ? Sized> Clone for Id<T> {
 
 #[cfg(test)]
 mod test {
+    extern crate serde_json;
+    extern crate bincode;
+    extern crate serde_cbor;
+    extern crate rmp_serde as rmps;
+
     use super::*;
 
     struct Unique;
@@ -159,4 +166,65 @@ mod test {
         // id is still usable here because it implements Copy. The id was copied into the thread
         assert!(t.join().unwrap() == id.get());
     }
+
+    #[test]
+    fn serialization_json() {
+        let uid = Uid::new();
+
+        match serde_json::to_string(&uid) {
+            Ok(json) => {
+                println!("{} : {}", &json, json.len());
+                let uid: Uid = serde_json::from_str(&json).expect("JSON deserialization failed");
+            }
+            Err(err) => panic!("JSON serialization failed : {}", err)
+        }
+    }
+
+    #[test]
+    fn serialization_bincode() {
+        let uid = Uid::new();
+
+        match bincode::serialize(&uid) {
+            Ok(bytes) => {
+                println!("bincode bytes.len() = {}", bytes.len());
+                let uid: Uid = bincode::deserialize(&bytes).expect("bincode deserialization failed");
+            }
+            Err(err) => panic!("bincode serialization failed : {}", err)
+        }
+    }
+
+    #[test]
+    fn serialization_cbor() {
+        let uid = Uid::new();
+
+        match serde_cbor::to_vec(&uid) {
+            Ok(bytes) => {
+                println!("CBOR bytes.len() = {}", bytes.len());
+                let uid: Uid = serde_cbor::from_slice(&bytes).expect("CBOR deserialization failed");
+            }
+            Err(err) => panic!("CBOR serialization failed : {}", err)
+        }
+    }
+
+    #[test]
+    fn serialization_msgpack() {
+        let uid = Uid::new();
+
+        match rmps::to_vec(&uid) {
+            Ok(bytes) => {
+                println!("rmps bytes.len() = {}", bytes.len());
+                let uid: Uid = rmps::from_slice(&bytes).expect("rmps deserialization failed");
+            }
+            Err(err) => panic!("rmps serialization failed : {}", err)
+        }
+    }
+
+// Serialization results
+//    bincode bytes.len() = 8
+//    rmps bytes.len() = 10
+//    CBOR bytes.len() = 13
+//    JSON len : 27
+//
+//    bincode is the most efficient in terms of size
+
 }

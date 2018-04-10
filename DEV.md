@@ -10,3 +10,10 @@ pycobertura show --format html --output coverage.html cobertura.xml
 
 ## Profiling apps using [Valgrand](http://valgrind.org/)
 There are Valgrind tools that can automatically detect many memory management and threading bugs, and profile your programs in detail.
+
+## Cargo plugins
+
+### [cargo-tree](https://github.com/sfackler/cargo-tree)
+```
+cargo install cargo-tree
+```
