@@ -13,7 +13,11 @@ There are Valgrind tools that can automatically detect many memory management an
 
 ## Cargo plugins
 
-### [cargo-tree](https://github.com/sfackler/cargo-tree)
-```
-cargo install cargo-tree
-```
+1. [cargo-tree](https://github.com/sfackler/cargo-tree)
+    ```
+    cargo tree
+    ```
+2. [rustfmt](https://github.com/rust-lang-nursery/rustfmt)
+    ```
+    cargo fmt
+    ```

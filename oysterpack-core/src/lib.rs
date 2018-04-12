@@ -34,20 +34,53 @@ mod tests {
         let id = Uuid::new_v4();
         println!("v4 {}", id);
 
-        println!("v5 DNS {}", Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string()));
-        println!("v5 OID {}", Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()));
-        println!("v5 URL {}", Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()));
-        println!("v5 X500 {}", Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()));
+        println!(
+            "v5 DNS {}",
+            Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string())
+        );
+        println!(
+            "v5 OID {}",
+            Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string())
+        );
+        println!(
+            "v5 URL {}",
+            Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string())
+        );
+        println!(
+            "v5 X500 {}",
+            Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string())
+        );
 
         println!("v5 DNS {}", Uuid::new_v5(&id, &Uuid::new_v4().to_string()));
-        println!("v5 OID {}", Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()));
-        println!("v5 URL {}", Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()));
-        println!("v5 X500 {}", Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()));
+        println!(
+            "v5 OID {}",
+            Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string())
+        );
+        println!(
+            "v5 URL {}",
+            Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string())
+        );
+        println!(
+            "v5 X500 {}",
+            Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string())
+        );
 
-        assert_eq!(Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string()), Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string()));
-        assert_eq!(Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()), Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()));
-        assert_eq!(Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()), Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()));
-        assert_eq!(Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()), Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()));
+        assert_eq!(
+            Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string()),
+            Uuid::new_v5(&uuid::NAMESPACE_DNS, &id.to_string())
+        );
+        assert_eq!(
+            Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string()),
+            Uuid::new_v5(&uuid::NAMESPACE_OID, &id.to_string())
+        );
+        assert_eq!(
+            Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string()),
+            Uuid::new_v5(&uuid::NAMESPACE_URL, &id.to_string())
+        );
+        assert_eq!(
+            Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string()),
+            Uuid::new_v5(&uuid::NAMESPACE_X500, &id.to_string())
+        );
     }
 
     #[test]
@@ -56,7 +89,8 @@ mod tests {
         use rand::Rng;
 
         let mut rng = rand::thread_rng();
-        if rng.gen() { // random bool
+        if rng.gen() {
+            // random bool
             println!("i32: {}, u32: {}", rng.gen::<i32>(), rng.gen::<u32>())
         }
         println!("{:?}", rng.gen::<(f64, bool)>());

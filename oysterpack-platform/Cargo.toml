@@ -1,0 +1,53 @@
+[package]
+name = "oysterpack_platform"
+version = "0.1.0" # remember to update html_root_url
+authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
+description = "OysterPack Rust Reactive Platform"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/oysterpack/oysterpack"
+homepage = "https://github.com/oysterpack/oysterpack"
+readme = "README.md"
+
+[dependencies]
+uuid = { version = "0.6", features = ["v4","serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1.0.0"
+regex = "0.2.10"
+semver = "0.9.0"
+
+actix = "0.5.5"
+tokio = "0.1.5"
+futures = "0.2.0"
+
+serde = "1.0.37"
+serde_derive = "1.0.37"
+serde_cbor = "0.8.2"
+serde_json = "1.0.13"
+bincode = "1.0.0"
+rmp-serde = "0.13.7"
+
+flate2 = "1.0.1"
+
+failure = {version = "0.1.1", features= ["std","derive"]}
+failure_derive = "0.1.1"
+
+oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
+#oysterpack-config = {path = "oysterpack-config", version = "0.1.0"}
+#oysterpack-core = {path = "oysterpack-core", version = "0.1.0"}
+#oysterpack-errors = {path = "oysterpack-errors", version = "0.1.0"}
+#oysterpack-events = {path = "oysterpack-events", version = "0.1.0"}
+#oysterpack-health = {path = "oysterpack-health", version = "0.1.0"}
+#oysterpack-logging = {path = "oysterpack-logging", version = "0.1.0"}
+#oysterpack-messaging = {path = "oysterpack-messaging", version = "0.1.0"}
+#oysterpack-metrics = {path = "oysterpack-metrics", version = "0.1.0"}
+#oysterpack-service = {path = "oysterpack-service", version = "0.1.0"}
+
+[dev-dependencies]
+version-sync = "0.5"
+
+[profile.release]
+debug = true
+lto = true
+
+[badges]
+maintenance = { status = "actively-developed" }

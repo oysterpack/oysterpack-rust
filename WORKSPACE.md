@@ -15,3 +15,15 @@
     # to convert cobertura.xml into an HTML report
     sudo pip install pycobertura
     ```
+
+3. Install [cargo-tree](https://github.com/sfackler/cargo-tree)
+
+    ```
+    cargo install cargo-tree
+    ```
+
+4. Install [rustfmt](https://github.com/rust-lang-nursery/rustfmt) cargo plugin
+
+    ```
+    rustup component add rustfmt-preview
+    ```

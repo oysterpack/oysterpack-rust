@@ -3,7 +3,7 @@
 The mission is to provide a platform to build [reactive](https://www.reactivemanifesto.org/) systems in Rust.
 
 ## Why Rust ?
-Because [Rust](https://www.rust-lang.org) is the best systems programming language for building production grade reactive systems.
+Because [Rust](https://www.rust-lang.org) is simply the best systems programming language for building production grade reactive systems that we can **tRust**.
 
 Rust's focus on **safety**, **speed**, and **concurrency** delivers the performance and control of a low-level language,
 but with the powerful abstractions of a high-level language. It's main competitive advantages are:

@@ -34,11 +34,11 @@ pub struct Response<T> {
 pub struct Header {}
 
 pub struct RequestHeader {
-    header: Header
+    header: Header,
 }
 
 pub struct ResponseHeader {
-    header: Header
+    header: Header,
 }
 
 #[cfg(test)]
