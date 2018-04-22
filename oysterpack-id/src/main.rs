@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! OysterPack Kafka Service
+//! Prints a new unique random number in lower case hex format
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_kafka/0.1.0")]
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+extern crate oysterpack_id;
+
+use oysterpack_id::Id;
+
+struct Unique;
+type Uid = Id<Unique>;
+
+fn main() {
+    println!("{}", Uid::new())
 }

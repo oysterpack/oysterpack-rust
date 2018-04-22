@@ -12,34 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub trait Publisher<T> {
-    fn publish(msg: T);
-}
+// TODO: Document crate
+//! # OysterPack XXX
 
-pub struct Message<T> {
-    header: Header,
-    message: Option<T>,
-}
-
-pub struct Request<T> {
-    header: RequestHeader,
-    message: Option<T>,
-}
-
-pub struct Response<T> {
-    header: ResponseHeader,
-    message: Option<T>,
-}
-
-pub struct Header {}
-
-pub struct RequestHeader {
-    header: Header,
-}
-
-pub struct ResponseHeader {
-    header: Header,
-}
+#![deny(missing_docs, missing_debug_implementations, warnings)]
+// TODO: update url
+#![doc(html_root_url = "https://docs.rs/oysterpack_XXX/0.1.0")]
 
 #[cfg(test)]
 mod tests {

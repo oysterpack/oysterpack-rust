@@ -9,15 +9,18 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
-actix = "0.5.5"
+actix = "0.5.6"
 tokio = "0.1.5"
-futures = "0.1"
+futures = "0.1.21"
 
-# serde serializers
-serde_cbor = "0.8.2"
-serde_json = "1.0.13"
-bincode = "1.0.0"
-rmp-serde = "0.13.7"
+serde = "1.0.37"
+serde_derive = "1.0.37"
+
+slog = "2.2.3"
+chrono = { version = "0.4", features = ["serde"] }
+semver = { version = "0.9.0", features = ["serde"] }
+num_cpus = "1.8"
+lazy_static = "1.0.0"
 
 oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
 oysterpack_platform = {path = "../oysterpack-platform", version = "0.1.0"}
@@ -25,9 +28,16 @@ oysterpack_platform = {path = "../oysterpack-platform", version = "0.1.0"}
 [dev-dependencies]
 version-sync = "0.5"
 
-[profile.release]
-debug = true
-lto = true
+# serde serializers
+serde_cbor = "0.8.2"
+serde_json = "1.0.13"
+bincode = "1.0.0"
+rmp-serde = "0.13.7"
+
+sloggers = "0.2.6"
+
+# TODO
+cucumber = "0.3.1"
 
 [badges]
 maintenance = { status = "actively-developed" }

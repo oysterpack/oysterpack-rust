@@ -12,20 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Message
+//! OysterPack Message
+
+#![deny(missing_docs, missing_debug_implementations, warnings)]
+#![doc(html_root_url = "https://docs.rs/oysterpack_message/0.1.0")]
 
 extern crate chrono;
+extern crate oysterpack_id;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 use self::chrono::prelude::*;
 
-use utils::id::Id;
+use oysterpack_id::Id;
 
-// TODO: Message metrics
+// TODO: Message encryption
 
-/// Message
+/// Standard Message
 ///
 /// Use [Builder](struct.Builder.html#method.new) to construct new messages
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,10 +41,10 @@ pub struct Message {
     deadline: Deadline,
 
     correlation_id: Option<MessageId>,
-    from: Option<AddressId>,
-    reply_to: Option<AddressId>,
+    topic: Topic,
+    reply_to: Option<Topic>,
 
-    data: Vec<Data>,
+    data: Option<Data>,
 }
 
 impl Message {
@@ -61,20 +67,26 @@ impl Message {
     }
 
     /// returns the message data
-    pub fn data(&self) -> &[Data] {
-        &self.data
+    pub fn data(&self) -> Option<&Data> {
+        match self.data {
+            Some(ref data) => Some(data),
+            None => None,
+        }
     }
 
-    /// returns the sender's AddressId
+    /// returns the Topic
     ///
     /// For request-response messaging, this is the default reply to address.
-    pub fn from(&self) -> Option<AddressId> {
-        self.from
+    pub fn topic(&self) -> &Topic {
+        &self.topic
     }
 
     /// returns where to send reply message(s) to
-    pub fn reply_to(&self) -> Option<AddressId> {
-        self.reply_to.or(self.from)
+    pub fn reply_to(&self) -> Option<&Topic> {
+        match self.reply_to {
+            Some(ref reply_to) => Some(reply_to),
+            None => Some(&self.topic),
+        }
     }
 
     /// returns optional message correlation id.
@@ -93,14 +105,15 @@ impl Default for Message {
             timestamp: TimestampMillis::new(),
             correlation_id: None,
             deadline: Deadline::default(),
-            data: vec![],
-            from: None,
+            data: None,
+            topic: Topic("".to_string()),
             reply_to: None,
         }
     }
 }
 
 /// Builder
+#[derive(Debug)]
 pub struct Builder {
     msg: RefCell<Message>,
 }
@@ -109,7 +122,7 @@ impl Builder {
     /// returns a new instance with the specified data
     pub fn new(data: Data) -> Builder {
         let mut msg = Message::default();
-        msg.data.push(data);
+        msg.data = Some(data);
         Builder {
             msg: RefCell::new(msg),
         }
@@ -124,14 +137,14 @@ impl Builder {
 
     /// Set sender address id - used as the reply to address id, unless overridden by setting the
     /// reply to address id explicitly.
-    pub fn from(&self, from: AddressId) -> &Builder {
+    pub fn topic(&self, from: Topic) -> &Builder {
         let mut msg = self.msg.borrow_mut();
-        msg.from = Some(from);
+        msg.topic = from;
         self
     }
 
     /// Set reply to address id
-    pub fn reply_to(&self, reply_to: AddressId) -> &Builder {
+    pub fn reply_to(&self, reply_to: Topic) -> &Builder {
         let mut msg = self.msg.borrow_mut();
         msg.reply_to = Some(reply_to);
         self
@@ -141,13 +154,6 @@ impl Builder {
     pub fn deadline(&self, deadline: Deadline) -> &Builder {
         let mut msg = self.msg.borrow_mut();
         msg.deadline = deadline;
-        self
-    }
-
-    /// appends more data to the message
-    pub fn push_data(&self, data: Data) -> &Builder {
-        let mut msg = self.msg.borrow_mut();
-        msg.data.push(data);
         self
     }
 
@@ -161,10 +167,21 @@ impl Builder {
 pub type MessageId = Id<Message>;
 
 /// Message address
-pub struct Address;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Topic(String);
 
-/// unique Address Identifier
-pub type AddressId = Id<Address>;
+impl Topic {
+    // TODO: validate topic names - cannot be blank, regex
+    /// Topic constructor
+    pub fn new(topic: &str) -> Topic {
+        Topic(topic.trim().to_string())
+    }
+
+    /// Topic name
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+}
 
 /// Deadline
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -189,7 +206,7 @@ impl Default for Deadline {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data {
     data_type: DataType,
-    serialization_format: SerializationFormat,
+    message_format: MessageFormat,
     data: Vec<u8>,
 }
 
@@ -198,7 +215,7 @@ pub type DataType = Id<Data>;
 
 /// SerializationFormat
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub enum SerializationFormat {
+pub enum MessageFormat {
     /// [MessagePack](https://msgpack.org/) - default
     MessagePack,
     /// [Bincode](https://github.com/TyOverby/bincode)
@@ -207,11 +224,13 @@ pub enum SerializationFormat {
     CBOR,
     /// [JSON](https://www.json.org/)
     JSON,
+    /// The message data is treated simply as bytes - it's up to the message producer / consumer
+    BYTES,
 }
 
-impl Default for SerializationFormat {
-    fn default() -> SerializationFormat {
-        SerializationFormat::MessagePack
+impl Default for MessageFormat {
+    fn default() -> MessageFormat {
+        MessageFormat::MessagePack
     }
 }
 
@@ -229,16 +248,19 @@ impl TimestampMillis {
 #[cfg(test)]
 mod test {
     extern crate bincode;
+    extern crate exonum_sodiumoxide;
     extern crate rmp_serde as rmps;
     extern crate serde_cbor;
     extern crate serde_json;
+
+    use self::exonum_sodiumoxide::crypto::box_;
 
     use super::*;
 
     fn message(data: Vec<u8>) -> Message {
         Builder::new(Data {
             data_type: DataType::new(),
-            serialization_format: SerializationFormat::default(),
+            message_format: MessageFormat::default(),
             data,
         }).build()
     }
@@ -250,6 +272,7 @@ mod test {
                 println!("{} : {}", &json, json.len());
                 let _msg: Message =
                     serde_json::from_str(&json).expect("JSON deserialization failed");
+                encrypt_decrypt("json", json.as_bytes());
             }
             Err(err) => panic!("JSON serialization failed : {}", err),
         }
@@ -262,6 +285,7 @@ mod test {
                 println!("bincode bytes.len() = {}", bytes.len());
                 let _msg: Message =
                     bincode::deserialize(&bytes).expect("bincode deserialization failed");
+                encrypt_decrypt("bincode", &bytes);
             }
             Err(err) => panic!("bincode serialization failed : {}", err),
         }
@@ -274,6 +298,7 @@ mod test {
                 println!("CBOR bytes.len() = {}", bytes.len());
                 let _msg: Message =
                     serde_cbor::from_slice(&bytes).expect("CBOR deserialization failed");
+                encrypt_decrypt("CBOR", &bytes);
             }
             Err(err) => panic!("CBOR serialization failed : {}", err),
         }
@@ -281,13 +306,30 @@ mod test {
 
     #[test]
     fn serialize_message_msgpack() {
-        match rmps::to_vec(&message(vec![])) {
+        let bytes = rmps::to_vec(&message(vec![]));
+        match bytes {
             Ok(bytes) => {
                 println!("rmps bytes.len() = {}", bytes.len());
                 let _msg: Message = rmps::from_slice(&bytes).expect("rmps deserialization failed");
+                encrypt_decrypt("rmps", &bytes);
             }
             Err(err) => panic!("rmps serialization failed : {}", err),
         }
+    }
+
+    fn encrypt_decrypt(format: &str, bytes: &[u8]) {
+        let (ourpk, oursk) = box_::gen_keypair();
+        let (theirpk, theirsk) = box_::gen_keypair();
+        let our_precomputed_key = box_::precompute(&theirpk, &oursk);
+        let nonce = box_::gen_nonce();
+        let encrypted_bytes = box_::seal_precomputed(&bytes, &nonce, &our_precomputed_key);
+        println!("{} encrypted length = {}", format, encrypted_bytes.len());
+        // this will be identical to our_precomputed_key
+        let their_precomputed_key = box_::precompute(&ourpk, &theirsk);
+        let unencrypted_bytes =
+            box_::open_precomputed(&encrypted_bytes, &nonce, &their_precomputed_key).unwrap();
+
+        assert_eq!(unencrypted_bytes, &bytes[..]);
     }
 
     // impressively, MessagePack (rmps) is the winner

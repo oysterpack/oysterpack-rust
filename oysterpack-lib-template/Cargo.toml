@@ -1,5 +1,5 @@
 [package]
-name = "oysterpack_kafka"
+name = "oysterpack_lib_template"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Actors"
@@ -9,25 +9,9 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
-actix = "0.5.5"
-tokio = "0.1.5"
-futures = "0.1"
-
-# serde serializers
-serde_cbor = "0.8.2"
-serde_json = "1.0.13"
-bincode = "1.0.0"
-rmp-serde = "0.13.7"
-
-oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
-oysterpack_platform = {path = "../oysterpack-platform", version = "0.1.0"}
-
-rdkafka = {version = "0.15.0", features = ["ssl"]}
 
 [dev-dependencies]
 version-sync = "0.5"
 
 [badges]
 maintenance = { status = "actively-developed" }
-
-

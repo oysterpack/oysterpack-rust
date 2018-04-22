@@ -6,27 +6,36 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! # OysterPack Rust Reactive Platform
+//! # OysterPack Rust Platform Model
 //!
-//! The mission is to provide a platform to build [reactive](https://www.reactivemanifesto.org/) systems in Rust.
+//! ## Domain
+//! - Domains form a flat namespace, i.e., there are no sub-domains.
+//! - Domains are assigned a unique DomainId, which never changes and can never be re-used by any other Domain.
+//! - Domain names must be unique across all domains. Domain names can be re-used after a Domain is deleted.
+//! - Domains own Apps.
 //!
-//! ## Why Rust ?
-//! Because [Rust](https://www.rust-lang.org) is the best systems programming language for building production grade reactive systems.
+//! ## App
+//! - Apps are owned by a single domain.
+//! - Apps can be transferred bewteen Domains.
+//! - Apps are composed of services
 //!
-//! Rust's focus on **safety**, **speed**, and **concurrency** delivers the performance and control of a low-level language, but with the powerful abstractions of a high-level language.
+//! ## Service
+//! - Services are public functions exposed by a library module.
+//! - A service is self-contained in a single library crate.
+//!
+//! ## AppInstance
+//! - Represents a running App instance
 //!
 
-#![deny(missing_docs)]
+#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_platform/0.1.0")]
 
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 #[macro_use]
-extern crate futures;
-#[macro_use]
 extern crate lazy_static;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
@@ -37,11 +46,14 @@ extern crate semver;
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
+
+use semver::Version;
 
 pub use oysterpack_id::Id;
 
-/// Domain is used to group a set of Applications underneath it.
-#[derive(Debug, Eq, PartialEq, Clone)]
+/// Domain
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Domain {
     id: DomainId,
     name: DomainName,
@@ -54,12 +66,12 @@ impl Hash for Domain {
 }
 
 impl Domain {
-    /// DomainID getter
+    /// Unique Domain ID
     pub fn id(&self) -> DomainId {
         self.id
     }
 
-    /// DomainName getter
+    /// Unique Domain name
     pub fn name(&self) -> &DomainName {
         &self.name
     }
@@ -70,7 +82,7 @@ pub type DomainId = Id<Domain>;
 
 /// DomainName is the unique name for the Domain.
 /// The DomainName has constraints - see [Domain::new()](struct.DomainName.html#method.new)
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DomainName(String);
 
 impl fmt::Display for DomainName {
@@ -110,6 +122,8 @@ fn validate_name(name: &str) -> Result<String, NameError> {
     if RE.is_match(&name) {
         return Ok(name);
     }
+
+    // provide more helpful error explaining why the name is invalid
     match name {
         ref name if name.len() < 3 => Err(NameError::TooShort {
             name: name.to_string(),
@@ -127,30 +141,40 @@ fn validate_name(name: &str) -> Result<String, NameError> {
 }
 
 /// App represents an application binary release.
-#[derive(Debug, Eq, PartialEq, Clone)]
+/// Apps are owned by a single Domain.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct App {
-    // Unique app identifier
+    domain_id: DomainId,
     id: AppId,
-    // Unique app name
     name: AppName,
-    // App version
-    version: semver::Version,
+    version: Version,
+    services: HashSet<Service>,
 }
 
 impl App {
-    /// AppId getter
+    /// Returns the owning Domain.
+    pub fn domain_id(&self) -> DomainId {
+        self.domain_id
+    }
+
+    /// Unique App ID across all domains.
     pub fn id(&self) -> AppId {
         self.id
     }
 
-    /// AppName getter
+    /// Unique App name across all domains.
     pub fn name(&self) -> &AppName {
         &self.name
     }
 
-    /// Version getter
+    /// App version
     pub fn version(&self) -> &semver::Version {
         &self.version
+    }
+
+    /// App Services
+    pub fn services(&self) -> &HashSet<Service> {
+        &self.services
     }
 }
 
@@ -164,7 +188,7 @@ impl Hash for App {
 pub type AppId = Id<App>;
 
 /// App unique name
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct AppName(String);
 
 impl AppName {
@@ -194,35 +218,26 @@ impl fmt::Display for AppName {
     }
 }
 
-/// Represents a Domain-App relationship. An app can be deployed into multiple domains.
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct DomainApp {
-    domain: Domain,
-    app: App,
-}
-
-/// Actors define application functionality.
-/// Actors are versioned.
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub struct Actor {
-    // Unique Actor identifier
-    id: ActorId,
-    // Unique Actor name
-    name: ActorName,
-    // Actor version
+/// Services define application functionality.
+/// Services are versioned.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct Service {
+    // Unique Service identifier
+    id: ServiceId,
+    // Unique Service name
+    name: ServiceName,
+    // Service version
     version: semver::Version,
-    // the Actor crate library
-    library: Library,
 }
 
-impl Actor {
-    /// AppId getter
-    pub fn id(&self) -> ActorId {
+impl Service {
+    /// ServiceId getter
+    pub fn id(&self) -> ServiceId {
         self.id
     }
 
-    /// AppName getter
-    pub fn name(&self) -> &ActorName {
+    /// ServiceName getter
+    pub fn name(&self) -> &ServiceName {
         &self.name
     }
 
@@ -230,28 +245,23 @@ impl Actor {
     pub fn version(&self) -> &semver::Version {
         &self.version
     }
-
-    /// The actor crate library
-    pub fn library(&self) -> &Library {
-        &self.library
-    }
 }
 
-impl Hash for Actor {
+impl Hash for Service {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state)
     }
 }
 
-/// Actor unique identifer
-pub type ActorId = Id<Actor>;
+/// Service unique identifer
+pub type ServiceId = Id<Service>;
 
-/// Actor unique name
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ActorName(String);
+/// Service unique name
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct ServiceName(String);
 
-impl ActorName {
-    /// ActorName constructor. The name will be trimmed and lowercased before it is validated.
+impl ServiceName {
+    /// ServiceName constructor. The name will be trimmed and lowercased before it is validated.
     ///
     /// The name is checked against the following regex :
     /// ```text
@@ -261,8 +271,8 @@ impl ActorName {
     /// - max length = 64
     /// - only word characters (alphanumeric or “_”) or "-" are allowed
     /// - must start with an alpha char
-    pub fn new(name: &str) -> Result<ActorName, NameError> {
-        validate_name(name).map(|name| ActorName(name))
+    pub fn new(name: &str) -> Result<ServiceName, NameError> {
+        validate_name(name).map(|name| ServiceName(name))
     }
 
     /// returns the name
@@ -271,71 +281,25 @@ impl ActorName {
     }
 }
 
-impl fmt::Display for ActorName {
+impl fmt::Display for ServiceName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-/// Represents an App-Actor relationship.
-/// Applications are composed of actors.
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct AppActor {
-    app: App,
-    actor: Actor,
-}
+/// Represents an app instance.
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
+pub struct AppInstance;
+/// AppInstanceId represents a unique id assigned to a new app instance.
+pub type AppInstanceId = Id<AppInstance>;
 
-/// Represents a crate published on [crates.io](https://crates.io/)
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub struct Library {
-    /// Crate library name
-    name: LibraryName,
-    /// Crate library version
-    version: semver::Version,
-}
-
-impl Library {
-    /// name getter
-    pub fn name(&self) -> &LibraryName {
-        &self.name
-    }
-
-    /// version getter
-    pub fn version(&self) -> &semver::Version {
-        &self.version
-    }
-}
-
-/// Actor unique name
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct LibraryName(String);
-
-impl LibraryName {
-    /// ActorName constructor. The name will be trimmed and lowercased before it is validated.
-    ///
-    /// The name is checked against the following regex :
-    /// ```text
-    /// ^[a-z][\w\-]{2,63}$
-    /// ```
-    /// - min length = 3
-    /// - max length = 64
-    /// - only word characters (alphanumeric or “_”) or "-" are allowed
-    /// - must start with an alpha char
-    pub fn new(name: &str) -> Result<ActorName, NameError> {
-        validate_name(name).map(|name| ActorName(name))
-    }
-
-    /// returns the name
-    pub fn get(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for LibraryName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+/// Represents a service instance.
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
+pub struct ServiceInstance;
+/// ServiceInstanceId represents a unique id assigned to a new service instance. Use cases:
+/// 1. logging
+/// 2. metrics
+pub type ServiceInstanceId = Id<ServiceInstance>;
 
 /// Name validation errors
 #[derive(Fail, Debug)]
