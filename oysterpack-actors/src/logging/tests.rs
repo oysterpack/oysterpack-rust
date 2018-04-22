@@ -25,7 +25,10 @@ fn init_logger() {
     assert!(super::logger().is_some());
     // And the logger can be retrieved
     match super::logger() {
-        Some(logger) => info!(logger, "LOGGING HAS BEEN INITIALIZED"),
+        Some(logger) => {
+            info!(logger, "LOGGING HAS BEEN INITIALIZED");
+            info!(logger, "SUCCESS");
+        }
         None => panic!("Logger should have been initialized"),
     }
 }
@@ -34,11 +37,12 @@ fn init_logger() {
 pub(crate) fn new_logger() -> slog::Logger {
     use self::sloggers::Build;
     use self::sloggers::terminal::{Destination, TerminalLoggerBuilder};
-    use self::sloggers::types::Severity;
+    use self::sloggers::types::{Format, Severity};
 
     let mut builder = TerminalLoggerBuilder::new();
     builder.level(Severity::Debug);
     builder.destination(Destination::Stderr);
+    builder.format(Format::Full);
 
     builder.build().unwrap()
 }

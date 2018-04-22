@@ -29,6 +29,8 @@ pub mod logging;
 #[cfg(test)]
 mod tests;
 
+pub use actor::ActorMessageResponse;
+
 //
 //extern crate oysterpack_platform as platform;
 //

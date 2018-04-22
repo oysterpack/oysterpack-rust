@@ -20,6 +20,7 @@ lazy_static!{
     static ref LOGGER: RwLock<Option<slog::Logger>> = RwLock::new(None);
 }
 
+pub const SYSTEM: &'static str = "system";
 pub const SYSTEM_SERVICE: &'static str = "system_service";
 pub const EVENT: &'static str = "event";
 
@@ -28,6 +29,7 @@ pub const EVENT: &'static str = "event";
 /// The specified logger will be used as the root logger for all Actors
 pub fn init(root_logger: slog::Logger) {
     let mut logger = LOGGER.write().unwrap();
+    info!(root_logger, "logging initialized");
     *logger = Some(root_logger);
 }
 

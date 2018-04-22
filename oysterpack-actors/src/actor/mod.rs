@@ -17,12 +17,19 @@
 //! 1. All Actor instances will be assigned a unique ActorId
 
 extern crate actix;
+extern crate futures;
 extern crate oysterpack_id;
 extern crate slog;
 
+use self::futures::prelude::*;
 use self::actix::prelude::*;
+
 use self::oysterpack_id::Id;
-use logging::*;
+
+/// Type alias for Actor message response futures.
+/// The future error type is MailboxError, which indicates an error occurred while sending the request.
+/// If a message can result in error, then the response type should be wrapped in a Result.
+pub type ActorMessageResponse<T> = Box<Future<Item = T, Error = MailboxError>>;
 
 /// Provides support for building new Actors following standards.
 /// The StandardActor functionality is integrated via its lifecyle.

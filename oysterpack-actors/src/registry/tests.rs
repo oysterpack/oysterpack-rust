@@ -14,8 +14,9 @@ extern crate futures;
 use super::*;
 
 use self::actix::prelude::*;
+use self::actix::msgs::*;
 use self::futures::prelude::*;
-use self::futures::future::{lazy, ok, AndThen, FutureResult};
+use self::futures::future::ok;
 
 lazy_static! {
  pub static ref ARBITER_ID_1 : ArbiterId = ArbiterId::new();
@@ -36,32 +37,31 @@ fn arbiter_ids_can_be_stored_in_lazy_static() {
 fn arbiter_registry_is_defined_as_system_service() {
     let mut sys = System::new("sys");
     let system_registry = Arbiter::system_registry();
-
-    let registry: Addr<Syn, _> = system_registry.get::<ArbiterRegistry>();
-
-    sys.run_until_complete(ok::<(), ()>(()));
+    let _: Addr<Syn, _> = system_registry.get::<ArbiterRegistry>();
+    let _ = sys.run_until_complete(ok::<(), ()>(()));
 }
 
 #[test]
-fn arbiter_not_exists() {
+fn arbiters_are_created_on_demand() {
     let mut sys = System::new("sys");
-
-    let check = super::arbiter(ArbiterId::new())
-        .and_then(|arbiter| {
-            assert!(arbiter.connected());
-            ok(arbiter)
-        });
-    let result = sys.run_until_complete(check);
+    // When an Arbiter is looked up with an ArbiterId that is not registered
+    let test = super::arbiter(ArbiterId::new()).and_then(|arbiter| {
+        // Then the Arbiter's Addr is returned
+        // And the Addr is connected
+        assert!(arbiter.connected());
+        ok(arbiter)
+    });
+    let result = sys.run_until_complete(test);
     match result {
         Ok(_) => (),
-        Err(err) => panic!("failed to register arbiter : {:?}", err),
+        Err(err) => panic!(err),
     }
 }
 
 #[test]
 fn arbiter() {
     let mut sys = System::new("sys");
-    let check = super::arbiter(*ARBITER_ID_1)
+    let test = super::arbiter(*ARBITER_ID_1)
         .map(|arbiter| {
             assert!(arbiter.connected());
             super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
@@ -71,9 +71,133 @@ fn arbiter() {
         })
         .flatten();
 
-    let result = sys.run_until_complete(check);
+    let result = sys.run_until_complete(test);
     match result {
         Ok(_) => (),
-        Err(err) => panic!("failed to register arbiter : {:?}", err),
+        Err(err) => panic!(err),
+    }
+}
+
+#[test]
+fn stopped_arbiter_is_unregistered_on_demand() {
+    let mut sys = System::new("sys");
+    // Given an Arbiter is registered
+    let test = super::arbiter(*ARBITER_ID_1)
+        .map(|arbiter| {
+            assert!(arbiter.connected());
+            // When it is stopped
+            let _ = arbiter.send(StopArbiter(0)).wait();
+
+            use std::thread::sleep;
+            use std::time::Duration;
+            while arbiter.connected() {
+                println!("arbiter is still connected ...");
+                sleep(Duration::from_millis(10));
+            }
+            println!("arbiter is not connected");
+
+            super::arbiter_count().map(|count| {
+                // Then arbiter is no longer registered - count drops back to 0
+                assert_eq!(count.0, 0);
+                count
+            }).and_then(|_| {
+                // Then new arbiter will be created on demand.
+                super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
+                    assert!(arbiter.connected());
+                    ok(arbiter)
+                })
+            })
+        })
+        .flatten();
+
+    let result = sys.run_until_complete(test);
+    match result {
+        Ok(_) => (),
+        Err(err) => panic!(err),
+    }
+}
+
+#[test]
+fn stopped_arbiter_is_replaced_on_demand() {
+    let mut sys = System::new("sys");
+    // Given an Arbiter is registered
+    let test = super::arbiter(*ARBITER_ID_1)
+        .map(|arbiter| {
+            assert!(arbiter.connected());
+            // When it is stopped
+            let _ = arbiter.send(StopArbiter(0)).wait();
+
+            use std::thread::sleep;
+            use std::time::Duration;
+            while arbiter.connected() {
+                println!("arbiter is still connected ...");
+                sleep(Duration::from_millis(10));
+            }
+            println!("arbiter is not connected");
+
+            // Then new arbiter will be created on demand.
+            super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
+                assert!(arbiter.connected());
+                ok(arbiter)
+            })
+        })
+        .flatten();
+
+    let result = sys.run_until_complete(test);
+    match result {
+        Ok(_) => (),
+        Err(err) => panic!(err),
+    }
+}
+
+#[test]
+fn arbiter_count() {
+    let mut sys = System::new("sys");
+    let test = super::arbiter_count()
+        .map(|count| {
+            println!("arbiter count = {:?}", count);
+            assert_eq!(count.0, 0);
+            count
+        })
+        .and_then(|_| {
+            super::arbiter(*ARBITER_ID_1).and_then(|_| {
+                println!("arbiter registered");
+                super::arbiter_count().map(|count| {
+                    println!("arbiter count = {:?}", count);
+                    assert_eq!(count.0, 1);
+                    count
+                })
+            })
+        });
+    let result = sys.run_until_complete(test);
+    match result {
+        Ok(_) => (),
+        Err(err) => panic!(err),
+    }
+}
+
+#[test]
+fn arbiter_ids() {
+    let mut sys = System::new("sys");
+    let test = super::arbiter_ids()
+        .map(|arbiter_ids| {
+            println!("arbiter_ids = {:?}", arbiter_ids);
+            assert_eq!(arbiter_ids.len(), 0);
+            arbiter_ids
+        })
+        .and_then(|_| {
+            super::arbiter(*ARBITER_ID_1).and_then(|_| {
+                println!("arbiter registered");
+                super::arbiter_ids().map(|arbiter_ids| {
+                    println!("arbiter_ids = {:?}", arbiter_ids);
+                    assert_eq!(arbiter_ids.len(), 1);
+                    arbiter_ids
+                })
+            })
+        });
+    let result = sys.run_until_complete(test);
+    match result {
+        Ok(_) => (),
+        Err(err) => panic!(err),
     }
 }

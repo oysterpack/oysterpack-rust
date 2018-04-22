@@ -30,7 +30,8 @@ use self::actix::prelude::*;
 use self::futures::prelude::*;
 use self::oysterpack_id::Id;
 
-use std::{fmt, collections::HashMap, fmt::{Display, Formatter}, hash::{Hash, Hasher}};
+use std::collections::HashMap;
+use actor::ActorMessageResponse;
 
 /// Arbiter registry
 pub struct ArbiterRegistry {
@@ -65,14 +66,15 @@ pub type ArbiterAddr = Addr<Syn, Arbiter>;
 pub type Never = ();
 
 /// Looks up an Arbiter address. If one does not exist for the specified id, then a new one is created and registered on demand.
-pub fn arbiter(id: ArbiterId) -> Box<Future<Item = ArbiterAddr, Error = MailboxError>> {
+/// If the registered Arbiter addr is not connected, then a new Arbiter will be created to take its place.
+pub fn arbiter(id: ArbiterId) -> ActorMessageResponse<ArbiterAddr> {
     let service = Arbiter::system_registry().get::<ArbiterRegistry>();
     let request = service.send(GetArbiter(id));
-
     let request = request.map(|result| result.unwrap());
     Box::new(request)
 }
 
+#[derive(Debug)]
 struct GetArbiter(ArbiterId);
 
 impl Message for GetArbiter {
@@ -82,11 +84,55 @@ impl Message for GetArbiter {
 impl Handler<GetArbiter> for ArbiterRegistry {
     type Result = Result<ArbiterAddr, Never>;
 
-    fn handle(&mut self, msg: GetArbiter, ctx: &mut Self::Context) -> Self::Result {
-        if !self.arbiters.contains_key(&msg.0) {
-            let arbiter = Arbiter::new(msg.0.to_string());
-            self.arbiters.insert(msg.0, arbiter.clone());
+    fn handle(&mut self, msg: GetArbiter, _: &mut Self::Context) -> Self::Result {
+        let arbiter = self.arbiters.entry(msg.0).or_insert_with(|| Arbiter::new(msg.0.to_string()) );
+        if !arbiter.connected() {
+            *arbiter = Arbiter::new(msg.0.to_string());
         }
-        Ok(self.arbiters.get(&msg.0).unwrap().clone())
+        Ok(arbiter.clone())
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct ArbiterCount(pub usize);
+
+/// Returns the number of registered Arbiters
+pub fn arbiter_count() -> ActorMessageResponse<ArbiterCount> {
+    Box::new(arbiter_ids().map(|ids| ArbiterCount(ids.len())))
+}
+
+/// Returns the number of registered Arbiters
+pub fn arbiter_ids() -> ActorMessageResponse<Vec<ArbiterId>> {
+    let service = Arbiter::system_registry().get::<ArbiterRegistry>();
+    let request = service.send(GetArbiterIds);
+    let request = request.map(|result| result.unwrap());
+    Box::new(request)
+}
+
+#[derive(Debug)]
+struct GetArbiterIds;
+
+impl Message for GetArbiterIds {
+    type Result = Result<Vec<ArbiterId>, Never>;
+}
+
+impl Handler<GetArbiterIds> for ArbiterRegistry {
+    type Result = Result<Vec<ArbiterId>, Never>;
+
+    fn handle(&mut self, _: GetArbiterIds, _: &mut Self::Context) -> Self::Result {
+        let mut ids = Vec::with_capacity(self.arbiters.len());
+        let mut disconnected = vec![];
+        for (id, addr) in &self.arbiters {
+            if addr.connected() {
+                ids.push(*id);
+            } else {
+                disconnected.push(*id);
+            }
+        }
+
+        for ref id in disconnected {
+            self.arbiters.remove(id);
+        }
+        Ok(ids)
     }
 }

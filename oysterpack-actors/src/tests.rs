@@ -14,7 +14,6 @@ extern crate futures;
 
 use self::actix::prelude::*;
 use self::actix::msgs::*;
-use self::actix::registry::*;
 use self::chrono::prelude::*;
 use self::futures::prelude::*;
 use self::futures::future::ok;
@@ -33,7 +32,7 @@ fn multiple_systems() {
 
         // stop system after `self.dur` seconds
         fn started(&mut self, ctx: &mut actix::Context<Self>) {
-            ctx.run_later(self.dur, |act, _ctx| {
+            ctx.run_later(self.dur, |_, _| {
                 // send `SystemExit` to `System` actor.
                 actix::Arbiter::system().do_send(actix::msgs::SystemExit(0));
             });
@@ -46,7 +45,8 @@ fn multiple_systems() {
         let _: () = Timer {
             dur: time::Duration::new(0, 1),
         }.start();
-        println!("mgmt return code = {}", mgmt.run());
+        let return_code = mgmt.run();
+        assert_eq!(return_code, 0);
     });
 
     let app = thread::spawn(|| {
@@ -55,7 +55,8 @@ fn multiple_systems() {
         let _: () = Timer {
             dur: time::Duration::new(0, 1),
         }.start();
-        println!("app return code = {}", app.run());
+        let return_code = app.run();
+        assert_eq!(return_code, 0);
     });
 
     let _ = mgmt.join();
@@ -148,7 +149,7 @@ fn multiple_arbiters() {
     impl Handler<Ping> for Heartbeat {
         type Result = Result<Pong, ()>;
 
-        fn handle(&mut self, msg: Ping, ctx: &mut Self::Context) -> Self::Result {
+        fn handle(&mut self, _: Ping, _: &mut Self::Context) -> Self::Result {
             Ok(Pong(format!("*** {} : {}", self.id, Utc::now())))
         }
     }
@@ -157,7 +158,7 @@ fn multiple_arbiters() {
 
     // start actor on separate thread
     let heartbeat_arbiter = Arbiter::new("heartbeat-arbiter");
-    let heartbeat = heartbeat_arbiter.send(StartActor::new(|_| Heartbeat {
+    let _ = heartbeat_arbiter.send(StartActor::new(|_| Heartbeat {
         id: format!("{}::{}", Arbiter::system_name(), Arbiter::name()),
     }));
 
