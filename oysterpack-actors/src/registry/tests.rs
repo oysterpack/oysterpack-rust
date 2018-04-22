@@ -96,17 +96,19 @@ fn stopped_arbiter_is_unregistered_on_demand() {
             }
             println!("arbiter is not connected");
 
-            super::arbiter_count().map(|count| {
-                // Then arbiter is no longer registered - count drops back to 0
-                assert_eq!(count.0, 0);
-                count
-            }).and_then(|_| {
-                // Then new arbiter will be created on demand.
-                super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
-                    assert!(arbiter.connected());
-                    ok(arbiter)
+            super::arbiter_count()
+                .map(|count| {
+                    // Then arbiter is no longer registered - count drops back to 0
+                    assert_eq!(count.0, 0);
+                    count
                 })
-            })
+                .and_then(|_| {
+                    // Then new arbiter will be created on demand.
+                    super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
+                        assert!(arbiter.connected());
+                        ok(arbiter)
+                    })
+                })
         })
         .flatten();
 

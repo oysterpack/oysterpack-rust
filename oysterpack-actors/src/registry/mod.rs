@@ -32,27 +32,7 @@ use self::oysterpack_id::Id;
 
 use std::collections::HashMap;
 use actor::ActorMessageResponse;
-
-/// Arbiter registry
-pub struct ArbiterRegistry {
-    arbiters: HashMap<ArbiterId, Addr<Syn, Arbiter>>,
-}
-
-impl Supervised for ArbiterRegistry {}
-
-impl SystemService for ArbiterRegistry {}
-
-impl Default for ArbiterRegistry {
-    fn default() -> Self {
-        ArbiterRegistry {
-            arbiters: HashMap::new(),
-        }
-    }
-}
-
-impl Actor for ArbiterRegistry {
-    type Context = Context<Self>;
-}
+use self::arbiters::*;
 
 /// Unique Arbiter id.
 ///
@@ -62,35 +42,12 @@ pub type ArbiterId = Id<Arbiter>;
 /// Type alias for an Arbiter Addr
 pub type ArbiterAddr = Addr<Syn, Arbiter>;
 
-/// Type alias used for Result Error types that should never result in an Error
-pub type Never = ();
-
 /// Looks up an Arbiter address. If one does not exist for the specified id, then a new one is created and registered on demand.
 /// If the registered Arbiter addr is not connected, then a new Arbiter will be created to take its place.
 pub fn arbiter(id: ArbiterId) -> ActorMessageResponse<ArbiterAddr> {
     let service = Arbiter::system_registry().get::<ArbiterRegistry>();
-    let request = service.send(GetArbiter(id));
-    let request = request.map(|result| result.unwrap());
+    let request = service.send(GetArbiter(id)).map(|result| result.unwrap());
     Box::new(request)
-}
-
-#[derive(Debug)]
-struct GetArbiter(ArbiterId);
-
-impl Message for GetArbiter {
-    type Result = Result<ArbiterAddr, Never>;
-}
-
-impl Handler<GetArbiter> for ArbiterRegistry {
-    type Result = Result<ArbiterAddr, Never>;
-
-    fn handle(&mut self, msg: GetArbiter, _: &mut Self::Context) -> Self::Result {
-        let arbiter = self.arbiters.entry(msg.0).or_insert_with(|| Arbiter::new(msg.0.to_string()) );
-        if !arbiter.connected() {
-            *arbiter = Arbiter::new(msg.0.to_string());
-        }
-        Ok(arbiter.clone())
-    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -104,35 +61,83 @@ pub fn arbiter_count() -> ActorMessageResponse<ArbiterCount> {
 /// Returns the number of registered Arbiters
 pub fn arbiter_ids() -> ActorMessageResponse<Vec<ArbiterId>> {
     let service = Arbiter::system_registry().get::<ArbiterRegistry>();
-    let request = service.send(GetArbiterIds);
-    let request = request.map(|result| result.unwrap());
+    let request = service.send(GetArbiterIds).map(|result| result.unwrap());
     Box::new(request)
 }
 
-#[derive(Debug)]
-struct GetArbiterIds;
+mod arbiters {
+    use super::*;
 
-impl Message for GetArbiterIds {
-    type Result = Result<Vec<ArbiterId>, Never>;
-}
+    /// Type alias used for Result Error types that should never result in an Error
+    type Never = ();
 
-impl Handler<GetArbiterIds> for ArbiterRegistry {
-    type Result = Result<Vec<ArbiterId>, Never>;
+    /// Arbiter registry
+    pub struct ArbiterRegistry {
+        arbiters: HashMap<ArbiterId, Addr<Syn, Arbiter>>,
+    }
 
-    fn handle(&mut self, _: GetArbiterIds, _: &mut Self::Context) -> Self::Result {
-        let mut ids = Vec::with_capacity(self.arbiters.len());
-        let mut disconnected = vec![];
-        for (id, addr) in &self.arbiters {
-            if addr.connected() {
-                ids.push(*id);
-            } else {
-                disconnected.push(*id);
+    impl Supervised for ArbiterRegistry {}
+
+    impl SystemService for ArbiterRegistry {}
+
+    impl Default for ArbiterRegistry {
+        fn default() -> Self {
+            ArbiterRegistry {
+                arbiters: HashMap::new(),
             }
         }
+    }
 
-        for ref id in disconnected {
-            self.arbiters.remove(id);
+    impl Actor for ArbiterRegistry {
+        type Context = Context<Self>;
+    }
+
+    #[derive(Debug)]
+    pub struct GetArbiter(pub ArbiterId);
+
+    impl Message for GetArbiter {
+        type Result = Result<ArbiterAddr, Never>;
+    }
+
+    impl Handler<GetArbiter> for ArbiterRegistry {
+        type Result = Result<ArbiterAddr, Never>;
+
+        fn handle(&mut self, msg: GetArbiter, _: &mut Self::Context) -> Self::Result {
+            let arbiter = self.arbiters
+                .entry(msg.0)
+                .or_insert_with(|| Arbiter::new(msg.0.to_string()));
+            if !arbiter.connected() {
+                *arbiter = Arbiter::new(msg.0.to_string());
+            }
+            Ok(arbiter.clone())
         }
-        Ok(ids)
+    }
+
+    #[derive(Debug)]
+    pub struct GetArbiterIds;
+
+    impl Message for GetArbiterIds {
+        type Result = Result<Vec<ArbiterId>, Never>;
+    }
+
+    impl Handler<GetArbiterIds> for ArbiterRegistry {
+        type Result = Result<Vec<ArbiterId>, Never>;
+
+        fn handle(&mut self, _: GetArbiterIds, _: &mut Self::Context) -> Self::Result {
+            let mut ids = Vec::with_capacity(self.arbiters.len());
+            let mut disconnected = vec![];
+            for (id, addr) in &self.arbiters {
+                if addr.connected() {
+                    ids.push(*id);
+                } else {
+                    disconnected.push(*id);
+                }
+            }
+
+            for ref id in disconnected {
+                self.arbiters.remove(id);
+            }
+            Ok(ids)
+        }
     }
 }
