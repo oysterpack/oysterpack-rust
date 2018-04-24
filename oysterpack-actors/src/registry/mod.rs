@@ -65,6 +65,16 @@ pub fn arbiter_ids() -> ActorMessageResponse<Vec<ArbiterId>> {
     Box::new(request)
 }
 
+/// Looks up an Arbiter address. If one does not exist for the specified id, then a new one is created and registered on demand.
+/// If the registered Arbiter addr is not connected, then a new Arbiter will be created to take its place.
+pub fn contains_arbiter(id: ArbiterId) -> ActorMessageResponse<bool> {
+    let service = Arbiter::system_registry().get::<ArbiterRegistry>();
+    let request = service
+        .send(ContainsArbiter(id))
+        .map(|result| result.unwrap());
+    Box::new(request)
+}
+
 mod arbiters {
     use super::*;
 
@@ -110,6 +120,21 @@ mod arbiters {
                 *arbiter = Arbiter::new(msg.0.to_string());
             }
             Ok(arbiter.clone())
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ContainsArbiter(pub ArbiterId);
+
+    impl Message for ContainsArbiter {
+        type Result = Result<bool, Never>;
+    }
+
+    impl Handler<ContainsArbiter> for ArbiterRegistry {
+        type Result = Result<bool, Never>;
+
+        fn handle(&mut self, msg: ContainsArbiter, _: &mut Self::Context) -> Self::Result {
+            Ok(self.arbiters.contains_key(&msg.0))
         }
     }
 

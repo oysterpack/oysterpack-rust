@@ -203,3 +203,33 @@ fn arbiter_ids() {
         Err(err) => panic!(err),
     }
 }
+
+#[test]
+fn contains_arbiter() {
+    let mut sys = System::new("sys");
+
+    // When no Arbiter exists for a specified ArbiterId
+    let arbiter_id = ArbiterId::new();
+    let test = super::contains_arbiter(arbiter_id)
+        .map(|contains_arbiter| {
+            // Then no Arbiter should be found
+            assert_eq!(contains_arbiter, false);
+            contains_arbiter
+        })
+        .and_then(|_| {
+            // After the Arbiter is created and registered
+            super::arbiter(arbiter_id).and_then(|_| {
+                println!("arbiter registered");
+                super::contains_arbiter(arbiter_id).map(|contains_arbiter| {
+                    // Then Arbiter will be found
+                    assert_eq!(contains_arbiter, true);
+                    contains_arbiter
+                })
+            })
+        });
+    let result = sys.run_until_complete(test);
+    match result {
+        Ok(_) => (),
+        Err(err) => panic!(err),
+    }
+}

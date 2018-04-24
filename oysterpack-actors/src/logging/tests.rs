@@ -9,40 +9,43 @@
 //! tests
 
 extern crate slog;
-extern crate sloggers;
+
+extern crate actix;
+extern crate futures;
 
 use super::*;
 
 #[test]
-fn init_logger() {
-    // When logging has not yet been initialized
-    // Then None is returned
-    assert!(super::logger().is_none());
-
-    // Given logging is initialized
-    init(new_logger());
-    // Then the logger is stored
-    assert!(super::logger().is_some());
-    // And the logger can be retrieved
-    match super::logger() {
-        Some(logger) => {
-            info!(logger, "LOGGING HAS BEEN INITIALIZED");
-            info!(logger, "SUCCESS");
-        }
-        None => panic!("Logger should have been initialized"),
+fn root_logger() {
+    let mut sys = System::new("sys");
+    let test = super::root_logger().map(|logger| {
+        info!(logger, "root_logger SUCCESS #1");
+        logger
+    });
+    match sys.run_until_complete(test) {
+        Ok(logger) => info!(logger, "root_logger SUCCESS #2"),
+        Err(err) => panic!(err),
     }
 }
 
-/// Creates a new logger for testing purposes
-pub(crate) fn new_logger() -> slog::Logger {
-    use self::sloggers::Build;
-    use self::sloggers::terminal::{Destination, TerminalLoggerBuilder};
-    use self::sloggers::types::{Format, Severity};
+#[test]
+fn set_root_logger() {
+    // TODO: write log to a string buffer to inspect
 
-    let mut builder = TerminalLoggerBuilder::new();
-    builder.level(Severity::Debug);
-    builder.destination(Destination::Stderr);
-    builder.format(Format::Full);
-
-    builder.build().unwrap()
+    let mut sys = System::new("sys");
+    let init_root_logger = super::root_logger()
+        .and_then(|logger| {
+            let logger = logger.new(o!(ACTOR_ID => 456));
+            super::set_root_logger(logger)
+        })
+        .and_then(|_| {
+            super::root_logger().map(|logger| {
+                info!(logger, "set_root_logger SUCCESS #1");
+                logger
+            })
+        });
+    match sys.run_until_complete(init_root_logger) {
+        Ok(logger) => info!(logger, "set_root_logger SUCCESS #2"),
+        Err(err) => panic!(err),
+    }
 }
