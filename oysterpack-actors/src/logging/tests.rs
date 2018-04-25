@@ -13,6 +13,8 @@ extern crate slog;
 extern crate actix;
 extern crate futures;
 
+
+use std::io;
 use super::*;
 
 // TODO: write log to a string buffer to inspect
@@ -26,7 +28,10 @@ fn root_logger() {
 
 #[test]
 fn set_root_logger() {
-    super::set_root_logger(super::root_logger().new(o!(ACTOR_ID => 456)));
+    super::set_root_logger(|| {
+        let drain = super::async_json_drain(io::stderr(), 16).fuse();
+        slog::Logger::root(drain,o!(ACTOR_ID => 456))
+    });
     let logger = super::root_logger();
     info!(logger, "set_root_logger SUCCESS #1");
     warn!(logger, "set_root_logger SUCCESS #1");

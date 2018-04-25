@@ -33,19 +33,7 @@ mod tests;
 use std::sync::RwLock;
 
 lazy_static! {
-    static ref LOGGER: RwLock<slog::Logger> = {
-        let drain = Json::new(stderr())
-                .add_default_keys()
-                .set_newlines(true)
-                .build()
-                .fuse();
-        let drain = Async::new(drain)
-                .chan_size(1024)
-                .build()
-                .fuse();
-        let logger = Logger::root(drain.fuse(), o!());
-        RwLock::new(logger)
-    };
+    static ref LOGGER: RwLock<slog::Logger> = RwLock::new(Logger::root(slog::Discard.fuse(), o!()));
 }
 
 pub const SYSTEM: &'static str = "system";
@@ -62,8 +50,22 @@ pub fn root_logger() -> slog::Logger {
 }
 
 /// Used to initialize the root logger. This should be initialized at application startup.
-pub fn set_root_logger(root_logger: Logger) {
+pub fn set_root_logger<F>(root_logger: F) where F: FnOnce() -> Logger {
+    let root_logger = root_logger();
     let mut logger = LOGGER.write().unwrap();
     info!(root_logger, "logging initialized");
     *logger = root_logger;
+}
+
+/// Returns a new async JSON drain
+pub fn async_json_drain<W: Write + Send + 'static>(writer: W, chan_size: usize) -> slog_async::Async {
+    let drain = Json::new(writer)
+        .add_default_keys()
+        .set_newlines(true)
+        .build()
+        .fuse();
+    let drain = Async::new(drain)
+        .chan_size(chan_size)
+        .build();
+    drain
 }
