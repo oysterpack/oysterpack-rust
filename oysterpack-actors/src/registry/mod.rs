@@ -25,14 +25,20 @@ mod tests;
 extern crate actix;
 extern crate futures;
 extern crate oysterpack_id;
+extern crate slog;
 
 use self::actix::prelude::*;
 use self::futures::prelude::*;
+use self::slog::{Drain, Logger};
+
 use self::oysterpack_id::Id;
 
+use std::io::stderr;
 use std::collections::HashMap;
 use actor::ActorMessageResponse;
 use self::arbiters::*;
+
+use logging::{root_logger, EVENT, SYSTEM_SERVICE};
 
 /// Unique Arbiter id.
 ///
@@ -84,16 +90,24 @@ mod arbiters {
     /// Arbiter registry
     pub struct ArbiterRegistry {
         arbiters: HashMap<ArbiterId, Addr<Syn, Arbiter>>,
+        logger: Logger,
     }
 
     impl Supervised for ArbiterRegistry {}
 
-    impl SystemService for ArbiterRegistry {}
+    impl SystemService for ArbiterRegistry {
+        fn service_started(&mut self, _: &mut Context<Self>) {
+            info!(self.logger, "service started" ; o!(EVENT => "service_started"));
+        }
+    }
 
     impl Default for ArbiterRegistry {
         fn default() -> Self {
+            let logger = root_logger().new(o!(SYSTEM_SERVICE => "ArbiterRegistry"));
+            let logger = Logger::root(logger.filter_level(slog::Level::Info).fuse(), o!());
             ArbiterRegistry {
                 arbiters: HashMap::new(),
+                logger: logger,
             }
         }
     }

@@ -15,37 +15,19 @@ extern crate futures;
 
 use super::*;
 
+// TODO: write log to a string buffer to inspect
+
 #[test]
 fn root_logger() {
-    let mut sys = System::new("sys");
-    let test = super::root_logger().map(|logger| {
-        info!(logger, "root_logger SUCCESS #1");
-        logger
-    });
-    match sys.run_until_complete(test) {
-        Ok(logger) => info!(logger, "root_logger SUCCESS #2"),
-        Err(err) => panic!(err),
-    }
+    let logger = super::root_logger();
+    info!(logger, "root_logger SUCCESS #1");
+    warn!(logger, "root_logger SUCCESS #1");
 }
 
 #[test]
 fn set_root_logger() {
-    // TODO: write log to a string buffer to inspect
-
-    let mut sys = System::new("sys");
-    let init_root_logger = super::root_logger()
-        .and_then(|logger| {
-            let logger = logger.new(o!(ACTOR_ID => 456));
-            super::set_root_logger(logger)
-        })
-        .and_then(|_| {
-            super::root_logger().map(|logger| {
-                info!(logger, "set_root_logger SUCCESS #1");
-                logger
-            })
-        });
-    match sys.run_until_complete(init_root_logger) {
-        Ok(logger) => info!(logger, "set_root_logger SUCCESS #2"),
-        Err(err) => panic!(err),
-    }
+    super::set_root_logger(super::root_logger().new(o!(ACTOR_ID => 456)));
+    let logger = super::root_logger();
+    info!(logger, "set_root_logger SUCCESS #1");
+    warn!(logger, "set_root_logger SUCCESS #1");
 }
