@@ -33,12 +33,11 @@ use self::slog::{Drain, Logger};
 
 use self::oysterpack_id::Id;
 
-use std::io::stderr;
 use std::collections::HashMap;
 use actor::ActorMessageResponse;
 use self::arbiters::*;
 
-use logging::{root_logger, EVENT, SYSTEM_SERVICE};
+use logging::EVENT;
 
 /// Unique Arbiter id.
 ///
@@ -103,11 +102,9 @@ mod arbiters {
 
     impl Default for ArbiterRegistry {
         fn default() -> Self {
-            let logger = root_logger().new(o!(SYSTEM_SERVICE => "ArbiterRegistry"));
-            let logger = Logger::root(logger.filter_level(slog::Level::Info).fuse(), o!());
             ArbiterRegistry {
                 arbiters: HashMap::new(),
-                logger: logger,
+                logger: Logger::root(slog::Discard, o!()),
             }
         }
     }
