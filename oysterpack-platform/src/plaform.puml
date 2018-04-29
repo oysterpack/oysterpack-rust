@@ -1,7 +1,9 @@
 @startuml
 
 Domain <--* App
-App ---o Service
+App --o Service
+App <.left. AppInstance
+Service <.left. ServiceInstance
 
 class Domain {
 id: DomainId
@@ -20,6 +22,16 @@ class Service {
 id: ServiceId
 name: ServiceName
 version: semver::Version
+}
+
+class AppInstance {
+app: App
+instance_id: AppInstanceId
+}
+
+class ServiceInstance {
+service: Service
+instance_id: ServiceInstanceId
 }
 
 

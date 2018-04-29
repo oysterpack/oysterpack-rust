@@ -20,39 +20,14 @@ use super::*;
 use self::actix::prelude::*;
 use self::actix::msgs::*;
 use self::futures::prelude::*;
-use self::futures::future::{ok};
+use self::futures::future::ok;
 
 use self::oysterpack_id::Oid;
 
-use std::io;
-
-fn setup_logger() -> Result<(), fern::InitError> {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S%.6f]"),
-                record.level(),
-                record.target(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Warn)
-        .level_for("oysterpack_actors", log::LevelFilter::Debug)
-        .chain(io::stdout())
-        .apply()?;
-    Ok(())
-}
+use tests::run_test;
 
 lazy_static! {
  pub static ref ARBITER_ID_1 : ArbiterId = ArbiterId::new();
-
- pub static ref INIT_FERN : Result<(), fern::InitError> = setup_logger();
-}
-
-fn run_test(test: fn() -> ()) {
-    let _ = *INIT_FERN;
-    test()
 }
 
 #[test]
@@ -296,11 +271,10 @@ fn contains_arbiter() {
 
 #[test]
 fn register_actors_on_separate_arbiters() {
-
     struct OpActor<State: Default> {
         id: Oid,
         created: chrono::DateTime<chrono::Utc>,
-        state: State
+        state: State,
     }
 
     impl<State: Default> Default for OpActor<State> {
@@ -308,7 +282,7 @@ fn register_actors_on_separate_arbiters() {
             OpActor {
                 id: Oid::new(),
                 created: chrono::Utc::now(),
-                state: Default::default()
+                state: Default::default(),
             }
         }
     }
@@ -330,7 +304,6 @@ fn register_actors_on_separate_arbiters() {
         type Result = ();
     }
 
-
     type FooActor = OpActor<Foo>;
 
     struct Foo {
@@ -339,9 +312,7 @@ fn register_actors_on_separate_arbiters() {
 
     impl Default for Foo {
         fn default() -> Self {
-            Foo {
-                msg_count: 0
-            }
+            Foo { msg_count: 0 }
         }
     }
 
@@ -349,7 +320,7 @@ fn register_actors_on_separate_arbiters() {
         type Context = Context<Self>;
 
         fn started(&mut self, _: &mut Self::Context) {
-            info!("[Foo] started");
+            info!("[Foo] started : {:?}", self.created);
         }
 
         fn stopping(&mut self, _: &mut Self::Context) -> Running {
@@ -357,7 +328,7 @@ fn register_actors_on_separate_arbiters() {
             Running::Stop
         }
 
-        fn stopped(&mut self, _: &mut Self::Context)  {
+        fn stopped(&mut self, _: &mut Self::Context) {
             info!("[Foo] stopped");
         }
     }
@@ -373,13 +344,13 @@ fn register_actors_on_separate_arbiters() {
             );
             if self.state.msg_count >= 3 {
                 let _ = cmd.reply_to.try_send(Command {
-                    reply_to: ctx.address::<Addr<Syn,FooActor>>().recipient(),
+                    reply_to: ctx.address::<Addr<Syn, FooActor>>().recipient(),
                     action: Action::SystemExit,
                     sender: self.id,
                 });
             } else {
-                let _ =  cmd.reply_to.try_send(Command {
-                    reply_to: ctx.address::<Addr<Syn,FooActor>>().recipient(),
+                let _ = cmd.reply_to.try_send(Command {
+                    reply_to: ctx.address::<Addr<Syn, FooActor>>().recipient(),
                     action: cmd.action,
                     sender: self.id,
                 });
@@ -406,7 +377,7 @@ fn register_actors_on_separate_arbiters() {
             Running::Stop
         }
 
-        fn stopped(&mut self, _: &mut Self::Context)  {
+        fn stopped(&mut self, _: &mut Self::Context) {
             info!("[Bar] stopped");
         }
     }
@@ -451,7 +422,7 @@ fn register_actors_on_separate_arbiters() {
                         Action::Ping => {
                             info!("[ActionHandler] received Ping back");
                             let _ = cmd.reply_to.try_send(Command {
-                                reply_to: ctx.address::<Addr<Syn,ActionHandler>>().recipient(),
+                                reply_to: ctx.address::<Addr<Syn, ActionHandler>>().recipient(),
                                 action: cmd.action,
                                 sender: self.id,
                             });
@@ -466,9 +437,7 @@ fn register_actors_on_separate_arbiters() {
                 }
             }
 
-            let reply_to = Arbiter::start(|_| ActionHandler {
-                id: Oid::new(),
-            });
+            let reply_to = Arbiter::start(|_| ActionHandler { id: Oid::new() });
             let reply_to: Recipient<Syn, Command> = reply_to.recipient();
 
             let _ = self.actor.try_send(Command {

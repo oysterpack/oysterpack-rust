@@ -39,7 +39,6 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
-extern crate chrono;
 extern crate oysterpack_id;
 extern crate regex;
 extern crate semver;
@@ -51,6 +50,9 @@ use std::collections::HashSet;
 use semver::Version;
 
 pub use oysterpack_id::Id;
+
+#[cfg(test)]
+mod tests;
 
 /// Domain
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -152,6 +154,27 @@ pub struct App {
 }
 
 impl App {
+    /// App constructor
+    pub fn new(
+        domain_id: DomainId,
+        id: AppId,
+        name: AppName,
+        version: Version,
+        services: HashSet<Service>,
+    ) -> Result<App, AppInstanceError> {
+        if services.is_empty() {
+            Err(AppInstanceError::AppHasNoServices)
+        } else {
+            Ok(App {
+                domain_id,
+                id,
+                name,
+                version,
+                services,
+            })
+        }
+    }
+
     /// Returns the owning Domain.
     pub fn domain_id(&self) -> DomainId {
         self.domain_id
@@ -167,12 +190,14 @@ impl App {
         &self.name
     }
 
-    /// App version
+    /// App version.
+    ///
+    /// App id and version form a unique constraint on App.
     pub fn version(&self) -> &semver::Version {
         &self.version
     }
 
-    /// App Services
+    /// The set of services that compose the app.
     pub fn services(&self) -> &HashSet<Service> {
         &self.services
     }
@@ -231,17 +256,22 @@ pub struct Service {
 }
 
 impl Service {
-    /// ServiceId getter
+    /// Service constructor
+    pub fn new(id: ServiceId, name: ServiceName, version: semver::Version) -> Service {
+        Service { id, name, version }
+    }
+
+    /// ServiceId
     pub fn id(&self) -> ServiceId {
         self.id
     }
 
-    /// ServiceName getter
+    /// ServiceName must be unique across all services.
     pub fn name(&self) -> &ServiceName {
         &self.name
     }
 
-    /// Version getter
+    /// Service id and version form a unique constraint on Service.
     pub fn version(&self) -> &semver::Version {
         &self.version
     }
@@ -288,18 +318,42 @@ impl fmt::Display for ServiceName {
 }
 
 /// Represents an app instance.
-#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
-pub struct AppInstance;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AppInstance {
+    app: App,
+    instance_id: AppInstanceId,
+}
 /// AppInstanceId represents a unique id assigned to a new app instance.
 pub type AppInstanceId = Id<AppInstance>;
 
+impl AppInstance {
+    /// AppInstance constructor
+    pub fn new(app: App, instance_id: AppInstanceId) -> AppInstance {
+        AppInstance { app, instance_id }
+    }
+}
+
 /// Represents a service instance.
-#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone)]
-pub struct ServiceInstance;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ServiceInstance {
+    service: Service,
+    instance_id: ServiceInstanceId,
+}
+
 /// ServiceInstanceId represents a unique id assigned to a new service instance. Use cases:
 /// 1. logging
 /// 2. metrics
 pub type ServiceInstanceId = Id<ServiceInstance>;
+
+impl ServiceInstance {
+    /// ServiceInstance constructor
+    pub fn new(service: Service, instance_id: ServiceInstanceId) -> ServiceInstance {
+        ServiceInstance {
+            service,
+            instance_id,
+        }
+    }
+}
 
 /// Name validation errors
 #[derive(Fail, Debug)]
@@ -337,100 +391,10 @@ pub enum NameError {
     },
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn domain_name_get() {
-        let domain_name = "   OysterPack   ";
-        let name = DomainName::new(domain_name).unwrap();
-        assert_eq!(name.get(), &domain_name.trim().to_lowercase());
-    }
-
-    #[test]
-    fn blank_domain_name() {
-        if let Err(err @ NameError::TooShort { .. }) = DomainName::new("       ") {
-            assert!(format!("{}", err).starts_with("Name min length is "));
-        } else {
-            panic!("NameError::TooShort error should have been returned")
-        }
-    }
-
-    #[test]
-    fn name_too_short() {
-        if let Err(err @ NameError::TooShort { .. }) = DomainName::new("   12   ") {
-            assert!(format!("{}", err).starts_with("Name min length is "));
-            if let NameError::TooShort { len, .. } = err {
-                assert_eq!(2, len);
-            }
-        } else {
-            panic!("NameError::NameTooShort error should have been returned")
-        }
-    }
-
-    #[test]
-    fn name_too_long() {
-        let name = vec!['a'; 65];
-        let name = name.iter().fold(("".to_string(), 0), |mut s, c| {
-            s.0.insert(s.1, *c);
-            s.1 += 1;
-            s
-        });
-
-        if let Err(err @ NameError::TooLong { .. }) = DomainName::new(&name.0) {
-            assert!(format!("{}", err).starts_with("Name max length is "));
-            if let NameError::TooLong { len, .. } = err {
-                assert_eq!(65, len);
-            }
-        } else {
-            panic!("NameError::TooLong error should have been returned")
-        }
-    }
-
-    #[test]
-    fn valid_names() {
-        // min length = 3
-        let name = DomainName::new("aBc").unwrap();
-        assert_eq!("abc", name.get());
-        // alphanumeric and _ are allowed
-        let name = DomainName::new("abc_DEF_123-456").unwrap();
-        assert_eq!("abc_def_123-456", name.get());
-
-        // max length = 64
-        let name = vec!['a'; 64];
-        let name = name.iter().fold(("".to_string(), 0), |mut s, c| {
-            s.0.insert(s.1, *c);
-            s.1 += 1;
-            s
-        });
-        assert_eq!(64, name.0.len());
-        DomainName::new(&name.0).unwrap();
-    }
-
-    #[test]
-    fn invalid_names() {
-        match DomainName::new("aB c") {
-            Err(NameError::Invalid { name }) => assert_eq!("ab c", &name),
-            other => panic!(
-                "NameError::Invalid error should have been returned, but instead received : {:?}",
-                other
-            ),
-        }
-
-        match DomainName::new("-abc") {
-            Err(NameError::StartsWithNonAlpha { name }) => assert_eq!("-abc", &name),
-            other => panic!("NameError::StartsWithNonAlpha error should have been returned, but instead received : {:?}", other)
-        }
-
-        match DomainName::new("_abc") {
-            Err(NameError::StartsWithNonAlpha { name }) => assert_eq!("_abc", &name),
-            other => panic!("NameError::StartsWithNonAlpha error should have been returned, but instead received : {:?}", other)
-        }
-
-        match DomainName::new("1abc") {
-            Err(NameError::StartsWithNonAlpha { name }) => assert_eq!("1abc", &name),
-            other => panic!("NameError::StartsWithNonAlpha error should have been returned, but instead received : {:?}", other)
-        }
-    }
+/// AppInstanceBuilder errors
+#[derive(Fail, Debug)]
+pub enum AppInstanceError {
+    /// App must have at 1 service defined.
+    #[fail(display = "App must have at 1 service defined.")]
+    AppHasNoServices,
 }
