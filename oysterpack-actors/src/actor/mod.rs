@@ -17,12 +17,13 @@
 //! 1. All Actor instances will be assigned a unique ActorId
 
 extern crate actix;
+extern crate chrono;
 extern crate futures;
 extern crate oysterpack_id;
-extern crate slog;
 
-use self::futures::prelude::*;
 use self::actix::prelude::*;
+use self::futures::prelude::*;
+use self::chrono::prelude::*;
 
 use self::oysterpack_id::Id;
 
@@ -36,30 +37,29 @@ pub type ActorMessageResponse<T> = Box<Future<Item = T, Error = MailboxError>>;
 ///
 /// It provides the following functionality:
 /// 1. Each actor is assigned a unique
-pub struct StandardActor {
+pub struct ActorInstance {
     instance_id: ActorInstanceId,
-    logger: slog::Logger,
+    created_on: DateTime<Utc>,
 }
 
-impl StandardActor {
+impl ActorInstance {
     ///
-    pub fn new(logger: slog::Logger) -> StandardActor {
-        StandardActor {
+    pub fn new() -> ActorInstance {
+        ActorInstance {
             instance_id: ActorInstanceId::new(),
-            logger: logger,
+            created_on: Utc::now(),
         }
-    }
-
-    /// Returns the Actor's logger.
-    pub fn logger(&self) -> &slog::Logger {
-        &self.logger
     }
 
     /// Returns the Actor's instance id.
     pub fn instance_id(&self) -> ActorInstanceId {
         self.instance_id
     }
+
+    pub fn created_on(&self) -> DateTime<Utc> {
+        self.created_on
+    }
 }
 
 /// Each new Actor instance is assigned a unique ActorInstanceId.
-pub type ActorInstanceId = Id<StandardActor>;
+pub type ActorInstanceId = Id<ActorInstance>;

@@ -25,11 +25,9 @@ mod tests;
 extern crate actix;
 extern crate futures;
 extern crate oysterpack_id;
-extern crate slog;
 
 use self::actix::prelude::*;
 use self::futures::prelude::*;
-use self::slog::{Drain, Logger};
 
 use self::oysterpack_id::Id;
 
@@ -37,11 +35,9 @@ use std::collections::HashMap;
 use actor::ActorMessageResponse;
 use self::arbiters::*;
 
-use logging::EVENT;
-
 /// Unique Arbiter id.
 ///
-/// ArbiterId(s) can be defined as static constansts leveraging the [lazy_static](https://docs.rs/crate/lazy_static).
+/// ArbiterId(s) can be defined as static constants leveraging the [lazy_static](https://docs.rs/crate/lazy_static).
 pub type ArbiterId = Id<Arbiter>;
 
 /// Type alias for an Arbiter Addr
@@ -89,14 +85,13 @@ mod arbiters {
     /// Arbiter registry
     pub struct ArbiterRegistry {
         arbiters: HashMap<ArbiterId, Addr<Syn, Arbiter>>,
-        logger: Logger,
     }
 
     impl Supervised for ArbiterRegistry {}
 
     impl SystemService for ArbiterRegistry {
         fn service_started(&mut self, _: &mut Context<Self>) {
-            info!(self.logger, "service started" ; o!(EVENT => "service_started"));
+            debug!("service started");
         }
     }
 
@@ -104,13 +99,20 @@ mod arbiters {
         fn default() -> Self {
             ArbiterRegistry {
                 arbiters: HashMap::new(),
-                logger: Logger::root(slog::Discard, o!()),
             }
         }
     }
 
     impl Actor for ArbiterRegistry {
         type Context = Context<Self>;
+
+        fn started(&mut self, _: &mut Self::Context) {
+            debug!("started");
+        }
+
+        fn stopped(&mut self, _: &mut Self::Context) {
+            debug!("stopped");
+        }
     }
 
     #[derive(Debug)]

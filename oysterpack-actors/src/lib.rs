@@ -17,24 +17,13 @@
 //#![deny(missing_debug_implementations, missing_docs, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_actors/0.1.0")]
 
-extern crate erased_serde;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate slog;
-#[macro_use]
-extern crate slog_extlog;
-#[macro_use]
-extern crate slog_extlog_derive;
-
-// used by slog_extlog_derive used as the prefix to add to all log identifiers
-const CRATE_LOG_NAME: &'static str = "oysterpack_actors";
+extern crate log;
 
 pub mod registry;
 pub mod actor;
-pub mod logging;
 
 #[cfg(test)]
 mod tests;

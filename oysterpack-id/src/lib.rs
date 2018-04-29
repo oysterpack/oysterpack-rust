@@ -131,6 +131,13 @@ impl<T: ?Sized> Clone for Id<T> {
     }
 }
 
+/// Represents something unique
+#[derive(Debug)]
+pub struct O;
+
+/// Generic unique object identifier
+pub type Oid = Id<O>;
+
 #[cfg(test)]
 mod test {
     extern crate bincode;
@@ -150,6 +157,16 @@ mod test {
     // New Ids should be unique
     #[test]
     fn id_hash_uniqueness() {
+        use std::collections::HashSet;
+
+        let mut hashes = HashSet::new();
+        for _ in 0..100000 {
+            assert!(hashes.insert(Uid::new()))
+        }
+    }
+
+    #[test]
+    fn oid() {
         use std::collections::HashSet;
 
         let mut hashes = HashSet::new();
