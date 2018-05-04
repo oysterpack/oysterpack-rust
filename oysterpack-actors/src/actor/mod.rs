@@ -21,45 +21,22 @@ extern crate chrono;
 extern crate futures;
 extern crate oysterpack_id;
 
+#[cfg(test)]
+mod tests;
+
+pub mod service;
+
 use self::actix::prelude::*;
 use self::futures::prelude::*;
-use self::chrono::prelude::*;
-
-use self::oysterpack_id::Id;
 
 /// Type alias for Actor message response futures.
 /// The future error type is MailboxError, which indicates an error occurred while sending the request.
 /// If a message can result in error, then the response type should be wrapped in a Result.
 pub type ActorMessageResponse<T> = Box<Future<Item = T, Error = MailboxError>>;
 
-/// Provides support for building new Actors following standards.
-/// The StandardActor functionality is integrated via its lifecyle.
-///
-/// It provides the following functionality:
-/// 1. Each actor is assigned a unique
-pub struct ActorInstance {
-    instance_id: ActorInstanceId,
-    created_on: DateTime<Utc>,
+///// Actor SettingS
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub enum Setting {
+    /// Actor mailbox capacity
+    MailboxCapacity(usize),
 }
-
-impl ActorInstance {
-    ///
-    pub fn new() -> ActorInstance {
-        ActorInstance {
-            instance_id: ActorInstanceId::new(),
-            created_on: Utc::now(),
-        }
-    }
-
-    /// Returns the Actor's instance id.
-    pub fn instance_id(&self) -> ActorInstanceId {
-        self.instance_id
-    }
-
-    pub fn created_on(&self) -> DateTime<Utc> {
-        self.created_on
-    }
-}
-
-/// Each new Actor instance is assigned a unique ActorInstanceId.
-pub type ActorInstanceId = Id<ActorInstance>;

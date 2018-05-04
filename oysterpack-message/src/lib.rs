@@ -266,6 +266,12 @@ mod test {
     }
 
     #[test]
+    fn deserialize_owned() {
+        struct Foo<T: serde::de::DeserializeOwned>(T);
+        let _ = Foo(Topic("topic".to_string()));
+    }
+
+    #[test]
     fn serialize_message_json() {
         match serde_json::to_string(&message(vec![])) {
             Ok(json) => {

@@ -21,6 +21,8 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 pub mod registry;
 pub mod actor;
@@ -29,23 +31,3 @@ pub mod actor;
 mod tests;
 
 pub use actor::ActorMessageResponse;
-
-//
-//extern crate oysterpack_platform as platform;
-//
-//use std::collections::HashSet;
-//
-///// Actor Descriptor
-//pub struct Descriptor {
-//    /// ActorId
-//    id: platform::ServiceId,
-//    /// Actor settings
-//    settings: HashSet<Setting>,
-//}
-//
-///// Actor SettingS
-//#[derive(Debug, Hash, Eq, PartialEq, Clone)]
-//pub enum Setting {
-//    /// Actor mailbox capacity
-//    MailboxCapacity(usize),
-//}

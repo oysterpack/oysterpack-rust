@@ -347,11 +347,36 @@ pub type ServiceInstanceId = Id<ServiceInstance>;
 
 impl ServiceInstance {
     /// ServiceInstance constructor
-    pub fn new(service: Service, instance_id: ServiceInstanceId) -> ServiceInstance {
+    pub fn new(service: Service) -> ServiceInstance {
         ServiceInstance {
             service,
-            instance_id,
+            instance_id: ServiceInstanceId::new(),
         }
+    }
+}
+
+impl fmt::Display for ServiceInstance {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[{}][{}][{}][{}]",
+            self.service.name(),
+            self.service.version(),
+            self.service.id(),
+            self.instance_id
+        )
+    }
+}
+
+impl ServiceInstance {
+    /// Service getter
+    pub fn service(&self) -> &Service {
+        &self.service
+    }
+
+    /// ServiceInstanceId getter
+    pub fn instance_id(&self) -> ServiceInstanceId {
+        self.instance_id
     }
 }
 
