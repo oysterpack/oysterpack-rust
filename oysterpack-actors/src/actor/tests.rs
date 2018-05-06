@@ -9,9 +9,12 @@
 //! tests
 
 extern crate oysterpack_platform;
+extern crate polymap;
 extern crate rmp_serde as rmps;
 extern crate semver;
 extern crate serde;
+
+use self::polymap::{PolyMap, TypeMap};
 
 use super::*;
 use super::service::*;
@@ -40,13 +43,15 @@ fn stateless_actor_service() {
         type Result = String;
     }
 
-    type FooActor = service::StatelessServiceActor;
+    struct Foo;
+
+    type FooActor = service::StatelessServiceActor<Foo>;
 
     impl Handler<Echo> for FooActor {
         type Result = String;
 
         fn handle(&mut self, msg: Echo, _: &mut Self::Context) -> Self::Result {
-            debug!("{} {:?}",self.service_instance(), self.context());
+            debug!("{} {:?}", self.service_instance(), self.context());
             msg.msg
         }
     }
@@ -61,7 +66,7 @@ fn stateless_actor_service() {
         let sys = System::new("sys");
 
         let service: Addr<Syn, _> = FooActor::create(|_| {
-            let builder = ServiceActorBuilder::<NilState, NilConfig, NilContext>::new(foo_service);
+            let builder = ServiceActorBuilder::<Foo, Nil, Nil, Nil>::new(foo_service);
             builder.build()
         });
         let task = service
@@ -80,7 +85,6 @@ fn stateless_actor_service() {
     run_test(test);
 }
 
-
 #[test]
 fn stateless_actor_service_running_on_arbiter() {
     struct Echo {
@@ -91,13 +95,15 @@ fn stateless_actor_service_running_on_arbiter() {
         type Result = String;
     }
 
-    type FooActor = service::StatelessServiceActor;
+    struct Foo;
+
+    type FooActor = service::StatelessServiceActor<Foo>;
 
     impl Handler<Echo> for FooActor {
         type Result = String;
 
         fn handle(&mut self, msg: Echo, _: &mut Self::Context) -> Self::Result {
-            debug!("{} {:?}",self.service_instance(), self.context());
+            debug!("{} {:?}", self.service_instance(), self.context());
             msg.msg
         }
     }
@@ -116,12 +122,14 @@ fn stateless_actor_service_running_on_arbiter() {
         let task = arbiter(foo_arbiter_id)
             .and_then(|arbiter| {
                 arbiter.send(StartActor::new(|_| {
-                    let builder = ServiceActorBuilder::<NilState, NilConfig, NilContext>::new(foo_service);
+                    let builder = ServiceActorBuilder::<Foo, Nil, Nil, Nil>::new(foo_service);
                     builder.build()
                 }))
             })
             .and_then(|actor| {
-                actor.send(Echo { msg: "Hello".to_string()})
+                actor.send(Echo {
+                    msg: "Hello".to_string(),
+                })
             })
             .and_then(|msg| {
                 info!("Received echo back : {}", msg);

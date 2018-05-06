@@ -10,6 +10,7 @@
 
 extern crate actix;
 extern crate chrono;
+extern crate failure;
 extern crate fern;
 extern crate futures;
 extern crate log;
@@ -17,10 +18,8 @@ extern crate oysterpack_id;
 
 use super::*;
 
-use self::actix::prelude::*;
-use self::actix::msgs::*;
-use self::futures::prelude::*;
-use self::futures::future::ok;
+use self::actix::{msgs::*, prelude::*};
+use self::futures::{future::ok, prelude::*};
 
 use self::oysterpack_id::Oid;
 
@@ -49,7 +48,7 @@ fn arbiter_registry_is_defined_as_system_service() {
     fn test() {
         let mut sys = System::new("sys");
         let system_registry = Arbiter::system_registry();
-        let _: Addr<Syn, _> = system_registry.get::<ArbiterRegistry>();
+        let _: Addr<Syn, _> = system_registry.get::<arbiters::Registry>();
         let _ = sys.run_until_complete(ok::<(), ()>(()));
     }
     run_test(test);
@@ -266,6 +265,47 @@ fn contains_arbiter() {
             Err(err) => panic!(err),
         }
     }
+    run_test(test);
+}
+
+#[test]
+fn actor_registry() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+        // When no Arbiter exists for a specified ArbiterId
+        let arbiter_id = ArbiterId::new();
+        let test = register_actor(arbiter_id, None, |_| Foo).and_then(|foo| {
+            foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                Ok("SUCCESS !!!".to_string())
+            })).map_err(
+                |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                    mailbox_error: err,
+                    message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                    actor_destination: errors::ActorDestination("Foo".to_string()),
+                },
+            )
+        });
+        let result = sys.run_until_complete(test);
+        match result {
+            Ok(msg) => info!("foo result : {:?}", msg),
+            Err(err) => panic!(err),
+        }
+    }
+
     run_test(test);
 }
 
@@ -487,4 +527,29 @@ fn register_actors_on_separate_arbiters() {
     }
 
     run_test(test);
+}
+
+#[test]
+fn response_future_example() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    struct FooRequest;
+
+    struct FooResponse;
+
+    impl Message for FooRequest {
+        type Result = Result<FooResponse, ()>;
+    }
+
+    impl Handler<FooRequest> for Foo {
+        type Result = ResponseFuture<FooResponse, ()>;
+
+        fn handle(&mut self, _: FooRequest, _: &mut Self::Context) -> Self::Result {
+            Box::new(future::ok(FooResponse))
+        }
+    }
 }

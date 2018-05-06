@@ -20,7 +20,8 @@
 //! - Apps are composed of services
 //!
 //! ## Service
-//! - Services are public functions exposed by a library module.
+//! - Services are designed as Actors via [Actix](https://docs.rs/crate/actix)
+//! - Tne Service interface is defined by the Actor supported messages.
 //! - A service is self-contained in a single library crate.
 //!
 //! ## AppInstance
@@ -30,9 +31,8 @@
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_platform/0.1.0")]
 
-extern crate failure;
 #[macro_use]
-extern crate failure_derive;
+extern crate failure;
 #[macro_use]
 extern crate lazy_static;
 extern crate serde;
@@ -54,7 +54,12 @@ pub use oysterpack_id::Id;
 #[cfg(test)]
 mod tests;
 
-/// Domain
+/// Domain represents a logical domain used to provide structure, organization, and ownership.
+/// For example, [App](struct.App.html)(s) are owned by a Domain.
+///
+/// The DomainId identifies the Domain. The DomainName is a user friendly for the Domain, i.e.,
+/// mapped to the DomainId. The DomainName can be changed, as long as it is globally unique amongst
+/// all domain names, but the DomainId is permanent.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Domain {
     id: DomainId,
@@ -73,7 +78,8 @@ impl Domain {
         self.id
     }
 
-    /// Unique Domain name
+    /// Unique Domain name.
+    /// DomainName is a user friendly name mapped to the DomainId.
     pub fn name(&self) -> &DomainName {
         &self.name
     }
@@ -186,6 +192,7 @@ impl App {
     }
 
     /// Unique App name across all domains.
+    /// The App name is a user friendly name mapped to the AppId.
     pub fn name(&self) -> &AppName {
         &self.name
     }

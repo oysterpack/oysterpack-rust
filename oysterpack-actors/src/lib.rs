@@ -18,6 +18,8 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_actors/0.1.0")]
 
 #[macro_use]
+extern crate failure;
+#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
@@ -30,4 +32,4 @@ pub mod actor;
 #[cfg(test)]
 mod tests;
 
-pub use actor::ActorMessageResponse;
+pub use actor::MessageProcessingResult;

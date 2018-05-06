@@ -49,31 +49,43 @@ extern crate oysterpack_platform;
 extern crate serde;
 
 use self::serde::{Serialize, de::DeserializeOwned};
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 use self::oysterpack_platform::{Service, ServiceInstance};
 use self::chrono::prelude::*;
 use self::actix::*;
 
 /// Represents a Service running as an Actor
 ///
+/// T: Actor type marker. This is used to assign unique types to Actors in a generic manner.
+/// ```rust
+/// # use oysterpack_actors::*;
+/// struct Foo;
+/// struct Bar;
+///
+/// type FooActor = service::ServiceActor<Foo, Nil, Nil, Nil>;
+/// type BarActor = service::ServiceActor<Bar, Nil, Nil, Nil>;
+/// ```
 /// State: persistent service state
 /// Cfg: persistent service config
 /// Ctx: additional context that is required by the service, e.g., actor addresses
-pub struct ServiceActor<State, Cfg, Ctx>
+pub struct ServiceActor<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
 {
+    _type: PhantomData<T>,
     context: ServiceActorContext<State, Cfg, Ctx>,
     service_instance: ServiceInstance,
     created_on: DateTime<Utc>,
     started_on: Option<DateTime<Utc>>,
-    lifecycle: Option<Box<ServiceActorLifecycle<State, Cfg, Ctx>>>,
+    lifecycle: Option<Box<ServiceActorLifecycle<T, State, Cfg, Ctx>>>,
 }
 
-impl<State, Cfg, Ctx> ServiceActor<State, Cfg, Ctx>
+impl<T, State, Cfg, Ctx> ServiceActor<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
@@ -88,8 +100,9 @@ where
     }
 }
 
-impl<State, Cfg, Ctx> Actor for ServiceActor<State, Cfg, Ctx>
+impl<T, State, Cfg, Ctx> Actor for ServiceActor<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
@@ -124,17 +137,19 @@ where
     }
 }
 
-pub struct ServiceActorBuilder<State, Cfg, Ctx>
+pub struct ServiceActorBuilder<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
 {
-    actor: ServiceActor<State, Cfg, Ctx>,
+    actor: ServiceActor<T, State, Cfg, Ctx>,
 }
 
-impl<State, Cfg, Ctx> ServiceActorBuilder<State, Cfg, Ctx>
+impl<T, State, Cfg, Ctx> ServiceActorBuilder<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
@@ -143,6 +158,7 @@ where
     pub fn new(service: Service) -> Self {
         ServiceActorBuilder {
             actor: ServiceActor {
+                _type: PhantomData,
                 context: Default::default(),
                 service_instance: ServiceInstance::new(service),
                 created_on: Utc::now(),
@@ -171,13 +187,16 @@ where
     }
 
     /// Sets service context
-    pub fn lifecycle(&mut self, lifecycle: Box<ServiceActorLifecycle<State, Cfg, Ctx>>) -> &Self {
+    pub fn lifecycle(
+        &mut self,
+        lifecycle: Box<ServiceActorLifecycle<T, State, Cfg, Ctx>>,
+    ) -> &Self {
         self.actor.lifecycle = Some(lifecycle);
         self
     }
 
     /// Returns a new ServiceActor instance
-    pub fn build(self) -> ServiceActor<State, Cfg, Ctx> {
+    pub fn build(self) -> ServiceActor<T, State, Cfg, Ctx> {
         self.actor
     }
 }
@@ -205,7 +224,7 @@ pub trait ServiceConfig
 /// - its lifetime is marked as static because actix::Actor is marked as static
 pub trait ServiceContext: 'static + Debug {}
 
-/// ServiceActor context
+/// ServiceActor context provides state, config, and actor specific context.
 #[derive(Debug)]
 pub struct ServiceActorContext<State, Cfg, Ctx>
 where
@@ -219,10 +238,10 @@ where
 }
 
 impl<State, Cfg, Ctx> ServiceActorContext<State, Cfg, Ctx>
-    where
-        State: ServiceState,
-        Cfg: ServiceConfig,
-        Ctx: ServiceContext,
+where
+    State: ServiceState,
+    Cfg: ServiceConfig,
+    Ctx: ServiceContext,
 {
     /// Returns ServiceState
     pub fn state(&self) -> &Option<State> {
@@ -256,8 +275,9 @@ where
 }
 
 /// ServiceActor lifecycle
-pub trait ServiceActorLifecycle<State, Cfg, Ctx>
+pub trait ServiceActorLifecycle<T, State, Cfg, Ctx>
 where
+    T: 'static,
     State: ServiceState,
     Cfg: ServiceConfig,
     Ctx: ServiceContext,
@@ -265,14 +285,14 @@ where
 {
     fn started(
         &mut self,
-        actor_ctx: &mut Context<ServiceActor<State, Cfg, Ctx>>,
+        actor_ctx: &mut Context<ServiceActor<T, State, Cfg, Ctx>>,
         service_ctx: &mut ServiceActorContext<State, Cfg, Ctx>,
     ) {
     }
 
     fn stopping(
         &mut self,
-        actor_ctx: &mut Context<ServiceActor<State, Cfg, Ctx>>,
+        actor_ctx: &mut Context<ServiceActor<T, State, Cfg, Ctx>>,
         service_ctx: &mut ServiceActorContext<State, Cfg, Ctx>,
     ) -> Running {
         Running::Stop
@@ -280,26 +300,21 @@ where
 
     fn stopped(
         &mut self,
-        actor_ctx: &mut Context<ServiceActor<State, Cfg, Ctx>>,
+        actor_ctx: &mut Context<ServiceActor<T, State, Cfg, Ctx>>,
         service_ctx: &mut ServiceActorContext<State, Cfg, Ctx>,
     ) {
     }
 }
 
+/// Used for Nil Service state, config, or context.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NilState;
+pub struct Nil;
 
-impl ServiceState for NilState {}
+impl ServiceState for Nil {}
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NilConfig;
+impl ServiceConfig for Nil {}
 
-impl ServiceConfig for NilConfig {}
-
-#[derive(Debug)]
-pub struct NilContext;
-
-impl ServiceContext for NilContext {}
+impl ServiceContext for Nil {}
 
 /// Has no state, config, or context
-pub type StatelessServiceActor = ServiceActor<NilState, NilConfig, NilContext>;
+pub type StatelessServiceActor<T> = ServiceActor<T, Nil, Nil, Nil>;

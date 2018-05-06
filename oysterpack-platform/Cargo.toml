@@ -19,7 +19,6 @@ serde = "1.0.37"
 serde_derive = "1.0.37"
 
 failure = {version = "0.1.1", features= ["std","derive"]}
-failure_derive = "0.1.1"
 
 oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
 

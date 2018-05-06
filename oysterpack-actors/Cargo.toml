@@ -13,6 +13,8 @@ actix = "0.5.6"
 tokio = "0.1.5"
 futures = "0.1.21"
 
+failure = {version = "0.1", features = ["std","derive"]}
+
 serde = "1"
 serde_derive = "1"
 erased-serde = "0.3.3"
@@ -26,6 +28,8 @@ lazy_static = "1"
 
 oysterpack_id = {path = "../oysterpack-id", version = "0.1"}
 oysterpack_platform = {path = "../oysterpack-platform", version = "0.1"}
+
+polymap = "0.3"
 
 [dev-dependencies]
 version-sync = "0.5"
