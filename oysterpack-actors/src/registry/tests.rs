@@ -269,7 +269,7 @@ fn contains_arbiter() {
 }
 
 #[test]
-fn actor_registry() {
+fn register_actor_by_type() {
     struct Foo;
 
     impl Actor for Foo {
@@ -288,7 +288,7 @@ fn actor_registry() {
         let mut sys = System::new("sys");
         // When no Arbiter exists for a specified ArbiterId
         let arbiter_id = ArbiterId::new();
-        let test = register_actor(arbiter_id, None, |_| Foo).and_then(|foo| {
+        let test = super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
             foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                 Ok("SUCCESS !!!".to_string())
             })).map_err(
@@ -302,6 +302,247 @@ fn actor_registry() {
         let result = sys.run_until_complete(test);
         match result {
             Ok(msg) => info!("foo result : {:?}", msg),
+            Err(err) => panic!(err),
+        }
+    }
+
+    run_test(test);
+}
+
+#[test]
+fn register_actor_by_id() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+        // When no Arbiter exists for a specified ArbiterId
+        let arbiter_id = ArbiterId::new();
+        let actor_instance_id = ActorInstanceId::new();
+        let test =
+            super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
+                foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                    Ok("SUCCESS !!!".to_string())
+                })).map_err(
+                    |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                        mailbox_error: err,
+                        message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                        actor_destination: errors::ActorDestination("Foo".to_string()),
+                    },
+                )
+            });
+        let result = sys.run_until_complete(test);
+        match result {
+            Ok(msg) => info!("foo result : {:?}", msg),
+            Err(err) => panic!(err),
+        }
+    }
+
+    run_test(test);
+}
+
+#[test]
+fn register_multiple_actors_by_type() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+        // When no Arbiter exists for a specified ArbiterId
+        let arbiter_id = ArbiterId::new();
+
+        fn register_actor(arbiter_id: ArbiterId
+) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+            Box::new(
+                super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
+                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                        Ok("SUCCESS !!!".to_string())
+                    })).map_err(
+                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                            mailbox_error: err,
+                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                            actor_destination: errors::ActorDestination("Foo".to_string()),
+                        },
+                    )
+                }),
+            )
+        }
+
+        let test = register_actor(arbiter_id).and_then(|_| register_actor(arbiter_id));
+        let result = sys.run_until_complete(test);
+        match result {
+            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => info!("registration failed as expected with ActorAlreadyRegistered"),
+            Ok(msg) => panic!("registering multiple actors with the same type on the same arbiter should fail"),
+            Err(err) => panic!("failed with unexpected error : {:?}",err),
+        }
+    }
+
+    run_test(test);
+}
+
+#[test]
+fn register_multiple_actors_by_type_on_different_arbiters() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+
+        fn register_actor(arbiter_id: ArbiterId
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+            Box::new(
+                super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
+                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                        Ok("SUCCESS !!!".to_string())
+                    })).map_err(
+                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                            mailbox_error: err,
+                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                            actor_destination: errors::ActorDestination("Foo".to_string()),
+                        },
+                    )
+                }),
+            )
+        }
+
+        let test = register_actor(ArbiterId::new()).and_then(|_| register_actor(ArbiterId::new()));
+        let result = sys.run_until_complete(test);
+        match result {
+            Ok(msg) => info!("{:?}", msg),
+            Err(err) => panic!(err),
+        }
+    }
+
+    run_test(test);
+}
+
+#[test]
+fn register_multiple_actors_by_id_with_same_id() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+        // When no Arbiter exists for a specified ArbiterId
+        let arbiter_id = ArbiterId::new();
+        let actor_instance_id = ActorInstanceId::new();
+
+        fn register_actor(arbiter_id: ArbiterId, actor_instance_id: ActorInstanceId
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+            Box::new(
+                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
+                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                        Ok("SUCCESS !!!".to_string())
+                    })).map_err(
+                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                            mailbox_error: err,
+                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                            actor_destination: errors::ActorDestination("Foo".to_string()),
+                        },
+                    )
+                }),
+            )
+        }
+
+        let test = register_actor(arbiter_id, actor_instance_id).and_then(|_| register_actor(arbiter_id, actor_instance_id));
+        let result = sys.run_until_complete(test);
+        match result {
+            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => info!("registration failed as expected with ActorAlreadyRegistered"),
+            Ok(msg) => panic!("registering multiple actors with the same type on the same arbiter should fail"),
+            Err(err) => panic!("failed with unexpected error : {:?}",err),
+        }
+    }
+
+    run_test(test);
+}
+
+#[test]
+fn register_multiple_actors_by_id_with_unique_id() {
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+    }
+
+    impl<I: Send, E: Send> Handler<actix::msgs::Execute<I, E>> for Foo {
+        type Result = Result<I, E>;
+
+        fn handle(&mut self, msg: Execute<I, E>, _: &mut Context<Self>) -> Result<I, E> {
+            msg.exec()
+        }
+    }
+
+    fn test() {
+        let mut sys = System::new("sys");
+        // When no Arbiter exists for a specified ArbiterId
+        let arbiter_id = ArbiterId::new();
+
+
+        fn register_actor(arbiter_id: ArbiterId, actor_instance_id: ActorInstanceId
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+            Box::new(
+                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
+                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                        Ok("SUCCESS !!!".to_string())
+                    })).map_err(
+                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                            mailbox_error: err,
+                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
+                            actor_destination: errors::ActorDestination("Foo".to_string()),
+                        },
+                    )
+                }),
+            )
+        }
+
+        let test = register_actor(arbiter_id, ActorInstanceId::new()).and_then(|_| register_actor(arbiter_id, ActorInstanceId::new()));
+        let result = sys.run_until_complete(test);
+        match result {
+            Ok(msg) => info!("{:?}", msg),
             Err(err) => panic!(err),
         }
     }

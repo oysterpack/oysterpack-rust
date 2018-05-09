@@ -94,12 +94,35 @@ pub trait ActorInstance {}
 /// Used to assign an Id to an Actor instance.
 pub type ActorInstanceId = Id<ActorInstance + Send>;
 
-/// Registers an actor on the specified Arbiter.
+/// Registers an actor on the specified Arbiter using the specified ActorInstanceId
 /// - if the Arbiter for the specified ArbiterId does not exist, then it will be created on demand
-/// - if actor_instance_id is None, then the actor is registered by type, i.e., only 1 instance of
-///   the specified actor type can exist per arbiter. Otherwise, the actor is registered using the
-///   specified ActorInstanceId. This allows multiple Actor instances of the same type to be registered.
-pub fn register_actor<A, F>(
+pub fn register_actor_by_id<A, F>(
+    arbiter_id: ArbiterId,
+    actor_instance_id: ActorInstanceId,
+    actor: F,
+) -> Box<Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>>
+where
+    A: Actor<Context = Context<A>>,
+    F: FnOnce(&mut Context<A>) -> A + Send + 'static,
+{
+    register_actor(arbiter_id, Some(actor_instance_id), actor)
+}
+
+/// Registers an actor on the specified Arbiter using the Actor's type as the registry key.
+/// - only 1 instance of the Actor type can be registered per Arbiter
+/// - if the Arbiter for the specified ArbiterId does not exist, then it will be created on demand
+pub fn register_actor_by_type<A, F>(
+    arbiter_id: ArbiterId,
+    actor: F,
+) -> Box<Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>>
+where
+    A: Actor<Context = Context<A>>,
+    F: FnOnce(&mut Context<A>) -> A + Send + 'static,
+{
+    register_actor(arbiter_id, None, actor)
+}
+
+fn register_actor<A, F>(
     arbiter_id: ArbiterId,
     actor_instance_id: Option<ActorInstanceId>,
     actor: F,
