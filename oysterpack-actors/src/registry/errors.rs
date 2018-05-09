@@ -81,13 +81,20 @@ impl ActorRegistrationError {
         }
     }
 
-    /// Constructs a MessageDeliveryFailed for super::actors::Registry ! RegisterActor
-    pub fn actor_registration_result_message_delivery_failed(
-        err: MailboxError,
-    ) -> ActorRegistrationError {
+    /// Constructs a MessageDeliveryFailed for super::actors::Registry ! UpdateActor
+    pub fn update_actor_message_delivery_failed(err: MailboxError) -> ActorRegistrationError {
         ActorRegistrationError::MessageDeliveryFailed {
             mailbox_error: err,
-            message_type: MessageType("ActorRegistrationResult".to_string()),
+            message_type: MessageType("UpdateActor".to_string()),
+            actor_destination: ActorDestination("actors::Registry".to_string()),
+        }
+    }
+
+    /// Constructs a MessageDeliveryFailed for super::actors::Registry ! UnregisterActor
+    pub fn unregister_actor_message_delivery_failed(err: MailboxError) -> ActorRegistrationError {
+        ActorRegistrationError::MessageDeliveryFailed {
+            mailbox_error: err,
+            message_type: MessageType("UnregisterActor".to_string()),
             actor_destination: ActorDestination("actors::Registry".to_string()),
         }
     }

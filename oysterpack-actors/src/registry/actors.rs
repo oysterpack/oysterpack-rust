@@ -12,7 +12,7 @@ extern crate actix;
 extern crate futures;
 extern crate polymap;
 
-use std::collections::{HashMap, hash_map::Entry};
+use std::{collections::{HashMap, hash_map::Entry}, marker::PhantomData};
 
 use self::actix::{msgs::StartActor, prelude::*};
 
@@ -60,6 +60,7 @@ impl Actor for Registry {
 struct ActorRegistryEntry<A: Actor<Context = Context<A>>> {
     // the arbiter that the actor is running on
     arbiter_id: ArbiterId,
+    // if None, then this indicates that the registration is in progress
     addr: Option<Addr<Syn, A>>,
 }
 
@@ -72,6 +73,9 @@ impl<A: Actor<Context = Context<A>>> ActorRegistryEntry<A> {
     }
 }
 
+// ///////////////////
+// UnregisterActor //
+// /////////////////
 pub(crate) struct RegisterActor<A: Actor<Context = Context<A>>> {
     arbiter_id: ArbiterId,
     actor_instance_id: Option<ActorInstanceId>,
@@ -116,9 +120,7 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
 
         let arbiter_id = msg.arbiter_id;
         let actor_instance_id = msg.actor_instance_id;
-        let self_addr: Addr<Syn, Self> = ctx.address::<Addr<Syn, Self>>().clone();
-                let on_error_addr: Addr<Syn, Self> = ctx.address::<Addr<Syn, Self>>().clone();
-                let on_success_addr: Addr<Syn, Self> = ctx.address::<Addr<Syn, Self>>().clone();
+        let self_addr = ctx.address::<Addr<Unsync, Self>>().clone();
 
         // create the future for starting the actor
         let future = arbiter(msg.arbiter_id)
@@ -128,84 +130,47 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                     .send(msg.start_actor)
                     .map_err(|err| ActorRegistrationError::start_actor_message_delivery_failed(err))
             })
-            .then(move|result| {
-                let addr = match result {
-                    Ok(ref addr) => Some(addr.clone()),
-                    Err(_) => None
+            .then(move |result| {
+                // update the registry entry
+
+                let future = match result {
+                    Ok(ref addr) =>
+                    // update the registry with the actors address
+                        Box::new(
+                        self_addr
+                            .send(UpdateActor {
+                                arbiter_id,
+                                actor_instance_id: actor_instance_id,
+                                addr: addr.clone(),
+                            })
+                            .map_err(|err| {
+                                ActorRegistrationError::update_actor_message_delivery_failed(err)
+                            }),
+                    )
+                        as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>,
+                    Err(_) => {
+                        // unregister the actor, i.e., remove the registry entry
+                        Box::new(
+                            self_addr
+                                .send(UnregisterActor::<A> {
+                                    arbiter_id,
+                                    actor_instance_id: actor_instance_id,
+                                    _type: PhantomData,
+                                })
+                                .map_err(|err| {
+                                    ActorRegistrationError::unregister_actor_message_delivery_failed(err)
+                                }),
+                        )
+                            as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>
+                    }
                 };
 
-                self_addr.send(ActorRegistrationResult {
-                    arbiter_id,
-                    actor_instance_id: actor_instance_id.clone(),
-                    addr,
-                }).map_err(|err| {
-                    ActorRegistrationError::actor_registration_result_message_delivery_failed(err)
-                }).then(|actor_registration_result| {
-                    match actor_registration_result {
-                        Ok(_) => Box::new(future::result(result)) as Box<Future<Item=Addr<Syn,A>, Error=ActorRegistrationError>>,
-                        Err(err) => {
-                            Box::new(future::result(result)
-                                .then(|_| future::err(err)))
-                                as Box<Future<Item=Addr<Syn,A>, Error=ActorRegistrationError>>
-                        }
-                    }
+                future.then(|result2| match result2 {
+                    Ok(_) => Box::new(future::result(result))
+                        as Box<Future<Item = Addr<Syn, A>, Error = ActorRegistrationError>>,
+                    Err(err) => Box::new(future::result(result).then(|_| future::err(err)))
+                        as Box<Future<Item = Addr<Syn, A>, Error = ActorRegistrationError>>,
                 })
-
-//                future::result(result)
-
-//                match result {
-//                    Ok(addr) => {
-//                        let future = self_addr.send(ActorRegistrationResult {
-//                            arbiter_id,
-//                            actor_instance_id: actor_instance_id.clone(),
-//                            addr: Some(addr.clone()),
-//                        }).map_err(|err| {
-//                            ActorRegistrationError::actor_registration_result_message_delivery_failed(err)
-//                        }).then(|actor_registration_result| {
-//                            if result.is_err() {
-//                                future::err(result.err().unwrap())
-//                            } else {
-//                                future::ok(addr.clone())
-//                            }
-//                        });
-//                        future
-//                    },
-//                    Err(err) => {
-//                        let future = self_addr.send(ActorRegistrationResult {
-//                            arbiter_id,
-//                            actor_instance_id: actor_instance_id.clone(),
-//                            addr: None,
-//                        }).map_err(|err| {
-//                            ActorRegistrationError::actor_registration_result_message_delivery_failed(err)
-//                        }).then(|actor_registration_result| {
-//                            match actor_registration_result {
-//                                Ok(_) => future::result(result),
-//                                Err(err) => {
-//                                    future::result(result).map_err(|_| err)
-//                                }
-//                            }
-//                        });
-//                        future
-//                    }
-//                }
-
-//                let future = self_addr.send(ActorRegistrationResult {
-//                    arbiter_id,
-//                    actor_instance_id: actor_instance_id.clone(),
-//                    addr,
-//                })
-//                .map_err(|err| {
-//                    ActorRegistrationError::actor_registration_result_message_delivery_failed(err)
-//                })
-//                .then(|actor_registration_result| {
-//                    match actor_registration_result {
-//                        Ok(_) => {
-//
-//                        },
-//                        Err(err) => future::err(err)
-//                    }
-//                });
-//                future
             });
 
         // register the entry
@@ -227,53 +192,73 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
     }
 }
 
-struct ActorRegistrationResult<A: Actor<Context = Context<A>>> {
+// ///////////////
+// UpdateActor //
+// /////////////
+pub(crate) struct UpdateActor<A: Actor<Context = Context<A>>> {
     arbiter_id: ArbiterId,
     actor_instance_id: Option<ActorInstanceId>,
-    // Some = success
-    // None = failure
-    addr: Option<Addr<Syn, A>>,
+    addr: Addr<Syn, A>,
 }
 
-impl<A: Actor<Context = Context<A>>> Message for ActorRegistrationResult<A> {
+impl<A: Actor<Context = Context<A>>> Message for UpdateActor<A> {
     type Result = Result<(), ()>;
 }
 
-impl<A: Actor<Context = Context<A>>> Handler<ActorRegistrationResult<A>> for Registry {
+impl<A: Actor<Context = Context<A>>> Handler<UpdateActor<A>> for Registry {
     type Result = Result<(), ()>;
 
-    fn handle(&mut self, msg: ActorRegistrationResult<A>, ctx: &mut Self::Context) -> Self::Result {
-        match msg.addr {
-            Some(ref addr) => match msg.actor_instance_id {
-                Some(actor_instance_id) => {
-                    self.actors_by_id.insert(
-                        actor_instance_id,
-                        ActorRegistryEntry {
-                            arbiter_id: msg.arbiter_id,
-                            addr: Some(addr.clone()),
-                        },
-                    );
-                }
-                None => {
-                    self.actors_by_type.get_mut(&msg.arbiter_id).map(|actors| {
-                        actors.insert(ActorRegistryEntry {
-                            arbiter_id: msg.arbiter_id,
-                            addr: Some(addr.clone()),
-                        })
-                    });
-                }
-            },
-            None => match msg.actor_instance_id {
-                Some(actor_instance_id) => {
-                    self.actors_by_id
-                        .remove::<ActorInstanceId, ActorRegistryEntry<A>>(&actor_instance_id);
-                }
-                None => {
-                    self.actors_by_type
-                        .get_mut(&msg.arbiter_id)
-                        .map(|actors| actors.remove::<ActorRegistryEntry<A>>());
-                }
-            },
+    fn handle(&mut self, msg: UpdateActor<A>, ctx: &mut Self::Context) -> Self::Result {
+        match msg.actor_instance_id {
+            Some(actor_instance_id) => {
+                self.actors_by_id.insert(
+                    actor_instance_id,
+                    ActorRegistryEntry {
+                        arbiter_id: msg.arbiter_id,
+                        addr: Some(msg.addr),
+                    },
+                );
+            }
+            None => {
+                self.actors_by_type.get_mut(&msg.arbiter_id).map(|actors| {
+                    actors.insert(ActorRegistryEntry {
+                        arbiter_id: msg.arbiter_id,
+                        addr: Some(msg.addr),
+                    })
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+// ///////////////////
+// UnregisterActor //
+// /////////////////
+pub(crate) struct UnregisterActor<A: Actor<Context = Context<A>>> {
+    arbiter_id: ArbiterId,
+    actor_instance_id: Option<ActorInstanceId>,
+    _type: PhantomData<A>,
+}
+
+impl<A: Actor<Context = Context<A>>> Message for UnregisterActor<A> {
+    type Result = Result<(), ()>;
+}
+
+impl<A: Actor<Context = Context<A>>> Handler<UnregisterActor<A>> for Registry {
+    type Result = Result<(), ()>;
+
+    fn handle(&mut self, msg: UnregisterActor<A>, ctx: &mut Self::Context) -> Self::Result {
+        match msg.actor_instance_id {
+            Some(actor_instance_id) => {
+                self.actors_by_id
+                    .remove::<ActorInstanceId, ActorRegistryEntry<A>>(&actor_instance_id);
+            }
+            None => {
+                self.actors_by_type
+                    .get_mut(&msg.arbiter_id)
+                    .map(|actors| actors.remove::<ActorRegistryEntry<A>>());
+            }
         }
         Ok(())
     }
