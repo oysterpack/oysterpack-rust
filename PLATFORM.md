@@ -70,6 +70,16 @@ The goal is to automate application assembly.
 1. Domain stack overflow
 1. Domain slack
 
+## Application Logging
+- the [log](https://docs.rs/crate/log/) crate is used for application logging
+    - [fern](https://docs.rs/crate/fern/) is used to initialize and configure logging
+    - all messages are logged via [syslog](https://docs.rs/crate/syslog/)
+    - all log messages are typed and logged as JSON via [serde](https://docs.rs/crate/serde/)
+- [rsyslog](https://www.rsyslog.com/) is used for centralized logging
+    - provides support to log to Elastic
+    - when used for local logging, on systemd systems, the unix domain sockect is **/run/systemd/journal/syslog**
+
+
 
 
 

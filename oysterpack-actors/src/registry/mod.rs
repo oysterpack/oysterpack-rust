@@ -36,12 +36,11 @@ use std::{fmt, collections::HashMap};
 use self::polymap::{PolyMap, TypeMap, typemap::Entry};
 
 use self::oysterpack_id::Id;
-use actor::MessageProcessingResult;
 
+mod actors;
+mod arbiters;
 /// registry related errors
 pub mod errors;
-mod arbiters;
-mod actors;
 
 /// Unique Arbiter id.
 ///
@@ -53,39 +52,37 @@ pub type ArbiterAddr = Addr<Syn, Arbiter>;
 
 /// Looks up an Arbiter address. If one does not exist for the specified id, then a new one is created and registered on demand.
 /// If the registered Arbiter addr is not connected, then a new Arbiter will be created to take its place.
-pub fn arbiter(id: ArbiterId) -> MessageProcessingResult<ArbiterAddr> {
+pub fn arbiter(id: ArbiterId) -> impl Future<Item = ArbiterAddr, Error = MailboxError> {
     let service = Arbiter::system_registry().get::<arbiters::Registry>();
     let request = service
         .send(arbiters::GetArbiter(id))
         .map(|result| result.unwrap());
-    Box::new(request)
+    request
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ArbiterCount(pub usize);
 
 /// Returns the number of registered Arbiters
-pub fn arbiter_count() -> MessageProcessingResult<ArbiterCount> {
-    Box::new(arbiter_ids().map(|ids| ArbiterCount(ids.len())))
+pub fn arbiter_count() -> impl Future<Item = ArbiterCount, Error = MailboxError> {
+    arbiter_ids().map(|ids| ArbiterCount(ids.len()))
 }
 
 /// Returns the number of registered Arbiters
-pub fn arbiter_ids() -> MessageProcessingResult<Vec<ArbiterId>> {
+pub fn arbiter_ids() -> impl Future<Item = Vec<ArbiterId>, Error = MailboxError> {
     let service = Arbiter::system_registry().get::<arbiters::Registry>();
-    let request = service
+    service
         .send(arbiters::GetArbiterIds)
-        .map(|result| result.unwrap());
-    Box::new(request)
+        .map(|result| result.unwrap())
 }
 
 /// Looks up an Arbiter address. If one does not exist for the specified id, then a new one is created and registered on demand.
 /// If the registered Arbiter addr is not connected, then a new Arbiter will be created to take its place.
-pub fn contains_arbiter(id: ArbiterId) -> MessageProcessingResult<bool> {
+pub fn contains_arbiter(id: ArbiterId) -> impl Future<Item = bool, Error = MailboxError> {
     let service = Arbiter::system_registry().get::<arbiters::Registry>();
-    let request = service
+    service
         .send(arbiters::ContainsArbiter(id))
-        .map(|result| result.unwrap());
-    Box::new(request)
+        .map(|result| result.unwrap())
 }
 
 /// marker Id trait - used to define [ActorInstanceId](type.ActorInstanceId.html)
@@ -100,7 +97,7 @@ pub fn register_actor_by_id<A, F>(
     arbiter_id: ArbiterId,
     actor_instance_id: ActorInstanceId,
     actor: F,
-) -> Box<Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>>
+) -> impl Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>
 where
     A: Actor<Context = Context<A>>,
     F: FnOnce(&mut Context<A>) -> A + Send + 'static,
@@ -114,7 +111,7 @@ where
 pub fn register_actor_by_type<A, F>(
     arbiter_id: ArbiterId,
     actor: F,
-) -> Box<Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>>
+) -> impl Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>
 where
     A: Actor<Context = Context<A>>,
     F: FnOnce(&mut Context<A>) -> A + Send + 'static,
@@ -126,13 +123,13 @@ fn register_actor<A, F>(
     arbiter_id: ArbiterId,
     actor_instance_id: Option<ActorInstanceId>,
     actor: F,
-) -> Box<Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>>
+) -> impl Future<Item = Addr<Syn, A>, Error = errors::ActorRegistrationError>
 where
     A: Actor<Context = Context<A>>,
     F: FnOnce(&mut Context<A>) -> A + Send + 'static,
 {
     let service = Arbiter::system_registry().get::<actors::Registry>();
-    let request = service
+    service
         .send(actors::RegisterActor::new(
             arbiter_id,
             actor_instance_id,
@@ -142,6 +139,5 @@ where
         .and_then(|result| match result {
             Ok(addr) => future::ok(addr),
             Err(err) => future::err(err),
-        });
-    Box::new(request)
+        })
 }

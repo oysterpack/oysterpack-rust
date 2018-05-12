@@ -21,3 +21,8 @@ There are Valgrind tools that can automatically detect many memory management an
     ```
     cargo fmt
     ```
+## Tools
+
+1. [glogg](http://glogg.bonnefon.org/)
+glogg is a multi-platform GUI application to browse and search through long or complex log files.
+It is designed with programmers and system administrators in mind. glogg can be seen as a graphical, interactive combination of grep and less.

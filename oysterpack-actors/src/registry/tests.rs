@@ -26,7 +26,7 @@ use self::oysterpack_id::Oid;
 use tests::run_test;
 
 lazy_static! {
- pub static ref ARBITER_ID_1 : ArbiterId = ArbiterId::new();
+    pub static ref ARBITER_ID_1: ArbiterId = ArbiterId::new();
 }
 
 #[test]
@@ -373,8 +373,10 @@ fn register_multiple_actors_by_type() {
         // When no Arbiter exists for a specified ArbiterId
         let arbiter_id = ArbiterId::new();
 
-        fn register_actor(arbiter_id: ArbiterId
-) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+        fn register_actor(
+            arbiter_id: ArbiterId,
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>>
+        {
             Box::new(
                 super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
                     foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
@@ -393,9 +395,13 @@ fn register_multiple_actors_by_type() {
         let test = register_actor(arbiter_id).and_then(|_| register_actor(arbiter_id));
         let result = sys.run_until_complete(test);
         match result {
-            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => info!("registration failed as expected with ActorAlreadyRegistered"),
-            Ok(msg) => panic!("registering multiple actors with the same type on the same arbiter should fail"),
-            Err(err) => panic!("failed with unexpected error : {:?}",err),
+            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => {
+                info!("registration failed as expected with ActorAlreadyRegistered")
+            }
+            Ok(msg) => panic!(
+                "registering multiple actors with the same type on the same arbiter should fail"
+            ),
+            Err(err) => panic!("failed with unexpected error : {:?}", err),
         }
     }
 
@@ -421,8 +427,10 @@ fn register_multiple_actors_by_type_on_different_arbiters() {
     fn test() {
         let mut sys = System::new("sys");
 
-        fn register_actor(arbiter_id: ArbiterId
-        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+        fn register_actor(
+            arbiter_id: ArbiterId,
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>>
+        {
             Box::new(
                 super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
                     foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
@@ -471,29 +479,41 @@ fn register_multiple_actors_by_id_with_same_id() {
         let arbiter_id = ArbiterId::new();
         let actor_instance_id = ActorInstanceId::new();
 
-        fn register_actor(arbiter_id: ArbiterId, actor_instance_id: ActorInstanceId
-        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+        fn register_actor(
+            arbiter_id: ArbiterId,
+            actor_instance_id: ActorInstanceId,
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>>
+        {
             Box::new(
-                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
-                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
-                        Ok("SUCCESS !!!".to_string())
-                    })).map_err(
-                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
-                            mailbox_error: err,
-                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
-                            actor_destination: errors::ActorDestination("Foo".to_string()),
-                        },
-                    )
-                }),
+                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(
+                    |foo| {
+                        foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                            Ok("SUCCESS !!!".to_string())
+                        })).map_err(
+                            |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                                mailbox_error: err,
+                                message_type: errors::MessageType(
+                                    "actix::msgs::Execute".to_string(),
+                                ),
+                                actor_destination: errors::ActorDestination("Foo".to_string()),
+                            },
+                        )
+                    },
+                ),
             )
         }
 
-        let test = register_actor(arbiter_id, actor_instance_id).and_then(|_| register_actor(arbiter_id, actor_instance_id));
+        let test = register_actor(arbiter_id, actor_instance_id)
+            .and_then(|_| register_actor(arbiter_id, actor_instance_id));
         let result = sys.run_until_complete(test);
         match result {
-            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => info!("registration failed as expected with ActorAlreadyRegistered"),
-            Ok(msg) => panic!("registering multiple actors with the same type on the same arbiter should fail"),
-            Err(err) => panic!("failed with unexpected error : {:?}",err),
+            Err(errors::ActorRegistrationError::ActorAlreadyRegistered) => {
+                info!("registration failed as expected with ActorAlreadyRegistered")
+            }
+            Ok(msg) => panic!(
+                "registering multiple actors with the same type on the same arbiter should fail"
+            ),
+            Err(err) => panic!("failed with unexpected error : {:?}", err),
         }
     }
 
@@ -521,25 +541,32 @@ fn register_multiple_actors_by_id_with_unique_id() {
         // When no Arbiter exists for a specified ArbiterId
         let arbiter_id = ArbiterId::new();
 
-
-        fn register_actor(arbiter_id: ArbiterId, actor_instance_id: ActorInstanceId
-        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>> {
+        fn register_actor(
+            arbiter_id: ArbiterId,
+            actor_instance_id: ActorInstanceId,
+        ) -> Box<Future<Item = Result<String, String>, Error = errors::ActorRegistrationError>>
+        {
             Box::new(
-                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
-                    foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
-                        Ok("SUCCESS !!!".to_string())
-                    })).map_err(
-                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
-                            mailbox_error: err,
-                            message_type: errors::MessageType("actix::msgs::Execute".to_string()),
-                            actor_destination: errors::ActorDestination("Foo".to_string()),
-                        },
-                    )
-                }),
+                super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(
+                    |foo| {
+                        foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
+                            Ok("SUCCESS !!!".to_string())
+                        })).map_err(
+                            |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                                mailbox_error: err,
+                                message_type: errors::MessageType(
+                                    "actix::msgs::Execute".to_string(),
+                                ),
+                                actor_destination: errors::ActorDestination("Foo".to_string()),
+                            },
+                        )
+                    },
+                ),
             )
         }
 
-        let test = register_actor(arbiter_id, ActorInstanceId::new()).and_then(|_| register_actor(arbiter_id, ActorInstanceId::new()));
+        let test = register_actor(arbiter_id, ActorInstanceId::new())
+            .and_then(|_| register_actor(arbiter_id, ActorInstanceId::new()));
         let result = sys.run_until_complete(test);
         match result {
             Ok(msg) => info!("{:?}", msg),

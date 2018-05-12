@@ -16,12 +16,12 @@ extern crate serde;
 
 use self::polymap::{PolyMap, TypeMap};
 
-use super::*;
 use super::service::*;
+use super::*;
 
-use self::serde::{Deserialize, Serialize};
-use self::rmps::{Deserializer, Serializer};
 use self::oysterpack_platform::*;
+use self::rmps::{Deserializer, Serializer};
+use self::serde::{Deserialize, Serialize};
 use super::actix::msgs::*;
 
 use tests::run_test;
@@ -141,4 +141,13 @@ fn stateless_actor_service_running_on_arbiter() {
     }
 
     run_test(test);
+}
+
+#[test]
+fn example_service_actor() {
+    struct Foo;
+    struct Bar;
+
+    type FooActor = service::ServiceActor<Foo, Nil, Nil, Nil>;
+    type BarActor = service::ServiceActor<Bar, Nil, Nil, Nil>;
 }

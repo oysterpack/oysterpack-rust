@@ -48,22 +48,22 @@ extern crate chrono;
 extern crate oysterpack_platform;
 extern crate serde;
 
+use self::actix::*;
+use self::chrono::prelude::*;
+use self::oysterpack_platform::{Service, ServiceInstance};
 use self::serde::{Serialize, de::DeserializeOwned};
 use std::{fmt::Debug, marker::PhantomData};
-use self::oysterpack_platform::{Service, ServiceInstance};
-use self::chrono::prelude::*;
-use self::actix::*;
 
 /// Represents a Service running as an Actor
 ///
 /// T: Actor type marker. This is used to assign unique types to Actors in a generic manner.
 /// ```rust
-/// # use oysterpack_actors::*;
+/// use oysterpack_actors::actor::service::{ServiceActor, Nil};
 /// struct Foo;
 /// struct Bar;
 ///
-/// type FooActor = service::ServiceActor<Foo, Nil, Nil, Nil>;
-/// type BarActor = service::ServiceActor<Bar, Nil, Nil, Nil>;
+/// type FooActor = ServiceActor<Foo, Nil, Nil, Nil>;
+/// type BarActor = ServiceActor<Bar, Nil, Nil, Nil>;
 /// ```
 /// State: persistent service state
 /// Cfg: persistent service config
@@ -206,18 +206,14 @@ where
 /// - state is able to be sent across threads
 /// - it can be cloned
 /// - its lifetime is marked as static because actix::Actor is marked as static
-pub trait ServiceState
-    : 'static + Serialize + DeserializeOwned + Debug + Clone + Send {
-}
+pub trait ServiceState: 'static + Serialize + DeserializeOwned + Debug + Clone + Send {}
 
 /// Marker trait for service configuration.
 /// - is serializable because this will enable the service state to be persisted
 /// - state is able to be sent across threads
 /// - it can be cloned
 /// - its lifetime is marked as static because actix::Actor is marked as static
-pub trait ServiceConfig
-    : 'static + Serialize + DeserializeOwned + Debug + Clone + Send {
-}
+pub trait ServiceConfig: 'static + Serialize + DeserializeOwned + Debug + Clone + Send {}
 
 /// Represents additional context that is required by the service, e.g., actor addresses,
 /// DB Connection Pool

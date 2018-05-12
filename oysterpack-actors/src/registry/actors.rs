@@ -16,8 +16,8 @@ use std::{collections::{HashMap, hash_map::Entry}, marker::PhantomData};
 
 use self::actix::{msgs::StartActor, prelude::*};
 
-use self::polymap::{PolyMap, TypeMap};
 use self::futures::{future, prelude::*};
+use self::polymap::{PolyMap, TypeMap};
 
 use super::{arbiter, ActorInstanceId, ArbiterId, errors::*};
 
@@ -132,24 +132,30 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
             })
             .then(move |result| {
                 // update the registry entry
+                match result {
+                    // update the registry with the actor's address
+                    Ok(ref addr) => {
+                        fn map_mailbox_err(err: MailboxError) -> ActorRegistrationError {
+                            ActorRegistrationError::update_actor_message_delivery_failed(err)
+                        }
 
-                let future = match result {
-                    Ok(ref addr) =>
-                    // update the registry with the actors address
                         Box::new(
-                        self_addr
-                            .send(UpdateActor {
-                                arbiter_id,
-                                actor_instance_id: actor_instance_id,
-                                addr: addr.clone(),
-                            })
-                            .map_err(|err| {
-                                ActorRegistrationError::update_actor_message_delivery_failed(err)
-                            }),
-                    )
-                        as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>,
+                            self_addr
+                                .send(UpdateActor {
+                                    arbiter_id,
+                                    actor_instance_id: actor_instance_id,
+                                    addr: addr.clone(),
+                                })
+                                .map_err(|err| map_mailbox_err(err)),
+                        )
+                            as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>
+                    }
+                    // unregister the actor, i.e., remove the registry entry
                     Err(_) => {
-                        // unregister the actor, i.e., remove the registry entry
+                        fn map_mailbox_err(err: MailboxError) -> ActorRegistrationError {
+                            ActorRegistrationError::unregister_actor_message_delivery_failed(err)
+                        }
+
                         Box::new(
                             self_addr
                                 .send(UnregisterActor::<A> {
@@ -157,15 +163,11 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                                     actor_instance_id: actor_instance_id,
                                     _type: PhantomData,
                                 })
-                                .map_err(|err| {
-                                    ActorRegistrationError::unregister_actor_message_delivery_failed(err)
-                                }),
+                                .map_err(|err| map_mailbox_err(err)),
                         )
                             as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>
                     }
-                };
-
-                future.then(|result2| match result2 {
+                }.then(|result2| match result2 {
                     Ok(_) => Box::new(future::result(result))
                         as Box<Future<Item = Addr<Syn, A>, Error = ActorRegistrationError>>,
                     Err(err) => Box::new(future::result(result).then(|_| future::err(err)))

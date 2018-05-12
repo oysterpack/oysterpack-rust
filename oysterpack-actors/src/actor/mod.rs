@@ -29,13 +29,6 @@ pub mod service;
 use self::actix::prelude::*;
 use self::futures::prelude::*;
 
-/// Messages are processed async by actors. The future message processing result is represented by
-/// this type.
-///
-/// The future error type is MailboxError, which indicates an error occurred while sending the request.
-/// If a message can result in error, then the response type should be wrapped in a Result.
-pub type MessageProcessingResult<T> = Box<Future<Item = T, Error = MailboxError>>;
-
 ///// Actor SettingS
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub enum Setting {
