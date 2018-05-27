@@ -5,3 +5,4 @@ authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+oysterpack_id = {version = "0.1", path="../oysterpack-id"}

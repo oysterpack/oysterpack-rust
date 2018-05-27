@@ -6,6 +6,26 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+extern crate chrono;
+extern crate oysterpack_id;
+
+use chrono::prelude::*;
+use oysterpack_id::Id;
+
+pub struct Error<T> {
+    err: T,
+    timestamp: Utc
+}
+
+pub enum Severity {
+    LOW,
+    MEDIUM,
+    HIGH,
+    CRITICAL,
+    EMERGENCY
+}
+
+
 #[cfg(test)]
 mod tests {
     #[test]

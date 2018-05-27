@@ -5,3 +5,5 @@ Cargo.lock
 
 **/cobertura.xml
 **/coverage.html
+
+**/*.log

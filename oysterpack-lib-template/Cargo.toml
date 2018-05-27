@@ -2,8 +2,8 @@
 name = "oysterpack_lib_template"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Actors"
-license = "MIT OR Apache-2.0"
+description = "OysterPack XXX"
+license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"

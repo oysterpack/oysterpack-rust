@@ -2,5 +2,4 @@
 members = ["oysterpack","oysterpack-*"]
 
 [profile.release]
-debug = true
 lto = true

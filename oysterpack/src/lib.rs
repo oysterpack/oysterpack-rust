@@ -6,7 +6,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! # OysterPack Rust Reactive Platform
+//! # OysterPack Rust Platform
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack/0.1.1")]

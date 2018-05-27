@@ -1,3 +1,11 @@
+## Installing a C compiler on debian / ubuntu
+```
+sudo apt-get update
+sudo atp-get install build-essential
+```
+- the Rust compiler needs a linker, which is provided by the C compiler
+- some common Rust packages depend on C code and will need a C compiler too
+
 ## Running test code coverage
 
 ```
@@ -26,3 +34,12 @@ There are Valgrind tools that can automatically detect many memory management an
 1. [glogg](http://glogg.bonnefon.org/)
 glogg is a multi-platform GUI application to browse and search through long or complex log files.
 It is designed with programmers and system administrators in mind. glogg can be seen as a graphical, interactive combination of grep and less.
+
+2. [Oracle VirtualBox](https://www.virtualbox.org)
+
+    ```
+    deb https://download.virtualbox.org/virtualbox/debian <mydist> contrib
+
+    # Ubuntu 16.04
+    deb https://download.virtualbox.org/virtualbox/debian xenial contrib
+    ```

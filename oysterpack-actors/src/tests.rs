@@ -12,8 +12,7 @@ extern crate chrono;
 extern crate fern;
 extern crate syslog;
 
-
-use self::syslog::{unix_custom};
+use self::syslog::{unix_custom, Facility, Severity};
 
 use super::*;
 
@@ -37,29 +36,21 @@ fn init_logging() -> Result<(), fern::InitError> {
 
     fern::Dispatch::new()
         .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}] {}",
-                record.target(),
-                message
-            ))
+            out.finish(format_args!("[{}] {}", record.target(), message))
         })
-        .chain(syslog::unix_custom(syslog::Facility::LOG_USER,"/run/systemd/journal/syslog")?)
+        .chain(syslog::unix_custom(
+            syslog::Facility::LOG_USER,
+            "/run/systemd/journal/syslog",
+        )?)
         .level(log::LevelFilter::Warn)
         .level_for("oysterpack_actors", log::LevelFilter::Debug)
         .apply()?;
 
-
     Ok(())
 }
 
-//fn init_logging() -> Result<(),()> {
-//    syslog::init_unix_custom(Facility::LOG_USER,log::LevelFilter::Info,"/run/systemd/journal/syslog").unwrap();
-//    Ok(())
-//}
-
 lazy_static! {
     pub static ref INIT_FERN: Result<(), fern::InitError> = init_logging();
-//    pub static ref INIT_FERN: Result<(),()> = init_logging();
 }
 
 pub fn run_test(test: fn() -> ()) {

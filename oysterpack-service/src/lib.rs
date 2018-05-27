@@ -72,9 +72,9 @@ extern crate oysterpack_platform as platform;
 //}
 #[cfg(test)]
 mod tests {
+    use tokio::prelude::future::ok;
     use tokio::prelude::*;
     use tokio::timer::*;
-    use tokio::prelude::future::ok;
 
     use std::sync::mpsc;
     use std::time::{Duration, Instant};

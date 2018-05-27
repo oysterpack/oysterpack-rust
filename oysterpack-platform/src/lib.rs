@@ -43,9 +43,9 @@ extern crate oysterpack_id;
 extern crate regex;
 extern crate semver;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::collections::HashSet;
 
 use semver::Version;
 
@@ -122,8 +122,8 @@ impl DomainName {
 
 fn validate_name(name: &str) -> Result<String, NameError> {
     lazy_static! {
-        static ref RE : regex::Regex = regex::Regex::new(r"^[a-z][\w\-]{2,63}$").unwrap();
-        static ref STARTS_WITH_ALPHA : regex::Regex = regex::Regex::new(r"^[a-z].*$").unwrap();
+        static ref RE: regex::Regex = regex::Regex::new(r"^[a-z][\w\-]{2,63}$").unwrap();
+        static ref STARTS_WITH_ALPHA: regex::Regex = regex::Regex::new(r"^[a-z].*$").unwrap();
     }
 
     let name = name.trim().to_lowercase();
@@ -393,33 +393,34 @@ pub enum NameError {
     /// Name min length is 3
     #[fail(display = "Name min length is 3 : [{}] length = {}", name, len)]
     TooShort {
-    /// name
+        /// name
         name: String,
-    /// name length
+        /// name length
         len: usize,
     },
     /// Name max length is 64
     #[fail(display = "Name max length is 64 : [{}] length = {}", name, len)]
     TooLong {
-    /// name
+        /// name
         name: String,
-    /// name length
+        /// name length
         len: usize,
     },
     /// Name must start with an alpha char
     #[fail(display = "Name must start with an alpha char : [{}]", name)]
     StartsWithNonAlpha {
-    /// name
-        name: String
+        /// name
+        name: String,
     },
     /// Name must match against regex :
     /// ```text
     /// ^[a-z][\w\-]{2,63}$
     /// ```
-    #[fail(display = "Name is invalid. It must start with an alpha and the rest can only conist of alphanumeric, '_', or '-' : [{}]", name)]
+    #[fail(display = "Name is invalid. It must start with an alpha and the rest can only conist of alphanumeric, '_', or '-' : [{}]",
+           name)]
     Invalid {
-    /// name
-        name: String
+        /// name
+        name: String,
     },
 }
 

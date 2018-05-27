@@ -132,7 +132,10 @@ fn stateless_actor_service_running_on_arbiter() {
                 })
             })
             .and_then(|msg| {
-                info!("Received echo back : {}", msg);
+                info!(
+                    "stateless_actor_service_running_on_arbiter(): Received echo back : {}",
+                    msg
+                );
                 Arbiter::system().send(actix::msgs::SystemExit(0))
             });
 
@@ -144,10 +147,81 @@ fn stateless_actor_service_running_on_arbiter() {
 }
 
 #[test]
-fn example_service_actor() {
-    struct Foo;
-    struct Bar;
+fn register_service_actor_by_type() {
+    struct Echo {
+        msg: String,
+    }
 
-    type FooActor = service::ServiceActor<Foo, Nil, Nil, Nil>;
-    type BarActor = service::ServiceActor<Bar, Nil, Nil, Nil>;
+    impl Message for Echo {
+        type Result = String;
+    }
+
+    struct Foo;
+
+    type FooActor = service::StatelessServiceActor<Foo>;
+
+    impl Handler<Echo> for FooActor {
+        type Result = String;
+
+        fn handle(&mut self, msg: Echo, _: &mut Self::Context) -> Self::Result {
+            debug!("{} {:?}", self.service_instance(), self.context());
+            msg.msg
+        }
+    }
+
+    #[derive(Debug, Fail)]
+    enum FooError {
+        #[fail(display = "Actor registration failed : {}", _0)]
+        RegistrationError(#[cause] ::registry::errors::ActorRegistrationError),
+        /// Occurs when a message could not be sent to an underlying actor.
+        #[fail(display = "{} : {}", err, msg)]
+        MessageDeliveryFailed {
+            #[cause]
+            err: MailboxError,
+            msg: String,
+        },
+    }
+
+    fn test() {
+        let foo_arbiter_id = ArbiterId::new();
+
+        let foo_service = Service::new(
+            ServiceId::new(),
+            ServiceName::new("foo").unwrap(),
+            semver::Version::parse("0.0.1").unwrap(),
+        );
+
+        let sys = System::new("sys");
+
+        let task = register_actor_by_type(foo_arbiter_id, |_| {
+            ServiceActorBuilder::<Foo, Nil, Nil, Nil>::new(foo_service).build()
+        }).map_err(|err| FooError::RegistrationError(err))
+            .and_then(|actor| {
+                actor
+                    .send(Echo {
+                        msg: "Hello".to_string(),
+                    })
+                    .map_err(|err| FooError::MessageDeliveryFailed {
+                        err,
+                        msg: "Foo ! Echo".to_string(),
+                    })
+            })
+            .and_then(|msg| {
+                info!(target:"register_service_actor_by_type",
+                    "Received echo back : {}",
+                    msg
+                );
+                Arbiter::system()
+                    .send(actix::msgs::SystemExit(0))
+                    .map_err(|err| FooError::MessageDeliveryFailed {
+                        err,
+                        msg: "System ! actix::msgs::SystemExit(0)".to_string(),
+                    })
+            });
+
+        Arbiter::handle().spawn(task.map(|_| ()).map_err(|_| ()));
+        sys.run();
+    }
+
+    run_test(test);
 }

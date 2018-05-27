@@ -60,12 +60,9 @@ pub fn arbiter(id: ArbiterId) -> impl Future<Item = ArbiterAddr, Error = Mailbox
     request
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ArbiterCount(pub usize);
-
 /// Returns the number of registered Arbiters
-pub fn arbiter_count() -> impl Future<Item = ArbiterCount, Error = MailboxError> {
-    arbiter_ids().map(|ids| ArbiterCount(ids.len()))
+pub fn arbiter_count() -> impl Future<Item = usize, Error = MailboxError> {
+    arbiter_ids().map(|ids| ids.len())
 }
 
 /// Returns the number of registered Arbiters

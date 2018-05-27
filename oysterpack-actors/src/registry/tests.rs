@@ -119,7 +119,7 @@ fn stopped_arbiter_is_unregistered_on_demand() {
                 super::arbiter_count()
                     .map(|count| {
                         // Then arbiter is no longer registered - count drops back to 0
-                        assert_eq!(count.0, 0);
+                        assert_eq!(count, 0);
                         count
                     })
                     .and_then(|_| {
@@ -184,7 +184,7 @@ fn arbiter_count() {
         let test = super::arbiter_count()
             .map(|count| {
                 info!("arbiter count = {:?}", count);
-                assert_eq!(count.0, 0);
+                assert_eq!(count, 0);
                 count
             })
             .and_then(|_| {
@@ -192,7 +192,7 @@ fn arbiter_count() {
                     info!("arbiter registered");
                     super::arbiter_count().map(|count| {
                         info!("arbiter count = {:?}", count);
-                        assert_eq!(count.0, 1);
+                        assert_eq!(count, 1);
                         count
                     })
                 })

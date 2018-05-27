@@ -2,8 +2,8 @@
 name = "oysterpack"
 version = "0.1.1" # remember to update html_root_url
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Rust Reactive Platform"
-license = "MIT OR Apache-2.0"
+description = "OysterPack Rust Platform"
+license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"

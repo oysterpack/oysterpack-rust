@@ -26,11 +26,11 @@ extern crate serde;
 extern crate serde_derive;
 extern crate uuid;
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::fmt;
-use std::marker::PhantomData;
 use std::cmp::Ordering;
+use std::collections::hash_map::DefaultHasher;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 
 /// Id represents an identifier for some type T.
 ///
