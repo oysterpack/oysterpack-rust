@@ -14,7 +14,7 @@ use oysterpack_id::Id;
 
 pub struct Error<T> {
     err: T,
-    timestamp: Utc
+    timestamp: Utc,
 }
 
 pub enum Severity {
@@ -22,9 +22,8 @@ pub enum Severity {
     MEDIUM,
     HIGH,
     CRITICAL,
-    EMERGENCY
+    EMERGENCY,
 }
-
 
 #[cfg(test)]
 mod tests {

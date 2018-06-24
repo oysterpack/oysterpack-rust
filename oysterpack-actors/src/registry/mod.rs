@@ -31,9 +31,9 @@ extern crate polymap;
 use self::actix::prelude::*;
 use self::futures::{future, prelude::*};
 
-use std::{fmt, collections::HashMap};
+use std::{collections::HashMap, fmt};
 
-use self::polymap::{PolyMap, TypeMap, typemap::Entry};
+use self::polymap::{typemap::Entry, PolyMap, TypeMap};
 
 use self::oysterpack_id::Id;
 

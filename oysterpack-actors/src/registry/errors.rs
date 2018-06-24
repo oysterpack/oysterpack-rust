@@ -21,8 +21,12 @@ pub enum ActorRegistrationError {
     #[fail(display = "Actor is already registered.")]
     ActorAlreadyRegistered,
     /// Occurs when a message could not be sent to an underlying actor.
-    #[fail(display = "Failed to deliver message [{}] to actor [{}] : {}", message_type,
-           actor_destination, mailbox_error)]
+    #[fail(
+        display = "Failed to deliver message [{}] to actor [{}] : {}",
+        message_type,
+        actor_destination,
+        mailbox_error
+    )]
     MessageDeliveryFailed {
         #[cause]
         mailbox_error: MailboxError,

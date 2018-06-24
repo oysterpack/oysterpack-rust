@@ -416,8 +416,10 @@ pub enum NameError {
     /// ```text
     /// ^[a-z][\w\-]{2,63}$
     /// ```
-    #[fail(display = "Name is invalid. It must start with an alpha and the rest can only conist of alphanumeric, '_', or '-' : [{}]",
-           name)]
+    #[fail(
+        display = "Name is invalid. It must start with an alpha and the rest can only conist of alphanumeric, '_', or '-' : [{}]",
+        name
+    )]
     Invalid {
         /// name
         name: String,

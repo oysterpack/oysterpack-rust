@@ -51,7 +51,7 @@ extern crate serde;
 use self::actix::*;
 use self::chrono::prelude::*;
 use self::oysterpack_platform::{Service, ServiceInstance};
-use self::serde::{Serialize, de::DeserializeOwned};
+use self::serde::{de::DeserializeOwned, Serialize};
 use std::{fmt::Debug, marker::PhantomData};
 
 /// Represents a Service running as an Actor

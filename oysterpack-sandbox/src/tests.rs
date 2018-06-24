@@ -1,48 +1,19 @@
 #[test]
 fn quick_test() {
-    #[derive(PartialEq, Debug)]
-    struct Shoe {
-        size: u32,
-        style: String,
+    use std::collections::HashMap;
+
+    let mut scores = HashMap::new();
+    scores.insert(String::from("Blue"), 10);
+
+    {
+        let yellow_score = scores.entry(String::from("Yellow")).or_insert(50);
+        assert_eq!(*yellow_score, 50);
     }
 
-    fn shoes_in_my_size(shoes: Vec<Shoe>, shoe_size: u32) -> Vec<Shoe> {
-        shoes.into_iter().filter(|s| s.size == shoe_size).collect()
+    {
+        let blue_score = scores.entry(String::from("Blue")).or_insert(50);
+        assert_eq!(*blue_score, 10);
     }
 
-
-    fn filters_by_size() {
-        let shoes = vec![
-            Shoe {
-                size: 10,
-                style: String::from("sneaker"),
-            },
-            Shoe {
-                size: 13,
-                style: String::from("sandal"),
-            },
-            Shoe {
-                size: 10,
-                style: String::from("boot"),
-            },
-        ];
-
-        let in_my_size = shoes_in_my_size(shoes, 10);
-
-        assert_eq!(
-            in_my_size,
-            vec![
-                Shoe {
-                    size: 10,
-                    style: String::from("sneaker"),
-                },
-                Shoe {
-                    size: 10,
-                    style: String::from("boot"),
-                },
-            ]
-        );
-    }
-
-    filters_by_size();
+    println!("{:?}", scores);
 }

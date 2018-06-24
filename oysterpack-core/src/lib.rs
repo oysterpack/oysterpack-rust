@@ -12,17 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// TODO: Document crate
-//! # OysterPack XXX
+//! # OysterPack Core
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-// TODO: update url
-#![doc(html_root_url = "https://docs.rs/oysterpack_lib_template/0.1.0")]
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]

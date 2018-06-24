@@ -15,7 +15,7 @@ extern crate oysterpack_id;
 use self::actix::prelude::*;
 use self::futures::{future, prelude::*};
 
-use super::{ArbiterAddr, ArbiterId, errors::*};
+use super::{errors::*, ArbiterAddr, ArbiterId};
 
 use self::oysterpack_id::Id;
 

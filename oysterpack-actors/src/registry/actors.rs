@@ -12,14 +12,16 @@ extern crate actix;
 extern crate futures;
 extern crate polymap;
 
-use std::{collections::{HashMap, hash_map::Entry}, marker::PhantomData};
+use std::{
+    collections::{hash_map::Entry, HashMap}, marker::PhantomData,
+};
 
 use self::actix::{msgs::StartActor, prelude::*};
 
 use self::futures::{future, prelude::*};
 use self::polymap::{PolyMap, TypeMap};
 
-use super::{arbiter, ActorInstanceId, ArbiterId, errors::*};
+use super::{arbiter, errors::*, ActorInstanceId, ArbiterId};
 
 pub(crate) struct Registry {
     // ArbiterId -> TypeMap -> ActorRegistryEntry<A>

@@ -7,7 +7,6 @@ sudo atp-get install build-essential
 - some common Rust packages depend on C code and will need a C compiler too
 
 ## Running test code coverage
-
 ```
 # runs tests with code coverage and produces cobertura.xml output file
 cargo tarpaulin -v -o Xml
@@ -20,7 +19,6 @@ pycobertura show --format html --output coverage.html cobertura.xml
 There are Valgrind tools that can automatically detect many memory management and threading bugs, and profile your programs in detail.
 
 ## Cargo plugins
-
 1. [cargo-tree](https://github.com/sfackler/cargo-tree)
     ```
     cargo tree
@@ -29,8 +27,11 @@ There are Valgrind tools that can automatically detect many memory management an
     ```
     cargo fmt
     ```
-## Tools
+3. [cargo-bloat](https://github.com/RazrFalcon/cargo-bloat) - Find out what takes most of the space in your executable
 
+4. [tarpaulin](https://github.com/xd009642/tarpaulin) - code coverage reporting tool for the Cargo build system
+
+## Tools
 1. [glogg](http://glogg.bonnefon.org/)
 glogg is a multi-platform GUI application to browse and search through long or complex log files.
 It is designed with programmers and system administrators in mind. glogg can be seen as a graphical, interactive combination of grep and less.
@@ -43,3 +44,5 @@ It is designed with programmers and system administrators in mind. glogg can be 
     # Ubuntu 16.04
     deb https://download.virtualbox.org/virtualbox/debian xenial contrib
     ```
+
+3. [vagrant](https://www.vagrantup.com/)
