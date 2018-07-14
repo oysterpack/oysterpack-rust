@@ -51,7 +51,7 @@
 //!
 
 use std::{
-    fmt::Debug, time::{Duration, Instant},
+    fmt::Debug, time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
 
@@ -91,13 +91,13 @@ where
     // used to track the number of times the future has been polled
     poll_counter: usize,
     // when the future instance was created
-    created: Instant,
+    created: SystemTime,
     // when the future instance was last polled
-    first_polled: Option<Instant>,
+    first_polled: Option<SystemTime>,
     // when the future instance was last polled
-    last_polled: Option<Instant>,
+    last_polled: Option<SystemTime>,
     // when the future completed
-    completed: Option<Instant>,
+    completed: Option<SystemTime>,
     poll_duration: Duration,
 }
 
@@ -116,28 +116,23 @@ where
         }
 
         self.poll_counter += 1;
-        let last_polled = Instant::now();
-        self.last_polled = Some(last_polled);
+        self.last_polled = Some(SystemTime::now());
         if self.status == CommandStatus::CREATED {
-            self.first_polled = Some(last_polled);
+            self.first_polled = self.last_polled.clone();
             self.status = CommandStatus::RUNNING;
         }
 
-        match self.fut.poll() {
-            Ok(result) => match result {
-                Async::Ready(_) => {
-                    let now = Instant::now();
-                    self.completed = Some(now);
-                    self.poll_duration += now.duration_since(last_polled);
-                    self.status = CommandStatus::SUCCESS;
-                    Ok(result)
-                }
-                Async::NotReady => Ok(result),
-            },
+        let last_polled = Instant::now();
+        let poll_result = self.fut.poll();
+        self.poll_duration += Instant::now().duration_since(last_polled);
+        self.completed = Some(SystemTime::now());
+        match poll_result {
+            Ok(result @ Async::Ready(_)) => {
+                self.status = CommandStatus::SUCCESS;
+                Ok(result)
+            }
+            result @ Ok(Async::NotReady) => result,
             result @ Err(_) => {
-                let now = Instant::now();
-                self.completed = Some(now);
-                self.poll_duration += now.duration_since(last_polled);
                 self.status = CommandStatus::FAILURE;
                 result
             }
