@@ -15,11 +15,3 @@ version-sync = "0.5"
 
 [badges]
 maintenance = { status = "actively-developed" }
-
-[profile.release]
-# Immediately abort, which ends the program without cleaning up.
-# Memory that the program was using will then need to be cleaned up by the operating system.
-# Reduces the binary size.
-panic = 'abort'
-#Link Time Optimization usually reduces size of binaries and static libraries.
-lto = true

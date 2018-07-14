@@ -12,19 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack Core
+//! This package provides support to build [Reactive Systems|https://www.reactivemanifesto.org],
+//! i.e., systems that are:
+//!
+//! 1. Responsive
+//! 2. Resilient
+//! 3. Elastic
+//! 4. Message Driven
+//!
+//!
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
+#[cfg(test)]
+mod tests;
 
-extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
-#[macro_use]
-extern crate log;
-
-extern crate crossbeam_channel;
-
-pub mod monix;
-pub mod reactive;
+pub mod command;

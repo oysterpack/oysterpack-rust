@@ -12,19 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack Core
+//! This module provides the support for composing lazy computations that may be evaluated asynchronously
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
+pub mod task;
 
-extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
-#[macro_use]
-extern crate log;
+#[cfg(test)]
+mod tests;
 
-extern crate crossbeam_channel;
-
-pub mod monix;
-pub mod reactive;
+mod design;
