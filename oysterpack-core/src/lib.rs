@@ -23,8 +23,13 @@ extern crate rusty_ulid;
 extern crate tokio;
 #[macro_use]
 extern crate log;
-
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate crossbeam_channel;
 
 pub mod monix;
 pub mod reactive;
+
+#[cfg(test)]
+mod tests;

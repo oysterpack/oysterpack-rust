@@ -17,10 +17,12 @@ tokio = "0.1"
 
 chrono = { version = "0.4", features = ["serde", "time"] }
 rusty_ulid = "0.4.1"
-serde = "1.0.69"
+serde = "1"
+lazy_static = "1"
 
 [dev-dependencies]
 version-sync = "0.5"
+fern = "0.5"
 
 [badges]
 maintenance = { status = "actively-developed" }
