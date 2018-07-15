@@ -33,10 +33,12 @@ fn command_success_with_no_progress_subscriber() {
         }
     }
 
+    let foo_id = CommandId::new(1);
+
     run_test(|| {
         let (s, r) = channel::unbounded();
 
-        let foo_cmd = Command::new(Foo)
+        let foo_cmd = Command::new(foo_id, Foo)
             .and_then(move |result| {
                 s.send(result);
                 future::finished(result)
@@ -66,12 +68,16 @@ fn command_success_with_progress_subscriber() {
         }
     }
 
+    let foo_id = CommandId::new(1);
+
     run_test(|| {
         let (s, r) = channel::unbounded();
 
         let (progress_sender, progress_receiver) = channel::unbounded();
 
-        let foo_cmd = Builder::new(Foo).progress_subscriber_chan(progress_sender).build();
+        let foo_cmd = Builder::new(foo_id, Foo)
+            .progress_subscriber_chan(progress_sender)
+            .build();
         let foo_cmd = foo_cmd
             .and_then(move |result| {
                 s.send(result);
@@ -90,5 +96,54 @@ fn command_success_with_progress_subscriber() {
         let progress_events: Vec<_> = progress_receiver.collect();
         info!("Progress events: {:?}", progress_events);
         assert_eq!(progress_events.len(), 1);
+        let progress = progress_events[0];
+        assert_eq!(progress.status(), Status::SUCCESS);
+        assert_eq!(progress.poll_counter(), 1);
+        assert!(progress.poll_duration().subsec_nanos() > 0);
+    });
+}
+
+#[test]
+fn command_failure_with_progress_subscriber() {
+    struct Foo;
+
+    impl Future for Foo {
+        type Item = SystemTime;
+        type Error = ();
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            Err(())
+        }
+    }
+
+    let foo_id = CommandId::new(1);
+
+    run_test(|| {
+        let (s, r) = channel::unbounded();
+
+        let (progress_sender, progress_receiver) = channel::unbounded();
+
+        let foo_cmd = Builder::new(foo_id, Foo)
+            .progress_subscriber_chan(progress_sender)
+            .build();
+        let foo_cmd = foo_cmd
+            .then(move |result| {
+                s.send(result);
+                future::finished(result)
+            })
+            .map(|_| ());
+        tokio::run(foo_cmd);
+
+        let result = r.try_recv();
+        assert!(result.is_some());
+        info!("Received result: {:?}", result);
+
+        let progress_events: Vec<_> = progress_receiver.collect();
+        info!("Progress events: {:?}", progress_events);
+        assert_eq!(progress_events.len(), 1);
+        let progress = progress_events[0];
+        assert_eq!(progress.status(), Status::FAILURE);
+        assert_eq!(progress.poll_counter(), 1);
+        assert!(progress.poll_duration().subsec_nanos() > 0);
     });
 }

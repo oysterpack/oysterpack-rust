@@ -36,7 +36,7 @@ lazy_static! {
     pub static ref INIT_FERN: Result<(), fern::InitError> = init_logging();
 }
 
-pub fn run_test(test: fn() -> ()) {
+pub fn run_test<F: FnOnce() -> ()>(test: F) {
     let _ = *INIT_FERN;
     test()
 }

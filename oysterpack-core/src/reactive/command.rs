@@ -50,19 +50,28 @@
 //! to a file system.
 //!
 
+use crossbeam_channel as channel;
+use rusty_ulid::Ulid;
 use std::{
     fmt::Debug, time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
-use crossbeam_channel as channel;
 
 /// Command is a Future that executes the underlying Future.
 ///
 /// ### Features
+/// - The Command result Item type must implement the Send + Debug traits
+///   - the Send trait will enable the item to be delivered via channels
+///   - Debug is useful for logging purposes
+/// - The Command result Error type must implement the Send + Debug + Clone
+///   - the Error type must be cloneable in order to enable Errors to be delivered as part of Progress
 /// - The underlying future is fused.
 ///   - Normally futures can behave unpredictable once they're used
 ///     after a future has been resolved. The fused Future is always defined to return Async::NotReady
 ///     from poll after it has resolved successfully or returned an error.
+/// - Commands are assigned a unique CommandId
+///   - the idea is that all commands must be registered and documented.
+/// - Every Command instance is assigned a unique InstanceId
 /// - The future's execution progress is tracked
 /// - Progress events can be reported via a channel
 ///
@@ -70,7 +79,7 @@ use crossbeam_channel as channel;
 pub struct Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug,
+    E: Send + Debug + Clone,
     F: Future<Item = T, Error = E>,
 {
     // the underlying future is fused
@@ -78,13 +87,13 @@ where
     // tracks command future execution progress
     progress: Progress,
     // used to report progress
-    progress_sender_chan: Option<channel::Sender<Progress>>
+    progress_sender_chan: Option<channel::Sender<Progress>>,
 }
 
 impl<T, E, F> Future for Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug,
+    E: Send + Debug + Clone,
     F: Future<Item = T, Error = E>,
 {
     type Item = T;
@@ -132,16 +141,16 @@ where
 impl<T, E, F> Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug,
+    E: Send + Debug + Clone,
     F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
     /// The underlying future will be fused.
-    pub fn new(fut: F) -> Command<T, E, F> {
+    pub fn new(id: CommandId, fut: F) -> Command<T, E, F> {
         Command {
             fut: Future::fuse(fut),
-            progress: Progress::new(),
-            progress_sender_chan: None
+            progress: Progress::new(id),
+            progress_sender_chan: None,
         }
     }
 
@@ -157,40 +166,56 @@ where
     pub fn progress(&self) -> Progress {
         self.progress
     }
+
+    /// CommandId is the unique identifier for the command - across all instances.
+    pub fn id(&self) -> CommandId {
+        self.progress.id
+    }
+
+    /// InstanceID is the unique identifier for this instance of the command.
+    /// Its main use case is for tracking purposes.
+    pub fn instance_id(&self) -> InstanceId {
+        self.progress.instance_id
+    }
 }
 
 /// Command builder
 pub struct Builder<T, E, F>
 where
-T: Send + Debug,
-E: Send + Debug,
-F: Future<Item = T, Error = E>,
+    T: Send + Debug,
+    E: Send + Debug + Clone,
+    F: Future<Item = T, Error = E>,
 {
-    cmd: Command<T,E,F>
+    cmd: Command<T, E, F>,
 }
 
 impl<T, E, F> Builder<T, E, F>
-    where
-        T: Send + Debug,
-        E: Send + Debug,
-        F: Future<Item = T, Error = E>,
+where
+    T: Send + Debug,
+    E: Send + Debug + Clone,
+    F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.
-    pub fn new(fut: F) -> Builder<T,E,F> {
+    pub fn new(id: CommandId, fut: F) -> Builder<T, E, F> {
         Builder {
-            cmd: Command::new(fut)
+            cmd: Command::new(id, fut),
         }
     }
 
     /// Attaches a progress subscriber sender channel to the command
-    pub fn progress_subscriber_chan(self,subscriber: channel::Sender<Progress>) -> Builder<T,E,F> {
+    pub fn progress_subscriber_chan(
+        self,
+        subscriber: channel::Sender<Progress>,
+    ) -> Builder<T, E, F> {
         let mut builder = self;
         builder.cmd.progress_sender_chan = Some(subscriber);
         builder
     }
 
     /// Builds and returns the Command
-    pub fn build(self) -> Command<T,E,F> {self.cmd}
+    pub fn build(self) -> Command<T, E, F> {
+        self.cmd
+    }
 }
 
 /// Command transitions:
@@ -217,6 +242,8 @@ pub enum Status {
 /// Used to track the Command future execution progress
 #[derive(Debug, Copy, Clone)]
 pub struct Progress {
+    id: CommandId,
+    instance_id: InstanceId,
     status: Status,
     // used to track the number of times the future has been polled
     poll_counter: usize,
@@ -234,8 +261,10 @@ pub struct Progress {
 
 impl Progress {
     /// constructs a new Progress with status = CREATED, and the created timestamp to now
-    fn new() -> Progress {
+    fn new(id: CommandId) -> Progress {
         Progress {
+            id,
+            instance_id: InstanceId::new(),
             status: Status::CREATED,
             poll_counter: 0,
             created: SystemTime::now(),
@@ -244,6 +273,17 @@ impl Progress {
             completed: None,
             poll_duration: Duration::new(0, 0),
         }
+    }
+
+    /// CommandId is the unique identifier for the command - across all instances.
+    pub fn id(&self) -> CommandId {
+        self.id
+    }
+
+    /// InstanceID is the unique identifier for this instance of the command.
+    /// Its main use case is for tracking purposes.
+    pub fn instance_id(&self) -> InstanceId {
+        self.instance_id
     }
 
     /// Command status
@@ -279,5 +319,59 @@ impl Progress {
     /// the cumulative amount of time spent polling
     pub fn poll_duration(&self) -> Duration {
         self.poll_duration
+    }
+}
+
+/// Command ID - unique identifier
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct CommandId(u128);
+
+impl CommandId {
+    pub fn new(id: u128) -> CommandId {
+        CommandId(id)
+    }
+
+    pub fn value(&self) -> u128 {
+        self.0
+    }
+}
+
+impl From<u128> for CommandId {
+    fn from(id: u128) -> Self {
+        CommandId(id)
+    }
+}
+
+impl From<Ulid> for CommandId {
+    fn from(id: Ulid) -> Self {
+        CommandId(id.into())
+    }
+}
+
+/// Command Instance ID - unique identifier
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct InstanceId(u128);
+
+impl InstanceId {
+    pub fn new() -> InstanceId {
+        <InstanceId as From<Ulid>>::from(Ulid::new())
+    }
+}
+
+impl InstanceId {
+    pub fn value(&self) -> u128 {
+        self.0
+    }
+}
+
+impl From<u128> for InstanceId {
+    fn from(id: u128) -> Self {
+        InstanceId(id)
+    }
+}
+
+impl From<Ulid> for InstanceId {
+    fn from(id: Ulid) -> Self {
+        InstanceId(id.into())
     }
 }
