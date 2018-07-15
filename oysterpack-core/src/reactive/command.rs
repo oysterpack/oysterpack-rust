@@ -51,6 +51,7 @@
 //!
 
 use crossbeam_channel as channel;
+use failure::Fail;
 use rusty_ulid::Ulid;
 use std::{
     fmt::Debug, time::{Duration, Instant, SystemTime},
@@ -63,8 +64,8 @@ use tokio::prelude::*;
 /// - The Command result Item type must implement the Send + Debug traits
 ///   - the Send trait will enable the item to be delivered via channels
 ///   - Debug is useful for logging purposes
-/// - The Command result Error type must implement the Send + Debug + Clone
-///   - the Error type must be cloneable in order to enable Errors to be delivered as part of Progress
+/// - The Command result Error type must implement the failure::Fail trait
+///   - see https://boats.gitlab.io/failure/fail.html
 /// - The underlying future is fused.
 ///   - Normally futures can behave unpredictable once they're used
 ///     after a future has been resolved. The fused Future is always defined to return Async::NotReady
@@ -79,7 +80,7 @@ use tokio::prelude::*;
 pub struct Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug + Clone,
+    E: Fail,
     F: Future<Item = T, Error = E>,
 {
     // the underlying future is fused
@@ -93,7 +94,7 @@ where
 impl<T, E, F> Future for Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug + Clone,
+    E: Fail,
     F: Future<Item = T, Error = E>,
 {
     type Item = T;
@@ -141,7 +142,7 @@ where
 impl<T, E, F> Command<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug + Clone,
+    E: Fail,
     F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
@@ -183,7 +184,7 @@ where
 pub struct Builder<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug + Clone,
+    E: Fail,
     F: Future<Item = T, Error = E>,
 {
     cmd: Command<T, E, F>,
@@ -192,7 +193,7 @@ where
 impl<T, E, F> Builder<T, E, F>
 where
     T: Send + Debug,
-    E: Send + Debug + Clone,
+    E: Fail,
     F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.

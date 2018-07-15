@@ -16,9 +16,14 @@ use super::command::*;
 use chrono::prelude::*;
 use crossbeam_channel as channel;
 use std::time::SystemTime;
+use time::system_time;
 use tokio::{self, prelude::*};
 
 use tests::*;
+
+#[derive(Fail, Debug, Clone, Copy)]
+#[fail(display = "Foo error.")]
+struct FooError;
 
 #[test]
 fn command_success_with_no_progress_subscriber() {
@@ -26,7 +31,7 @@ fn command_success_with_no_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = ();
+        type Error = FooError;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -44,9 +49,10 @@ fn command_success_with_no_progress_subscriber() {
                 future::finished(result)
             })
             .map(|ts| {
-                info!("{:?}", <DateTime<Utc> as From<SystemTime>>::from(ts));
+                info!("{:?}", system_time::to_date_time(ts));
                 ()
-            });
+            })
+            .map_err(|_| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
@@ -61,7 +67,7 @@ fn command_success_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = ();
+        type Error = FooError;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -84,9 +90,10 @@ fn command_success_with_progress_subscriber() {
                 future::finished(result)
             })
             .map(|ts| {
-                info!("{:?}", <DateTime<Utc> as From<SystemTime>>::from(ts));
+                info!("{:?}", system_time::to_date_time(ts));
                 ()
-            });
+            })
+            .map_err(|_| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
@@ -109,10 +116,10 @@ fn command_failure_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = ();
+        type Error = FooError;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            Err(())
+            Err(FooError)
         }
     }
 
