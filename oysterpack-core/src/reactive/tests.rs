@@ -136,8 +136,8 @@ fn command_failure_with_progress_subscriber() {
             .build();
         let foo_cmd = foo_cmd
             .then(move |result| {
-                s.send(result);
-                future::finished(Ok(SystemTime::now()))
+                s.send(result.clone());
+                future::finished(result)
             })
             .map(|_: Result<SystemTime, errors::Error<FooError>>| ());
         tokio::run(foo_cmd);

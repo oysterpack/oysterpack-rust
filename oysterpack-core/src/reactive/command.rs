@@ -61,26 +61,31 @@ use tokio::prelude::*;
 /// Command is a Future that executes the underlying Future.
 ///
 /// ### Features
-/// - The Command result Item type must implement the Send + Debug traits
-///   - the Send trait will enable the item to be delivered via channels
-///   - Debug is useful for logging purposes
-/// - The Command result Error type must implement the failure::Fail trait
+/// - Command result Item type must implement the Send + Debug traits
+///   - Send trait enables the item to be delivered via channels
+///   - Debug trait is useful for logging purposes
+/// - The Command result Error type must implement the failure::Fail and Clone traits
 ///   - see https://boats.gitlab.io/failure/fail.html
+///   - errors are cloneable which enables errors to be sent on multiple channels, e.g.,
+///     async error logging and tracking
 /// - The underlying future is fused.
 ///   - Normally futures can behave unpredictable once they're used
 ///     after a future has been resolved. The fused Future is always defined to return Async::NotReady
 ///     from poll after it has resolved successfully or returned an error.
 /// - Commands are assigned a unique CommandId
-///   - the idea is that all commands must be registered and documented.
+///   - the idea is that all commands must be registered and documented, i.e., commands will be
+///     registered via their CommandId
 /// - Every Command instance is assigned a unique InstanceId
-/// - The future's execution progress is tracked
+///   - command instance events, e.g., log events, should include the command InstanceId to help
+///     with troubleshooting
+/// - Future's execution progress is tracked
 /// - Progress events can be reported via a channel
 ///
 #[derive(Debug)]
 pub struct Command<T, E, F>
 where
     T: Send + Debug,
-    E: Fail,
+    E: Fail + Clone,
     F: Future<Item = T, Error = E>,
 {
     // the underlying future is fused
@@ -94,7 +99,7 @@ where
 impl<T, E, F> Future for Command<T, E, F>
 where
     T: Send + Debug,
-    E: Fail,
+    E: Fail + Clone,
     F: Future<Item = T, Error = E>,
 {
     type Item = T;
@@ -142,7 +147,7 @@ where
 impl<T, E, F> Command<T, E, F>
 where
     T: Send + Debug,
-    E: Fail,
+    E: Fail + Clone,
     F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
@@ -184,7 +189,7 @@ where
 pub struct Builder<T, E, F>
 where
     T: Send + Debug,
-    E: Fail,
+    E: Fail + Clone,
     F: Future<Item = T, Error = E>,
 {
     cmd: Command<T, E, F>,
@@ -193,7 +198,7 @@ where
 impl<T, E, F> Builder<T, E, F>
 where
     T: Send + Debug,
-    E: Fail,
+    E: Fail + Clone,
     F: Future<Item = T, Error = E>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.

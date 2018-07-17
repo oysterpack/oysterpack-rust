@@ -29,6 +29,10 @@ extern crate lazy_static;
 extern crate crossbeam_channel;
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+extern crate serde_json;
 
 pub mod errors;
 pub mod reactive;

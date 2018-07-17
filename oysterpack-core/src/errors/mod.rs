@@ -28,15 +28,15 @@ use std::{fmt, time::SystemTime};
 use time::system_time;
 
 /// Decorates the Fail cause with an ErrorId, timestamp, and Backtrace
-#[derive(Debug, Fail)]
-pub struct Error<T: Fail> {
+#[derive(Debug, Fail, Clone)]
+pub struct Error<T: Fail + Clone> {
     id: ErrorId,
     timestamp: SystemTime,
     #[cause]
     cause: T,
 }
 
-impl<T: Fail> fmt::Display for Error<T> {
+impl<T: Fail + Clone> fmt::Display for Error<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -48,7 +48,7 @@ impl<T: Fail> fmt::Display for Error<T> {
     }
 }
 
-impl<T: Fail> Error<T> {
+impl<T: Fail + Clone> Error<T> {
     /// Error constructor
     pub fn new(id: ErrorId, cause: T) -> Error<T> {
         Error {
