@@ -54,7 +54,7 @@ use crossbeam_channel as channel;
 use failure::Fail;
 use rusty_ulid::Ulid;
 use std::{
-    fmt::Debug, time::{Duration, Instant, SystemTime},
+    fmt::{self, Debug}, time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
 
@@ -324,6 +324,7 @@ impl Progress {
 }
 
 /// Command ID - unique identifier
+// TODO: good use case for a macro
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct CommandId(u128);
 
@@ -346,6 +347,13 @@ impl From<u128> for CommandId {
 impl From<Ulid> for CommandId {
     fn from(id: Ulid) -> Self {
         CommandId(id.into())
+    }
+}
+
+impl fmt::Display for CommandId {
+    /// Displays the id in lower hex format
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.0)
     }
 }
 
@@ -374,5 +382,12 @@ impl From<u128> for InstanceId {
 impl From<Ulid> for InstanceId {
     fn from(id: Ulid) -> Self {
         InstanceId(id.into())
+    }
+}
+
+impl fmt::Display for InstanceId {
+    /// Displays the id in lower hex format
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.0)
     }
 }

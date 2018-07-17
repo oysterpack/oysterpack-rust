@@ -15,6 +15,7 @@
 use super::command::*;
 use chrono::prelude::*;
 use crossbeam_channel as channel;
+use errors;
 use std::time::SystemTime;
 use time::system_time;
 use tokio::{self, prelude::*};
@@ -116,10 +117,10 @@ fn command_failure_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = FooError;
+        type Error = errors::Error<FooError>;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            Err(FooError)
+            Err(errors::Error::new(errors::ErrorId::new(1), FooError))
         }
     }
 
@@ -136,14 +137,17 @@ fn command_failure_with_progress_subscriber() {
         let foo_cmd = foo_cmd
             .then(move |result| {
                 s.send(result);
-                future::finished(result)
+                future::finished(Ok(SystemTime::now()))
             })
-            .map(|_| ());
+            .map(|_: Result<SystemTime, errors::Error<FooError>>| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
         assert!(result.is_some());
         info!("Received result: {:?}", result);
+        if let Some(Err(e)) = result {
+            info!("Received Err result: {}", e);
+        }
 
         let progress_events: Vec<_> = progress_receiver.collect();
         info!("Progress events: {:?}", progress_events);

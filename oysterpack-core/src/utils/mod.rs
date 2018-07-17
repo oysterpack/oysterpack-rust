@@ -12,30 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack Core
-
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
-
-extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate crossbeam_channel;
-#[macro_use]
-extern crate failure;
-
-pub mod errors;
-pub mod reactive;
-pub mod time;
-pub mod utils;
-
-mod monix;
-
-#[cfg(test)]
-mod tests;
+//! OysterPack utils
