@@ -410,11 +410,6 @@ pub struct CommandFailure<T: Fail + Clone> {
 }
 
 impl<T: Fail + Clone> CommandFailure<T> {
-    /// CommandFailure errors::ErrorId(1)
-    pub fn error_id() -> errors::ErrorId {
-        errors::ErrorId::new(1)
-    }
-
     /// errors::Error<CommandFailure<T>> constructor
     pub fn new_error(
         command_id: CommandId,
@@ -422,7 +417,7 @@ impl<T: Fail + Clone> CommandFailure<T> {
         cause: T,
     ) -> errors::Error<CommandFailure<T>> {
         errors::Error::new(
-            CommandFailure::<T>::error_id(),
+            command_failure_error_id(),
             CommandFailure::new(command_id, instance_id, cause),
         )
     }
@@ -450,4 +445,9 @@ impl<T: Fail + Clone> CommandFailure<T> {
     pub fn cause(&self) -> &T {
         &self.cause
     }
+}
+
+/// CommandFailure errors::ErrorId(1)
+pub fn command_failure_error_id() -> errors::ErrorId {
+    errors::ErrorId::new(1)
 }
