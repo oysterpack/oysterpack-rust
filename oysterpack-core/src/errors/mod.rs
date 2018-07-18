@@ -57,6 +57,21 @@ impl<T: Fail + Clone> Error<T> {
             cause,
         }
     }
+
+    /// ErrorId getter
+    pub fn id(&self) -> ErrorId {
+        self.id
+    }
+
+    /// Returns when the Error was created
+    pub fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+
+    /// Returns the error cause
+    pub fn cause(&self) -> &T {
+        &self.cause
+    }
 }
 
 /// Unique Error ID

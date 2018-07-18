@@ -51,6 +51,7 @@
 //!
 
 use crossbeam_channel as channel;
+use errors;
 use failure::Fail;
 use rusty_ulid::Ulid;
 use std::{
@@ -394,5 +395,59 @@ impl fmt::Display for InstanceId {
     /// Displays the id in lower hex format
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:x}", self.0)
+    }
+}
+
+/// CommandFailure should be used to wrap all command failures, which decorates failures with the
+/// CommandId and InstanceId.
+#[derive(Fail, Debug, Clone)]
+#[fail(display = "Command failed [{}][{}] {}", command_id, instance_id, cause)]
+pub struct CommandFailure<T: Fail + Clone> {
+    command_id: CommandId,
+    instance_id: InstanceId,
+    #[cause]
+    cause: T,
+}
+
+impl<T: Fail + Clone> CommandFailure<T> {
+    /// CommandFailure errors::ErrorId(1)
+    pub fn error_id() -> errors::ErrorId {
+        errors::ErrorId::new(1)
+    }
+
+    /// errors::Error<CommandFailure<T>> constructor
+    pub fn new_error(
+        command_id: CommandId,
+        instance_id: InstanceId,
+        cause: T,
+    ) -> errors::Error<CommandFailure<T>> {
+        errors::Error::new(
+            CommandFailure::<T>::error_id(),
+            CommandFailure::new(command_id, instance_id, cause),
+        )
+    }
+
+    /// CommandFailure constructor
+    pub fn new(command_id: CommandId, instance_id: InstanceId, cause: T) -> CommandFailure<T> {
+        CommandFailure {
+            command_id,
+            instance_id,
+            cause,
+        }
+    }
+
+    /// CommandId getter
+    pub fn command_id(&self) -> CommandId {
+        self.command_id
+    }
+
+    /// InstanceId getter
+    pub fn instance_id(&self) -> InstanceId {
+        self.instance_id
+    }
+
+    /// Returns the cause of the command failure.
+    pub fn cause(&self) -> &T {
+        &self.cause
     }
 }
