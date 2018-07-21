@@ -26,12 +26,48 @@ use tests::*;
 struct FooError;
 
 #[test]
+fn command_future_success_with_no_progress_subscriber() {
+    struct Foo;
+
+    impl Future for Foo {
+        type Item = SystemTime;
+        type Error = errors::Error<FooError>;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            Ok(Async::Ready(SystemTime::now()))
+        }
+    }
+
+    let foo_id = CommandId::new(1);
+
+    run_test(|| {
+        let (s, r) = channel::unbounded();
+
+        let foo_cmd = Command::new(foo_id, Foo)
+            .and_then(move |result| {
+                s.send(result);
+                future::finished(result)
+            })
+            .map(|ts| {
+                info!("{:?}", system_time::to_date_time(ts));
+                ()
+            })
+            .map_err(|_| ());
+        tokio::run(foo_cmd);
+
+        let result = r.try_recv();
+        assert!(result.is_some());
+        info!("Received result: {:?}", result);
+    });
+}
+
+#[test]
 fn command_success_with_no_progress_subscriber() {
     struct Foo;
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = FooError;
+        type Error = errors::Error<FooError>;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -67,7 +103,7 @@ fn command_success_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = FooError;
+        type Error = errors::Error<FooError>;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))

@@ -65,10 +65,7 @@ use tokio::prelude::*;
 /// - Command result Item type must implement the Send + Debug traits
 ///   - Send trait enables the item to be delivered via channels
 ///   - Debug trait is useful for logging purposes
-/// - The Command result Error type must implement the failure::Fail and Clone traits
-///   - see https://boats.gitlab.io/failure/fail.html
-///   - errors are cloneable which enables errors to be sent on multiple channels, e.g.,
-///     async error logging and tracking
+/// - The Command result Error type must be an errors:Error<E: Fail + Clone>
 /// - The underlying future is fused.
 ///   - Normally futures can behave unpredictable once they're used
 ///     after a future has been resolved. The fused Future is always defined to return Async::NotReady
@@ -83,13 +80,7 @@ use tokio::prelude::*;
 /// - Progress events can be reported via a channel
 ///
 #[derive(Debug)]
-pub struct Command<T, E, F>
-where
-    T: Send + Debug,
-    E: Fail + Clone,
-    F: Future<Item = T, Error = E>,
-{
-    // the underlying future is fused
+pub struct Command<F:Future> {
     fut: future::Fuse<F>,
     // tracks command future execution progress
     progress: Progress,
@@ -97,14 +88,14 @@ where
     progress_sender_chan: Option<channel::Sender<Progress>>,
 }
 
-impl<T, E, F> Future for Command<T, E, F>
-where
-    T: Send + Debug,
-    E: Fail + Clone,
-    F: Future<Item = T, Error = E>,
+impl<T, E, F> Future for Command<F>
+    where
+        T: Send + Debug,
+        E: Fail + Clone,
+        F: Future<Item = T, Error = errors::Error<E>>,
 {
     type Item = T;
-    type Error = E;
+    type Error = errors::Error<E>;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if self.done() {
@@ -145,15 +136,15 @@ where
     }
 }
 
-impl<T, E, F> Command<T, E, F>
-where
-    T: Send + Debug,
-    E: Fail + Clone,
-    F: Future<Item = T, Error = E>,
+impl<T, E, F> Command<F>
+    where
+        T: Send + Debug,
+        E: Fail + Clone,
+        F: Future<Item = T, Error = errors::Error<E>>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
     /// The underlying future will be fused.
-    pub fn new(id: CommandId, fut: F) -> Command<T, E, F> {
+    pub fn new(id: CommandId, fut: F) -> Command<F> {
         Command {
             fut: Future::fuse(fut),
             progress: Progress::new(id),
@@ -186,24 +177,21 @@ where
     }
 }
 
+
 /// Command builder
-pub struct Builder<T, E, F>
-where
-    T: Send + Debug,
-    E: Fail + Clone,
-    F: Future<Item = T, Error = E>,
+pub struct Builder<F: Future>
 {
-    cmd: Command<T, E, F>,
+    cmd: Command<F>,
 }
 
-impl<T, E, F> Builder<T, E, F>
+impl<T, E, F> Builder<F>
 where
     T: Send + Debug,
     E: Fail + Clone,
-    F: Future<Item = T, Error = E>,
+    F: Future<Item = T, Error = errors::Error<E>>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.
-    pub fn new(id: CommandId, fut: F) -> Builder<T, E, F> {
+    pub fn new(id: CommandId, fut: F) -> Builder<F> {
         Builder {
             cmd: Command::new(id, fut),
         }
@@ -213,14 +201,14 @@ where
     pub fn progress_subscriber_chan(
         self,
         subscriber: channel::Sender<Progress>,
-    ) -> Builder<T, E, F> {
+    ) -> Builder<F> {
         let mut builder = self;
         builder.cmd.progress_sender_chan = Some(subscriber);
         builder
     }
 
     /// Builds and returns the Command
-    pub fn build(self) -> Command<T, E, F> {
+    pub fn build(self) -> Command<F> {
         self.cmd
     }
 }

@@ -28,13 +28,16 @@ use failure::Fail;
 use rusty_ulid::Ulid;
 use std::fmt;
 
-/// Decorates the Fail cause with an ErrorId
-/// The cause provides the error context. The cause itself may be another Error.
+/// Decorates the failure cause with an ErrorId.
+/// - cause must implement the `Fail` trait
+///   - see https://boats.gitlab.io/failure/fail.html for more details about the `Fail` trait
+/// - cause provides the error context. The cause itself may be another Error.
+/// - errors are cloneable which enables errors to be sent on multiple channels, e.g., async error logging and tracking
 #[derive(Debug, Fail, Clone)]
-pub struct Error<T: Fail + Clone> {
+pub struct Error<E: Fail + Clone> {
     id: ErrorId,
     #[cause]
-    cause: T,
+    cause: E,
 }
 
 impl<T: Fail + Clone> fmt::Display for Error<T> {
