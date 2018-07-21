@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::command::*;
-use chrono::prelude::*;
 use crossbeam_channel as channel;
 use errors;
 use std::time::SystemTime;

@@ -418,7 +418,7 @@ impl<T: Fail + Clone> CommandFailure<T> {
     ) -> errors::Error<CommandFailure<T>> {
         errors::Error::new(
             command_failure_error_id(),
-            CommandFailure::new(command_id, instance_id, cause),
+            CommandFailure::<T>::new(command_id, instance_id, cause),
         )
     }
 
@@ -451,3 +451,5 @@ impl<T: Fail + Clone> CommandFailure<T> {
 pub fn command_failure_error_id() -> errors::ErrorId {
     errors::ErrorId::new(1)
 }
+
+pub type CommandError<T> = errors::Error<CommandFailure<errors::Error<T>>>;

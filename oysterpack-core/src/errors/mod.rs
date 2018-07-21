@@ -12,60 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! OysterPack errors standards:
+//! OysterPack error standards:
 //!
-//! 1. Errors are assigned a unique ErrorId
-//! 2. Errors are assigned a severity
-//! 3. Errors are documented
-//! 4. Errors have context
-//! 5. Errors have a timestamp
+//! - Errors are assigned a unique ErrorId
+//! - Errors are assigned a severity
+//! - Errors are documented
+//! - Errors have context
+//! - Errors are timestamped
+//! - Errors are tracked against crates in 2 ways :
+//!   1. the binary crate - within which app the error occurred
+//!   2. the library crate - the error was produced by which library
 //!
 
-use chrono::SecondsFormat;
 use failure::Fail;
 use rusty_ulid::Ulid;
-use std::{fmt, time::SystemTime};
-use time::system_time;
+use std::fmt;
 
-/// Decorates the Fail cause with an ErrorId, timestamp, and Backtrace
+/// Decorates the Fail cause with an ErrorId
+/// The cause provides the error context. The cause itself may be another Error.
 #[derive(Debug, Fail, Clone)]
 pub struct Error<T: Fail + Clone> {
     id: ErrorId,
-    timestamp: SystemTime,
     #[cause]
     cause: T,
 }
 
 impl<T: Fail + Clone> fmt::Display for Error<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Error[{}][{}][{}]",
-            self.id,
-            system_time::to_date_time(self.timestamp).to_rfc3339_opts(SecondsFormat::Millis, true),
-            self.cause
-        )
+        write!(f, "Error[{}][{}]", self.id, self.cause)
     }
 }
 
 impl<T: Fail + Clone> Error<T> {
     /// Error constructor
     pub fn new(id: ErrorId, cause: T) -> Error<T> {
-        Error {
-            id,
-            timestamp: SystemTime::now(),
-            cause,
-        }
+        Error { id, cause }
     }
 
     /// ErrorId getter
     pub fn id(&self) -> ErrorId {
         self.id
-    }
-
-    /// Returns when the Error was created
-    pub fn timestamp(&self) -> SystemTime {
-        self.timestamp
     }
 
     /// Returns the error cause

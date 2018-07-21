@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// TODO: Document crate
-//! # OysterPack XXX
+//! provides build info gathered from cargo - see https://crates.io/crates/built
 
-#![deny(missing_docs, missing_debug_implementations, warnings)]
-// TODO: update url
-#![doc(html_root_url = "https://docs.rs/oysterpack_lib_template/0.1.0")]
-
-pub mod build;
-
-#[cfg(test)]
-mod tests;
+include!(concat!(env!("OUT_DIR"), "/built.rs"));

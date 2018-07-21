@@ -7,6 +7,7 @@ license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
+build = "build.rs"
 
 [dependencies]
 log = "0.4"
@@ -19,6 +20,8 @@ chrono = { version = "0.4", features = ["serde", "time"] }
 rusty_ulid = "0.4.1"
 lazy_static = "1"
 failure = "0.1"
+semver = "0.9"
+built = "0.3"
 
 serde = "1"
 serde_derive = "1"
@@ -28,6 +31,9 @@ serde_json = "1"
 [dev-dependencies]
 version-sync = "0.5"
 fern = "0.5"
+
+[build-dependencies]
+oysterpack_built = {path = "../oysterpack-built", version = "0.1"}
 
 [badges]
 maintenance = { status = "actively-developed" }

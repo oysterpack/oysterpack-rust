@@ -1,8 +1,8 @@
 [package]
-name = "oysterpack_lib_template"
+name = "oysterpack_built"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack XXX"
+description = "OysterPack Built"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
@@ -10,6 +10,9 @@ readme = "README.md"
 build = "build.rs"
 
 [dependencies]
+built = "0.3"
+chrono = "0.4"
+semver = "0.9"
 
 [dev-dependencies]
 version-sync = "0.5"
