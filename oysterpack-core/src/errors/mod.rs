@@ -26,7 +26,9 @@
 
 use failure::Fail;
 use rusty_ulid::Ulid;
-use std::fmt;
+use std::{
+    fmt, sync::Arc
+};
 
 /// Decorates the failure cause with an ErrorId.
 /// - cause must implement the `Fail` trait
@@ -34,22 +36,22 @@ use std::fmt;
 /// - cause provides the error context. The cause itself may be another Error.
 /// - errors are cloneable which enables errors to be sent on multiple channels, e.g., async error logging and tracking
 #[derive(Debug, Fail, Clone)]
-pub struct Error<E: Fail + Clone> {
+pub struct Error<Cause: Fail> {
     id: ErrorId,
     #[cause]
-    cause: E,
+    cause: Arc<Cause>,
 }
 
-impl<T: Fail + Clone> fmt::Display for Error<T> {
+impl<T: Fail> fmt::Display for Error<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Error[{}][{}]", self.id, self.cause)
     }
 }
 
-impl<T: Fail + Clone> Error<T> {
+impl<T: Fail> Error<T> {
     /// Error constructor
     pub fn new(id: ErrorId, cause: T) -> Error<T> {
-        Error { id, cause }
+        Error { id, cause: Arc::new(cause) }
     }
 
     /// ErrorId getter
@@ -95,3 +97,5 @@ impl fmt::Display for ErrorId {
         write!(f, "{:x}", self.0)
     }
 }
+
+

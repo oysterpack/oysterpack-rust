@@ -91,7 +91,7 @@ pub struct Command<F:Future> {
 impl<T, E, F> Future for Command<F>
     where
         T: Send + Debug,
-        E: Fail + Clone,
+        E: Fail,
         F: Future<Item = T, Error = errors::Error<E>>,
 {
     type Item = T;
@@ -139,7 +139,7 @@ impl<T, E, F> Future for Command<F>
 impl<T, E, F> Command<F>
     where
         T: Send + Debug,
-        E: Fail + Clone,
+        E: Fail,
         F: Future<Item = T, Error = errors::Error<E>>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
@@ -187,7 +187,7 @@ pub struct Builder<F: Future>
 impl<T, E, F> Builder<F>
 where
     T: Send + Debug,
-    E: Fail + Clone,
+    E: Fail,
     F: Future<Item = T, Error = errors::Error<E>>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.
