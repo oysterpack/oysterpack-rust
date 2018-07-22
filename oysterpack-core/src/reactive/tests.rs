@@ -25,13 +25,27 @@ use tests::*;
 #[fail(display = "Foo error.")]
 struct FooError;
 
+impl FooError {
+    fn error_id() -> errors::ErrorId {
+        FOO_ERROR_ID
+    }
+}
+
+impl Into<errors::Error> for FooError {
+    fn into(self) -> errors::Error {
+        errors::Error::new(FooError::error_id(), self)
+    }
+}
+
+const FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(2);
+
 #[test]
 fn command_future_success_with_no_progress_subscriber() {
     struct Foo;
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = errors::Error<FooError>;
+        type Error = errors::Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -67,7 +81,7 @@ fn command_success_with_no_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = errors::Error<FooError>;
+        type Error = errors::Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -103,7 +117,7 @@ fn command_success_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = errors::Error<FooError>;
+        type Error = errors::Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             Ok(Async::Ready(SystemTime::now()))
@@ -152,10 +166,10 @@ fn command_failure_with_progress_subscriber() {
 
     impl Future for Foo {
         type Item = SystemTime;
-        type Error = errors::Error<FooError>;
+        type Error = errors::Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            Err(errors::Error::new(errors::ErrorId::new(1), FooError))
+            Err(FooError.into())
         }
     }
 
@@ -174,7 +188,7 @@ fn command_failure_with_progress_subscriber() {
                 s.send(result.clone());
                 future::finished(result)
             })
-            .map(|_: Result<SystemTime, errors::Error<FooError>>| ());
+            .map(|_: Result<SystemTime, errors::Error>| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();

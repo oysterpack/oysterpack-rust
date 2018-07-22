@@ -24,11 +24,12 @@
 //!   2. the library crate - the error was produced by which library
 //!
 
-use failure::Fail;
+use failure::{Context, Fail};
 use rusty_ulid::Ulid;
-use std::{
-    fmt, sync::Arc
-};
+use std::{fmt, ops::Deref, sync::Arc};
+
+#[cfg(test)]
+mod tests;
 
 /// Decorates the failure cause with an ErrorId.
 /// - cause must implement the `Fail` trait
@@ -36,22 +37,34 @@ use std::{
 /// - cause provides the error context. The cause itself may be another Error.
 /// - errors are cloneable which enables errors to be sent on multiple channels, e.g., async error logging and tracking
 #[derive(Debug, Fail, Clone)]
-pub struct Error<Cause: Fail> {
+pub struct Error {
     id: ErrorId,
     #[cause]
-    cause: Arc<Cause>,
+    cause: SharedFailure,
 }
 
-impl<T: Fail> fmt::Display for Error<T> {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Error[{}][{}]", self.id, self.cause)
+        write!(f, "ERR[{}]", self.id)?;
+
+        let fail: &Fail = self.cause();
+        if let Some(e) = fail.downcast_ref::<Context<Error>>() {
+            write!(f, "-({})", e.get_context())?;
+            // Context will always have a cause, i.e., the underlying Error
+            write!(f, "-({})", e.cause().unwrap())
+        } else {
+            write!(f, "-({})", fail)
+        }
     }
 }
 
-impl<T: Fail> Error<T> {
+impl Error {
     /// Error constructor
-    pub fn new(id: ErrorId, cause: T) -> Error<T> {
-        Error { id, cause: Arc::new(cause) }
+    pub fn new(id: ErrorId, cause: impl Fail) -> Error {
+        Error {
+            id,
+            cause: SharedFailure::new(cause),
+        }
     }
 
     /// ErrorId getter
@@ -60,24 +73,49 @@ impl<T: Fail> Error<T> {
     }
 
     /// Returns the error cause
-    pub fn cause(&self) -> &T {
-        &self.cause
+    pub fn cause(&self) -> &Fail {
+        &(*self.cause)
+    }
+
+    /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
+    /// The first ErrorId will be this Error's ErrorId.
+    pub fn error_id_chain(&self) -> Vec<ErrorId> {
+        debug!("error_id_chain({})", self);
+        let mut error_ids = vec![self.id];
+
+        let fail = &self.cause;
+        if let Some(e) = fail.downcast_ref::<Error>() {
+            error_ids.push(e.id());
+        } else if let Some(e) = fail.downcast_ref::<Context<Error>>() {
+            error_ids.append(&mut e.get_context().error_id_chain());
+        }
+
+        let mut fail: &Fail = &(*fail);
+
+        while let Some(cause) = fail.cause() {
+            debug!("error_id_chain(): while let Some({})", cause);
+            if let Some(e) = cause.downcast_ref::<SharedFailure>() {
+                if let Some(e) = e.downcast_ref::<Error>() {
+                    error_ids.append(&mut e.error_id_chain());
+                } else if let Some(e) = e.downcast_ref::<Context<Error>>() {
+                    error_ids.append(&mut e.get_context().error_id_chain());
+                }
+            }else if let Some(e) = cause.downcast_ref::<Error>() {
+                error_ids.append(&mut e.error_id_chain());
+            } else if let Some(e) = cause.downcast_ref::<Context<Error>>() {
+                error_ids.append(&mut e.get_context().error_id_chain());
+            }
+
+            fail = cause;
+        }
+
+        error_ids
     }
 }
 
 /// Unique Error ID
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct ErrorId(u128);
-
-impl ErrorId {
-    pub fn new(id: u128) -> ErrorId {
-        ErrorId(id)
-    }
-
-    pub fn value(&self) -> u128 {
-        self.0
-    }
-}
+pub struct ErrorId(pub u128);
 
 impl From<u128> for ErrorId {
     fn from(id: u128) -> Self {
@@ -98,4 +136,47 @@ impl fmt::Display for ErrorId {
     }
 }
 
+/// Failure that can be cloned and shared across thread boundaries.
+/// It can be derefenced to get to the underlying failure.
+#[derive(Clone, Debug)]
+pub struct SharedFailure(Arc<Fail>);
 
+impl SharedFailure {
+    /// Wraps the provided error into a `SharedFailure`.
+    pub fn new<T: Fail>(err: T) -> SharedFailure {
+        SharedFailure(Arc::new(err))
+    }
+
+    /// Attempts to downcast this `SharedFailure` to a particular `Fail` type by reference.
+    ///
+    /// If the underlying error is not of type `T`, this will return [`None`](None()).
+    pub fn downcast_ref<T: Fail>(&self) -> Option<&T> {
+        self.0.downcast_ref()
+    }
+}
+
+impl Fail for SharedFailure {
+    fn cause(&self) -> Option<&Fail> {
+        self.0.cause()
+    }
+}
+
+impl fmt::Display for SharedFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<Error> for SharedFailure {
+    fn from(err: Error) -> SharedFailure {
+        SharedFailure(Arc::new(err))
+    }
+}
+
+impl Deref for SharedFailure {
+    type Target = Fail;
+
+    fn deref(&self) -> &Self::Target {
+        &(*self.0)
+    }
+}

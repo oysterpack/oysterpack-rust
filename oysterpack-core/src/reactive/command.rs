@@ -80,7 +80,7 @@ use tokio::prelude::*;
 /// - Progress events can be reported via a channel
 ///
 #[derive(Debug)]
-pub struct Command<F:Future> {
+pub struct Command<F: Future> {
     fut: future::Fuse<F>,
     // tracks command future execution progress
     progress: Progress,
@@ -88,14 +88,13 @@ pub struct Command<F:Future> {
     progress_sender_chan: Option<channel::Sender<Progress>>,
 }
 
-impl<T, E, F> Future for Command<F>
-    where
-        T: Send + Debug,
-        E: Fail,
-        F: Future<Item = T, Error = errors::Error<E>>,
+impl<T, F> Future for Command<F>
+where
+    T: Send + Debug,
+    F: Future<Item = T, Error = errors::Error>,
 {
     type Item = T;
-    type Error = errors::Error<E>;
+    type Error = errors::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if self.done() {
@@ -136,11 +135,10 @@ impl<T, E, F> Future for Command<F>
     }
 }
 
-impl<T, E, F> Command<F>
-    where
-        T: Send + Debug,
-        E: Fail,
-        F: Future<Item = T, Error = errors::Error<E>>,
+impl<T, F> Command<F>
+where
+    T: Send + Debug,
+    F: Future<Item = T, Error = errors::Error>,
 {
     /// Constructs a new Command using the specified future as its underlying future.
     /// The underlying future will be fused.
@@ -177,18 +175,15 @@ impl<T, E, F> Command<F>
     }
 }
 
-
 /// Command builder
-pub struct Builder<F: Future>
-{
+pub struct Builder<F: Future> {
     cmd: Command<F>,
 }
 
-impl<T, E, F> Builder<F>
+impl<T, F> Builder<F>
 where
     T: Send + Debug,
-    E: Fail,
-    F: Future<Item = T, Error = errors::Error<E>>,
+    F: Future<Item = T, Error = errors::Error>,
 {
     /// Constructs a new Builder seeding it with the Command's underlying future.
     pub fn new(id: CommandId, fut: F) -> Builder<F> {
@@ -198,10 +193,7 @@ where
     }
 
     /// Attaches a progress subscriber sender channel to the command
-    pub fn progress_subscriber_chan(
-        self,
-        subscriber: channel::Sender<Progress>,
-    ) -> Builder<F> {
+    pub fn progress_subscriber_chan(self, subscriber: channel::Sender<Progress>) -> Builder<F> {
         let mut builder = self;
         builder.cmd.progress_sender_chan = Some(subscriber);
         builder
@@ -390,32 +382,32 @@ impl fmt::Display for InstanceId {
 /// CommandId and InstanceId.
 #[derive(Fail, Debug, Clone)]
 #[fail(display = "Command failed [{}][{}] {}", command_id, instance_id, cause)]
-pub struct CommandFailure<T: Fail + Clone> {
+pub struct CommandFailure {
     command_id: CommandId,
     instance_id: InstanceId,
     #[cause]
-    cause: T,
+    cause: errors::SharedFailure,
 }
 
-impl<T: Fail + Clone> CommandFailure<T> {
+impl CommandFailure {
     /// errors::Error<CommandFailure<T>> constructor
     pub fn new_error(
         command_id: CommandId,
         instance_id: InstanceId,
-        cause: T,
-    ) -> errors::Error<CommandFailure<T>> {
+        cause: impl Fail,
+    ) -> errors::Error {
         errors::Error::new(
-            command_failure_error_id(),
-            CommandFailure::<T>::new(command_id, instance_id, cause),
+            COMMAND_FAILURE_ERROR_ID,
+            CommandFailure::new(command_id, instance_id, cause),
         )
     }
 
     /// CommandFailure constructor
-    pub fn new(command_id: CommandId, instance_id: InstanceId, cause: T) -> CommandFailure<T> {
+    pub fn new(command_id: CommandId, instance_id: InstanceId, cause: impl Fail) -> CommandFailure {
         CommandFailure {
             command_id,
             instance_id,
-            cause,
+            cause: errors::SharedFailure::new(cause),
         }
     }
 
@@ -430,14 +422,9 @@ impl<T: Fail + Clone> CommandFailure<T> {
     }
 
     /// Returns the cause of the command failure.
-    pub fn cause(&self) -> &T {
-        &self.cause
+    pub fn cause(&self) -> &Fail {
+        &(*self.cause)
     }
 }
 
-/// CommandFailure errors::ErrorId(1)
-pub fn command_failure_error_id() -> errors::ErrorId {
-    errors::ErrorId::new(1)
-}
-
-pub type CommandError<T> = errors::Error<CommandFailure<errors::Error<T>>>;
+pub const COMMAND_FAILURE_ERROR_ID: errors::ErrorId = errors::ErrorId(1);

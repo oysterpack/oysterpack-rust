@@ -9,10 +9,10 @@
 //! unit test support
 
 extern crate fern;
+use build;
 use chrono;
 use log;
 use std::io;
-use build;
 
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
@@ -45,7 +45,7 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
 #[test]
 fn build_info() {
     run_test(|| {
-        info!("{}",concat!(env!("OUT_DIR"), "/built.rs"));
+        info!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
         info!(
             "This is version {}{}, built for {} by {}.",
             build::PKG_VERSION,
@@ -60,5 +60,4 @@ fn build_info() {
             build::BUILT_TIME_UTC
         );
     });
-
 }
