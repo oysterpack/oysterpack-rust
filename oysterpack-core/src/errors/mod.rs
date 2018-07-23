@@ -80,36 +80,44 @@ impl Error {
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
     /// The first ErrorId will be this Error's ErrorId.
     pub fn error_id_chain(&self) -> Vec<ErrorId> {
-        debug!("error_id_chain({})", self);
         let mut error_ids = vec![self.id];
 
-        let fail = &self.cause;
-        if let Some(e) = fail.downcast_ref::<Error>() {
-            error_ids.push(e.id());
-        } else if let Some(e) = fail.downcast_ref::<Context<Error>>() {
-            error_ids.append(&mut e.get_context().error_id_chain());
-        }
-
-        let mut fail: &Fail = &(*fail);
-
+        let mut fail: &Fail = self;
         while let Some(cause) = fail.cause() {
-            debug!("error_id_chain(): while let Some({})", cause);
+//            if let Some(e) = error_ref(cause) {
+//                error_ids.push(e.id());
+//            }
             if let Some(e) = cause.downcast_ref::<SharedFailure>() {
                 if let Some(e) = e.downcast_ref::<Error>() {
-                    error_ids.append(&mut e.error_id_chain());
+                    error_ids.push(e.id());
                 } else if let Some(e) = e.downcast_ref::<Context<Error>>() {
-                    error_ids.append(&mut e.get_context().error_id_chain());
+                    error_ids.push(e.get_context().id());
                 }
-            }else if let Some(e) = cause.downcast_ref::<Error>() {
-                error_ids.append(&mut e.error_id_chain());
+            } else if let Some(e) = cause.downcast_ref::<Error>() {
+                error_ids.push(e.id());
             } else if let Some(e) = cause.downcast_ref::<Context<Error>>() {
-                error_ids.append(&mut e.get_context().error_id_chain());
+                error_ids.push(e.get_context().id());
             }
 
             fail = cause;
         }
 
         error_ids
+    }
+}
+
+// TODO: BUG: stack overflow
+/// Downcasts the failure to an Error, or returns None
+pub fn error_ref(failure: &Fail) -> Option<&Error> {
+    match failure.downcast_ref::<Error>() {
+        Some(e) => Some(&e),
+        None => match failure.downcast_ref::<SharedFailure>() {
+            Some(e) => error_ref(&(*e)),
+            None => match failure.downcast_ref::<Context<Error>>() {
+                Some(e) => Some(e.get_context()),
+                None => None,
+            },
+        },
     }
 }
 
