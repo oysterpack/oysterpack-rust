@@ -65,7 +65,7 @@ use tokio::prelude::*;
 /// - Command result Item type must implement the Send + Debug traits
 ///   - Send trait enables the item to be delivered via channels
 ///   - Debug trait is useful for logging purposes
-/// - The Command result Error type must be an errors:Error<E: Fail + Clone>
+/// - The Command adds a CommandFailure Error to the Command's underlying future's Error as context.
 /// - The underlying future is fused.
 ///   - Normally futures can behave unpredictable once they're used
 ///     after a future has been resolved. The fused Future is always defined to return Async::NotReady
@@ -119,9 +119,9 @@ where
                 Ok(result)
             }
             result @ Ok(Async::NotReady) => result,
-            result @ Err(_) => {
+            Err(err) => {
                 self.progress.status = Status::FAILURE;
-                result
+                Err(err.with_context(self.command_error()))
             }
         };
         debug!("{:?}", self.progress);
@@ -172,6 +172,14 @@ where
     /// Its main use case is for tracking purposes.
     pub fn instance_id(&self) -> InstanceId {
         self.progress.instance_id
+    }
+
+    fn command_failure(&self) -> CommandFailure {
+        CommandFailure::new(self.id(), self.instance_id())
+    }
+
+    fn command_error(&self) -> errors::Error {
+        self.command_failure().into()
     }
 }
 
@@ -381,33 +389,18 @@ impl fmt::Display for InstanceId {
 /// CommandFailure should be used to wrap all command failures, which decorates failures with the
 /// CommandId and InstanceId.
 #[derive(Fail, Debug, Clone)]
-#[fail(display = "Command failed [{}][{}] {}", command_id, instance_id, cause)]
+#[fail(display = "Command failed: CommandId({}) InstanceId({})", command_id, instance_id)]
 pub struct CommandFailure {
     command_id: CommandId,
     instance_id: InstanceId,
-    #[cause]
-    cause: errors::SharedFailure,
 }
 
 impl CommandFailure {
-    /// errors::Error<CommandFailure<T>> constructor
-    pub fn new_error(
-        command_id: CommandId,
-        instance_id: InstanceId,
-        cause: impl Fail,
-    ) -> errors::Error {
-        errors::Error::new(
-            COMMAND_FAILURE_ERROR_ID,
-            CommandFailure::new(command_id, instance_id, cause),
-        )
-    }
-
     /// CommandFailure constructor
-    pub fn new(command_id: CommandId, instance_id: InstanceId, cause: impl Fail) -> CommandFailure {
+    pub fn new(command_id: CommandId, instance_id: InstanceId) -> CommandFailure {
         CommandFailure {
             command_id,
             instance_id,
-            cause: errors::SharedFailure::new(cause),
         }
     }
 
@@ -420,11 +413,13 @@ impl CommandFailure {
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
+}
 
-    /// Returns the cause of the command failure.
-    pub fn cause(&self) -> &Fail {
-        &(*self.cause)
+impl Into<errors::Error> for CommandFailure {
+    fn into(self) -> errors::Error {
+        errors::Error::new(COMMAND_FAILURE_ERROR_ID, self)
     }
 }
 
+/// Indicates a failure occurred while executing a Command.
 pub const COMMAND_FAILURE_ERROR_ID: errors::ErrorId = errors::ErrorId(1);

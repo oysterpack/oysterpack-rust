@@ -40,14 +40,14 @@ mod tests;
 pub struct Error {
     id: ErrorId,
     #[cause]
-    cause: SharedFailure,
+    failure: SharedFailure,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ERR[{}]", self.id)?;
 
-        let fail: &Fail = self.cause();
+        let fail: &Fail = self.failure();
         if let Some(e) = fail.downcast_ref::<Context<Error>>() {
             write!(f, "-({})", e.get_context())?;
             // Context will always have a cause, i.e., the underlying Error
@@ -60,10 +60,10 @@ impl fmt::Display for Error {
 
 impl Error {
     /// Error constructor
-    pub fn new(id: ErrorId, cause: impl Fail) -> Error {
+    pub fn new(id: ErrorId, failure: impl Fail) -> Error {
         Error {
             id,
-            cause: SharedFailure::new(cause),
+            failure: SharedFailure::new(failure),
         }
     }
 
@@ -73,8 +73,8 @@ impl Error {
     }
 
     /// Returns the error cause
-    pub fn cause(&self) -> &Fail {
-        &(*self.cause)
+    pub fn failure(&self) -> &Fail {
+        &self.failure
     }
 
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
@@ -92,9 +92,24 @@ impl Error {
 
         error_ids
     }
+
+    /// Returns a new Error with the specified context.
+    pub fn with_context<D>(self, context: D) -> Error
+    where
+        D: fmt::Display + Send + Sync + 'static,
+        Self: Sized,
+    {
+        Error::new(self.id, self.context(context))
+    }
 }
 
-/// Downcasts the failure to an Error, or returns None
+/// Tries to converts the failure to an Error reference.
+///
+/// It will succeed for the following cases:
+/// 1. failure is an Error
+/// 2. the failure type is Context<Error> - the context Error is returned
+/// 3. failure is a SharedFailure, where the underlying failure type is an Error
+///
 pub fn error_ref(failure: &Fail) -> Option<&Error> {
     if let Some(e) = failure.downcast_ref::<Error>() {
         return Some(e);
@@ -105,7 +120,7 @@ pub fn error_ref(failure: &Fail) -> Option<&Error> {
     }
 
     if let Some(e) = failure.downcast_ref::<SharedFailure>() {
-        return error_ref(e.cause_ref());
+        return error_ref(e.failure());
     }
 
     None
@@ -134,8 +149,12 @@ impl fmt::Display for ErrorId {
     }
 }
 
-/// Failure that can be cloned and shared across thread boundaries.
-/// It can be derefenced to get to the underlying failure.
+/// SharedFailure is a thread-safe reference-counting pointer to an instance of Fail.
+/// It provides shared ownership to a Fail instance.
+///
+/// Invoking clone on SharedFailure produces a new pointer to the same value in the heap.
+/// When the last SharedFailure pointer to a given Fail instance is destroyed, the pointed-to Fail
+/// instance is also destroyed.
 #[derive(Clone, Debug)]
 pub struct SharedFailure(Arc<Fail>);
 
@@ -153,7 +172,7 @@ impl SharedFailure {
     }
 
     /// Returns a reference to the underlying failure
-    pub fn cause_ref(&self) -> &Fail {
+    pub fn failure(&self) -> &Fail {
         &*self.0
     }
 }
@@ -167,19 +186,5 @@ impl Fail for SharedFailure {
 impl fmt::Display for SharedFailure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl From<Error> for SharedFailure {
-    fn from(err: Error) -> SharedFailure {
-        SharedFailure(Arc::new(err))
-    }
-}
-
-impl Deref for SharedFailure {
-    type Target = Fail;
-
-    fn deref(&self) -> &Self::Target {
-        &(*self.0)
     }
 }
