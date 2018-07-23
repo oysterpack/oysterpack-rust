@@ -84,21 +84,9 @@ impl Error {
 
         let mut fail: &Fail = self;
         while let Some(cause) = fail.cause() {
-//            if let Some(e) = error_ref(cause) {
-//                error_ids.push(e.id());
-//            }
-            if let Some(e) = cause.downcast_ref::<SharedFailure>() {
-                if let Some(e) = e.downcast_ref::<Error>() {
-                    error_ids.push(e.id());
-                } else if let Some(e) = e.downcast_ref::<Context<Error>>() {
-                    error_ids.push(e.get_context().id());
-                }
-            } else if let Some(e) = cause.downcast_ref::<Error>() {
+            if let Some(e) = error_ref(cause) {
                 error_ids.push(e.id());
-            } else if let Some(e) = cause.downcast_ref::<Context<Error>>() {
-                error_ids.push(e.get_context().id());
             }
-
             fail = cause;
         }
 
@@ -106,19 +94,21 @@ impl Error {
     }
 }
 
-// TODO: BUG: stack overflow
 /// Downcasts the failure to an Error, or returns None
 pub fn error_ref(failure: &Fail) -> Option<&Error> {
-    match failure.downcast_ref::<Error>() {
-        Some(e) => Some(&e),
-        None => match failure.downcast_ref::<SharedFailure>() {
-            Some(e) => error_ref(&(*e)),
-            None => match failure.downcast_ref::<Context<Error>>() {
-                Some(e) => Some(e.get_context()),
-                None => None,
-            },
-        },
+    if let Some(e) = failure.downcast_ref::<Error>() {
+        return Some(e);
     }
+
+    if let Some(e) = failure.downcast_ref::<Context<Error>>() {
+        return Some(e.get_context());
+    }
+
+    if let Some(e) = failure.downcast_ref::<SharedFailure>() {
+        return error_ref(e.cause_ref());
+    }
+
+    None
 }
 
 /// Unique Error ID
@@ -160,6 +150,11 @@ impl SharedFailure {
     /// If the underlying error is not of type `T`, this will return [`None`](None()).
     pub fn downcast_ref<T: Fail>(&self) -> Option<&T> {
         self.0.downcast_ref()
+    }
+
+    /// Returns a reference to the underlying failure
+    pub fn cause_ref(&self) -> &Fail {
+        &*self.0
     }
 }
 
