@@ -15,11 +15,13 @@
 use super::command::*;
 use crossbeam_channel as channel;
 use errors;
+use failure::{self, Fail};
 use std::time::SystemTime;
 use time::system_time;
 use tokio::{self, prelude::*};
 
 use tests::*;
+use utils::*;
 
 #[derive(Fail, Debug, Clone, Copy)]
 #[fail(display = "Foo error.")]
@@ -27,7 +29,7 @@ struct FooError;
 
 impl FooError {
     fn error_id() -> errors::ErrorId {
-        FOO_ERROR_ID
+        *FOO_ERROR_ID
     }
 }
 
@@ -37,7 +39,9 @@ impl Into<errors::Error> for FooError {
     }
 }
 
-const FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(2);
+lazy_static! {
+    static ref FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(uid());
+}
 
 #[test]
 fn command_future_success_with_no_progress_subscriber() {
@@ -153,8 +157,8 @@ fn command_success_with_progress_subscriber() {
         let progress_events: Vec<_> = progress_receiver.collect();
         info!("Progress events: {:?}", progress_events);
         assert_eq!(progress_events.len(), 1);
-        let progress = progress_events[0];
-        assert_eq!(progress.status(), Status::SUCCESS);
+        let progress = &progress_events[0];
+        assert!(progress.status().success());
         assert_eq!(progress.poll_counter(), 1);
         assert!(progress.poll_duration().subsec_nanos() > 0);
     });
@@ -196,13 +200,43 @@ fn command_failure_with_progress_subscriber() {
         info!("Received result: {:?}", result);
         if let Some(Err(e)) = result {
             info!("Received Err result: {}", e);
+            assert_eq!(
+                e.error_id_chain(),
+                vec![
+                    FooError::error_id(),
+                    COMMAND_FAILURE_ERROR_ID,
+                    FooError::error_id(), // BUG: this is duplicated because CommandFailure was added as context
+                ]
+            );
+
+            // TODO: it's too complicated to inspect the error
+            let failure: &errors::SharedFailure = e.failure().downcast_ref().unwrap();
+            let failure: &failure::Context<errors::Error> = failure.failure().downcast_ref().unwrap();
+            let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
+            let failure: &errors::SharedFailure = failure.failure().downcast_ref().unwrap();
+            let failure: &FooError = failure.failure().downcast_ref().unwrap();
         }
 
         let progress_events: Vec<_> = progress_receiver.collect();
         info!("Progress events: {:?}", progress_events);
         assert_eq!(progress_events.len(), 1);
-        let progress = progress_events[0];
-        assert_eq!(progress.status(), Status::FAILURE);
+        let progress = &progress_events[0];
+        assert!(progress.status().failure());
+        match progress.status() {
+            &Status::FAILURE(ref err) => {
+                assert_eq!(err.id(), FooError::error_id());
+                let error_id_chain = err.error_id_chain();
+                // the error id chain should not contain a CommandFailure Error
+                // it is intentially not included with the Progress because the CommandFailure info
+                // would be redundant - it is already provided by Progress
+                assert!(!error_id_chain.contains(&COMMAND_FAILURE_ERROR_ID));
+                assert_eq!(error_id_chain, vec![FooError::error_id()])
+            }
+            status => panic!(
+                "The command should have failed, but the status is ; {:?}",
+                status
+            ),
+        }
         assert_eq!(progress.poll_counter(), 1);
         assert!(progress.poll_duration().subsec_nanos() > 0);
     });

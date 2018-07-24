@@ -13,3 +13,22 @@
 // limitations under the License.
 
 //! OysterPack utils
+
+use rusty_ulid::{new_ulid_string, Ulid};
+
+/// Returns a universally unique ddentifier
+pub fn uid() -> u128 {
+    Ulid::new().into()
+}
+
+/// Returns a universally unique lexicographically sortable identifier :
+/// - 128-bit compatibility with UUID
+/// - 1.21e+24 unique ULIDs per millisecond
+/// - Lexicographically sortable!
+/// - Canonically encoded as a 26 character string, as opposed to the 36 character UUID
+/// - Uses Crockford's base32 for better efficiency and readability (5 bits per character)
+/// - Case insensitive
+/// - No special characters (URL safe)
+pub fn ulid() -> String {
+    new_ulid_string()
+}

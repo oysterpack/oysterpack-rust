@@ -77,6 +77,7 @@ impl Error {
         &self.failure
     }
 
+    // TODO: This needs more structure to depict the error chain. Each error can have its own error chain.
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
     /// The first ErrorId will be this Error's ErrorId.
     pub fn error_id_chain(&self) -> Vec<ErrorId> {

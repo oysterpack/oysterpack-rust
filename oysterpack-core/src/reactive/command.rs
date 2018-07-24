@@ -104,7 +104,7 @@ where
 
         self.progress.poll_counter += 1;
         self.progress.last_polled = Some(SystemTime::now());
-        if self.progress.status == Status::CREATED {
+        if let Status::CREATED = self.progress.status {
             self.progress.first_polled = self.progress.last_polled.clone();
             self.progress.status = Status::RUNNING;
         }
@@ -120,14 +120,14 @@ where
             }
             result @ Ok(Async::NotReady) => result,
             Err(err) => {
-                self.progress.status = Status::FAILURE;
+                self.progress.status = Status::FAILURE(err.clone());
                 Err(err.with_context(self.command_error()))
             }
         };
         debug!("{:?}", self.progress);
         if let Some(ref subscriber_chan) = self.progress_sender_chan {
             select! {
-                send(subscriber_chan,self.progress) => debug!("sent progress on subscriber_chan"),
+                send(subscriber_chan,self.progress.clone()) => debug!("sent progress on subscriber_chan"),
                 default => warn!("Unable to send progress on subscriber_chan: {:?}", self.progress)
             }
         }
@@ -159,8 +159,8 @@ where
     }
 
     /// Returns a snapshot of the command's progress
-    pub fn progress(&self) -> Progress {
-        self.progress
+    pub fn progress(&self) -> &Progress {
+        &self.progress
     }
 
     /// CommandId is the unique identifier for the command - across all instances.
@@ -220,7 +220,7 @@ where
 /// // CREATED -|-> RUNNING -|-> SUCCESS
 /// //                       |-> FAILURE
 /// ```
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Status {
     /// Command future has been created, but has not started running
     CREATED,
@@ -229,13 +229,60 @@ pub enum Status {
     /// Command has completed successfully
     SUCCESS,
     /// Command has completed with an error
-    FAILURE,
+    FAILURE(errors::Error),
     /// Command was cancelled
     CANCELLED,
 }
 
+impl Status {
+    /// Returns true if status == CREATED
+    pub fn created(&self) -> bool {
+        if let Status::CREATED = *self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if status == RUNNING
+    pub fn running(&self) -> bool {
+        if let Status::RUNNING = *self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if status == SUCCESS
+    pub fn success(&self) -> bool {
+        if let Status::SUCCESS = *self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if status == FAILURE
+    pub fn failure(&self) -> bool {
+        if let Status::FAILURE(_) = *self {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns true if status == CANCELLED
+    pub fn cancelled(&self) -> bool {
+        if let Status::CANCELLED = *self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Used to track the Command future execution progress
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct Progress {
     id: CommandId,
     instance_id: InstanceId,
@@ -282,8 +329,8 @@ impl Progress {
     }
 
     /// Command status
-    pub fn status(&self) -> Status {
-        self.status
+    pub fn status(&self) -> &Status {
+        &self.status
     }
 
     /// the number of times the future has been polled
