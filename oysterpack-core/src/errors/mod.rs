@@ -39,6 +39,7 @@ mod tests;
 #[derive(Debug, Fail, Clone)]
 pub struct Error {
     id: ErrorId,
+    instance: InstanceId,
     #[cause]
     failure: SharedFailure,
 }
@@ -63,6 +64,7 @@ impl Error {
     pub fn new(id: ErrorId, failure: impl Fail) -> Error {
         Error {
             id,
+            instance: InstanceId::new(),
             failure: SharedFailure::new(failure),
         }
     }
@@ -100,7 +102,7 @@ impl Error {
         D: fmt::Display + Send + Sync + 'static,
         Self: Sized,
     {
-        Error::new(self.id, self.context(context))
+        Error::new(self.id, self.failure.context(context))
     }
 }
 
@@ -144,6 +146,36 @@ impl From<Ulid> for ErrorId {
 }
 
 impl fmt::Display for ErrorId {
+    /// Displays the id in lower hex format
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
+
+/// Unique Error Instance ID.
+/// This enables a specific error to be searched for withing another context, e.g., searching log events.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct InstanceId(pub u128);
+
+impl InstanceId {
+    pub fn new() -> InstanceId {
+        InstanceId(Ulid::new().into())
+    }
+}
+
+impl From<u128> for InstanceId {
+    fn from(id: u128) -> Self {
+        InstanceId(id)
+    }
+}
+
+impl From<Ulid> for InstanceId {
+    fn from(id: Ulid) -> Self {
+        InstanceId(id.into())
+    }
+}
+
+impl fmt::Display for InstanceId {
     /// Displays the id in lower hex format
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:x}", self.0)

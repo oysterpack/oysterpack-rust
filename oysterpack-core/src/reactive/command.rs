@@ -121,7 +121,7 @@ where
             result @ Ok(Async::NotReady) => result,
             Err(err) => {
                 self.progress.status = Status::FAILURE(err.clone());
-                Err(err.with_context(self.command_error()))
+                Err(self.command_error(err))
             }
         };
         debug!("{:?}", self.progress);
@@ -174,12 +174,9 @@ where
         self.progress.instance_id
     }
 
-    fn command_failure(&self) -> CommandFailure {
-        CommandFailure::new(self.id(), self.instance_id())
-    }
-
-    fn command_error(&self) -> errors::Error {
-        self.command_failure().into()
+    fn command_error(&self, error: errors::Error) -> errors::Error {
+        let command_failure = CommandFailure::new(self.id(), self.instance_id(), error.clone());
+        errors::Error::new(COMMAND_FAILURE_ERROR_ID, error.context(command_failure))
     }
 }
 
@@ -404,7 +401,7 @@ pub struct InstanceId(u128);
 
 impl InstanceId {
     pub fn new() -> InstanceId {
-        <InstanceId as From<Ulid>>::from(Ulid::new())
+        InstanceId(Ulid::new().into())
     }
 }
 
@@ -433,38 +430,52 @@ impl fmt::Display for InstanceId {
     }
 }
 
-/// CommandFailure should be used to wrap all command failures, which decorates failures with the
-/// CommandId and InstanceId.
-#[derive(Fail, Debug, Clone)]
-#[fail(display = "Command failed: CommandId({}) InstanceId({})", command_id, instance_id)]
+/// CommandFailure provides the context for command failures
+#[derive(Debug, Clone)]
 pub struct CommandFailure {
     command_id: CommandId,
     instance_id: InstanceId,
+    error: errors::Error,
 }
 
 impl CommandFailure {
     /// CommandFailure constructor
-    pub fn new(command_id: CommandId, instance_id: InstanceId) -> CommandFailure {
+    pub fn new(
+        command_id: CommandId,
+        instance_id: InstanceId,
+        error: errors::Error,
+    ) -> CommandFailure {
         CommandFailure {
             command_id,
             instance_id,
+            error,
         }
     }
 
-    /// CommandId getter
+    /// CommandId for Command that failed.
     pub fn command_id(&self) -> CommandId {
         self.command_id
     }
 
-    /// InstanceId getter
+    /// InstanceId for Command that failed.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
+
+    /// Error that caused the Command failure. This is the Error that is returned by the Command's
+    /// underlying future.
+    pub fn error(&self) -> &errors::Error {
+        &self.error
+    }
 }
 
-impl Into<errors::Error> for CommandFailure {
-    fn into(self) -> errors::Error {
-        errors::Error::new(COMMAND_FAILURE_ERROR_ID, self)
+impl fmt::Display for CommandFailure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CommandFailure(id={}, instance={}) {}",
+            self.command_id, self.instance_id, self.error
+        )
     }
 }
 

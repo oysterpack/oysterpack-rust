@@ -202,16 +202,13 @@ fn command_failure_with_progress_subscriber() {
             info!("Received Err result: {}", e);
             assert_eq!(
                 e.error_id_chain(),
-                vec![
-                    FooError::error_id(),
-                    COMMAND_FAILURE_ERROR_ID,
-                    FooError::error_id(), // BUG: this is duplicated because CommandFailure was added as context
-                ]
+                vec![COMMAND_FAILURE_ERROR_ID, FooError::error_id()]
             );
 
             // TODO: it's too complicated to inspect the error
             let failure: &errors::SharedFailure = e.failure().downcast_ref().unwrap();
-            let failure: &failure::Context<errors::Error> = failure.failure().downcast_ref().unwrap();
+            let failure: &failure::Context<CommandFailure> =
+                failure.failure().downcast_ref().unwrap();
             let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
             let failure: &errors::SharedFailure = failure.failure().downcast_ref().unwrap();
             let failure: &FooError = failure.failure().downcast_ref().unwrap();
