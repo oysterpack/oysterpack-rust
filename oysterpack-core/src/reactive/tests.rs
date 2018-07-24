@@ -206,12 +206,20 @@ fn command_failure_with_progress_subscriber() {
             );
 
             // TODO: it's too complicated to inspect the error
-            let failure: &errors::SharedFailure = e.failure().downcast_ref().unwrap();
+            // Error -> ArcFailure -> Context<CommandFailure> ->
+            let failure: &errors::ArcFailure = e.failure().downcast_ref().unwrap();
             let failure: &failure::Context<CommandFailure> =
                 failure.failure().downcast_ref().unwrap();
             let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
-            let failure: &errors::SharedFailure = failure.failure().downcast_ref().unwrap();
+            let failure: &errors::ArcFailure = failure.failure().downcast_ref().unwrap();
             let failure: &FooError = failure.failure().downcast_ref().unwrap();
+
+            // failure cause chain
+            // &failure::Context<CommandFailure> -> &errors::Error -> &FooError
+            let failure: &failure::Context<CommandFailure> =
+                e.cause().unwrap().downcast_ref().unwrap();
+            let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
+            let failure: &FooError = failure.cause().unwrap().downcast_ref().unwrap();
         }
 
         let progress_events: Vec<_> = progress_receiver.collect();

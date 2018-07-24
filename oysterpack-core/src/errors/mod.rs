@@ -36,12 +36,17 @@ mod tests;
 ///   - see https://boats.gitlab.io/failure/fail.html for more details about the `Fail` trait
 /// - cause provides the error context. The cause itself may be another Error.
 /// - errors are cloneable which enables errors to be sent on multiple channels, e.g., async error logging and tracking
-#[derive(Debug, Fail, Clone)]
+#[derive(Debug, Clone)]
 pub struct Error {
     id: ErrorId,
     instance: InstanceId,
-    #[cause]
-    failure: SharedFailure,
+    failure: ArcFailure,
+}
+
+impl Fail for Error {
+    fn cause(&self) -> Option<&Fail> {
+        Some(self.failure.failure())
+    }
 }
 
 impl fmt::Display for Error {
@@ -65,7 +70,7 @@ impl Error {
         Error {
             id,
             instance: InstanceId::new(),
-            failure: SharedFailure::new(failure),
+            failure: ArcFailure::new(failure),
         }
     }
 
@@ -111,19 +116,19 @@ impl Error {
 /// It will succeed for the following cases:
 /// 1. failure is an Error
 /// 2. the failure type is Context<Error> - the context Error is returned
-/// 3. failure is a SharedFailure, where the underlying failure type is an Error
+/// 3. failure is a ArcFailure, where the underlying failure type is an Error
 ///
 pub fn error_ref(failure: &Fail) -> Option<&Error> {
     if let Some(e) = failure.downcast_ref::<Error>() {
         return Some(e);
     }
 
-    if let Some(e) = failure.downcast_ref::<Context<Error>>() {
-        return Some(e.get_context());
+    if let Some(e) = failure.downcast_ref::<ArcFailure>() {
+        return error_ref(e.failure());
     }
 
-    if let Some(e) = failure.downcast_ref::<SharedFailure>() {
-        return error_ref(e.failure());
+    if let Some(e) = failure.downcast_ref::<Context<Error>>() {
+        return Some(e.get_context());
     }
 
     None
@@ -182,22 +187,22 @@ impl fmt::Display for InstanceId {
     }
 }
 
-/// SharedFailure is a thread-safe reference-counting pointer to an instance of Fail.
+/// ArcFailure is a thread-safe reference-counting pointer to an instance of Fail.
 /// It provides shared ownership to a Fail instance.
 ///
-/// Invoking clone on SharedFailure produces a new pointer to the same value in the heap.
-/// When the last SharedFailure pointer to a given Fail instance is destroyed, the pointed-to Fail
+/// Invoking clone on ArcFailure produces a new pointer to the same Fail instance in the heap.
+/// When the last ArcFailure pointer to a given Fail instance is destroyed, the pointed-to Fail
 /// instance is also destroyed.
 #[derive(Clone, Debug)]
-pub struct SharedFailure(Arc<Fail>);
+pub struct ArcFailure(Arc<Fail>);
 
-impl SharedFailure {
-    /// Wraps the provided error into a `SharedFailure`.
-    pub fn new<T: Fail>(err: T) -> SharedFailure {
-        SharedFailure(Arc::new(err))
+impl ArcFailure {
+    /// Wraps the provided error into a `ArcFailure`.
+    pub fn new<T: Fail>(err: T) -> ArcFailure {
+        ArcFailure(Arc::new(err))
     }
 
-    /// Attempts to downcast this `SharedFailure` to a particular `Fail` type by reference.
+    /// Attempts to downcast this `ArcFailure` to a particular `Fail` type by reference.
     ///
     /// If the underlying error is not of type `T`, this will return [`None`](None()).
     pub fn downcast_ref<T: Fail>(&self) -> Option<&T> {
@@ -210,13 +215,13 @@ impl SharedFailure {
     }
 }
 
-impl Fail for SharedFailure {
+impl Fail for ArcFailure {
     fn cause(&self) -> Option<&Fail> {
         self.0.cause()
     }
 }
 
-impl fmt::Display for SharedFailure {
+impl fmt::Display for ArcFailure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
