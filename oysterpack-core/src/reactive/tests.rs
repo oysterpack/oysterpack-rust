@@ -70,7 +70,7 @@ fn command_future_success_with_no_progress_subscriber() {
         }
     }
 
-    let foo_id = CommandId::new(1);
+    let foo_id = CommandId(1);
 
     run_test(|| {
         let (s, r) = channel::unbounded();
@@ -106,7 +106,7 @@ fn command_success_with_no_progress_subscriber() {
         }
     }
 
-    let foo_id = CommandId::new(1);
+    let foo_id = CommandId(1);
 
     run_test(|| {
         let (s, r) = channel::unbounded();
@@ -142,7 +142,7 @@ fn command_success_with_progress_subscriber() {
         }
     }
 
-    let foo_id = CommandId::new(1);
+    let foo_id = CommandId(1);
 
     run_test(|| {
         let (s, r) = channel::unbounded();
@@ -191,7 +191,7 @@ fn command_failure_with_progress_subscriber() {
         }
     }
 
-    let foo_id = CommandId::new(1);
+    let foo_id = CommandId(1);
 
     run_test(|| {
         let (s, r) = channel::unbounded();

@@ -61,7 +61,6 @@ impl SourceCodeLocation {
 }
 
 impl fmt::Display for SourceCodeLocation {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.module_path, self.line)
     }

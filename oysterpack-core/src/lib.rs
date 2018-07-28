@@ -39,12 +39,14 @@ extern crate serde_json;
 #[macro_use]
 pub mod devops;
 pub use devops::*;
+#[macro_use]
+pub mod uid;
+pub use uid::*;
 
 pub mod build;
 pub mod errors;
 pub mod reactive;
 pub mod time;
-pub mod uid;
 
 #[cfg(test)]
 mod tests;

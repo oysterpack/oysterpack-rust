@@ -365,73 +365,14 @@ impl Progress {
     }
 }
 
-/// Command ID - unique identifier
-// TODO: good use case for a macro
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct CommandId(u128);
-
-impl CommandId {
-    pub fn new(id: u128) -> CommandId {
-        CommandId(id)
-    }
-
-    pub fn value(&self) -> u128 {
-        self.0
-    }
+uid_const! {
+    /// Unique Command ID
+    CommandId
 }
 
-impl From<u128> for CommandId {
-    fn from(id: u128) -> Self {
-        CommandId(id)
-    }
-}
-
-impl From<Ulid> for CommandId {
-    fn from(id: Ulid) -> Self {
-        CommandId(id.into())
-    }
-}
-
-impl fmt::Display for CommandId {
-    /// Displays the id in lower hex format
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:x}", self.0)
-    }
-}
-
-/// Command Instance ID - unique identifier
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct InstanceId(u128);
-
-impl InstanceId {
-    pub fn new() -> InstanceId {
-        InstanceId(Ulid::new().into())
-    }
-}
-
-impl InstanceId {
-    pub fn value(&self) -> u128 {
-        self.0
-    }
-}
-
-impl From<u128> for InstanceId {
-    fn from(id: u128) -> Self {
-        InstanceId(id)
-    }
-}
-
-impl From<Ulid> for InstanceId {
-    fn from(id: Ulid) -> Self {
-        InstanceId(id.into())
-    }
-}
-
-impl fmt::Display for InstanceId {
-    /// Displays the id in lower hex format
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:x}", self.0)
-    }
+uid! {
+    /// Command Instance ID
+    InstanceId
 }
 
 /// CommandFailure provides the context for command failures
