@@ -21,7 +21,8 @@ use time::system_time;
 use tokio::{self, prelude::*};
 
 use tests::*;
-use utils::*;
+use uid::*;
+use devops::SourceCodeLocation;
 
 #[derive(Fail, Debug, Clone, Copy)]
 #[fail(display = "Foo error.")]
@@ -35,12 +36,26 @@ impl FooError {
 
 impl Into<errors::Error> for FooError {
     fn into(self) -> errors::Error {
-        errors::Error::new(FooError::error_id(), self)
+        errors::Error::new(FooError::error_id(), self, SourceCodeLocation::new(module_path!(), line!()))
     }
 }
 
 lazy_static! {
     static ref FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(uid());
+}
+
+fn line() -> u32 {
+    line!()
+}
+
+#[test]
+fn line_numbers() {
+    run_test(|| {
+        info!("line = {}", line());
+        info!("line = {}", line());
+        info!("file {}", file!());
+        info!("module_path {}", module_path!());
+    });
 }
 
 #[test]

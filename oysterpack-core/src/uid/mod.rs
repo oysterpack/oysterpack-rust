@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! OysterPack utils
+//! Provides support to generate universally unique identifiers.
 
 use rusty_ulid::{new_ulid_string, Ulid};
 

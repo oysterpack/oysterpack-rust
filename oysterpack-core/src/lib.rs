@@ -40,7 +40,8 @@ pub mod build;
 pub mod errors;
 pub mod reactive;
 pub mod time;
-pub mod utils;
+pub mod uid;
+pub mod devops;
 
 //mod monix;
 

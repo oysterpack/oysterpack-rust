@@ -26,7 +26,8 @@
 
 use failure::{Context, Fail};
 use rusty_ulid::Ulid;
-use std::{fmt, ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc, time::SystemTime};
+use devops::SourceCodeLocation;
 
 #[cfg(test)]
 mod tests;
@@ -41,6 +42,8 @@ pub struct Error {
     id: ErrorId,
     instance: InstanceId,
     failure: ArcFailure,
+    timestamp: SystemTime,
+    loc: SourceCodeLocation
 }
 
 impl Fail for Error {
@@ -66,11 +69,13 @@ impl fmt::Display for Error {
 
 impl Error {
     /// Error constructor
-    pub fn new(id: ErrorId, failure: impl Fail) -> Error {
+    pub fn new(id: ErrorId, failure: impl Fail, loc: SourceCodeLocation) -> Error {
         Error {
             id,
             instance: InstanceId::new(),
             failure: ArcFailure::new(failure),
+            timestamp: SystemTime::now(),
+            loc
         }
     }
 
@@ -83,6 +88,9 @@ impl Error {
     pub fn failure(&self) -> &Fail {
         &self.failure
     }
+
+    /// When the error occurred.
+    pub fn timestamp(&self) -> SystemTime {self.timestamp}
 
     // TODO: This needs more structure to depict the error chain. Each error can have its own error chain.
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
@@ -99,15 +107,6 @@ impl Error {
         }
 
         error_ids
-    }
-
-    /// Returns a new Error with the specified context.
-    pub fn with_context<D>(self, context: D) -> Error
-    where
-        D: fmt::Display + Send + Sync + 'static,
-        Self: Sized,
-    {
-        Error::new(self.id, self.failure.context(context))
     }
 }
 
