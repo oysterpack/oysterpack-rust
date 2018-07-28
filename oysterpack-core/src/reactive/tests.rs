@@ -22,7 +22,6 @@ use tokio::{self, prelude::*};
 
 use tests::*;
 use uid::*;
-use devops::SourceCodeLocation;
 
 #[derive(Fail, Debug, Clone, Copy)]
 #[fail(display = "Foo error.")]
@@ -36,7 +35,7 @@ impl FooError {
 
 impl Into<errors::Error> for FooError {
     fn into(self) -> errors::Error {
-        errors::Error::new(FooError::error_id(), self, SourceCodeLocation::new(module_path!(), line!()))
+        errors::Error::new(FooError::error_id(), self, src_loc!())
     }
 }
 
@@ -227,14 +226,14 @@ fn command_failure_with_progress_subscriber() {
                 failure.failure().downcast_ref().unwrap();
             let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
             let failure: &errors::ArcFailure = failure.failure().downcast_ref().unwrap();
-            let failure: &FooError = failure.failure().downcast_ref().unwrap();
+            let _: &FooError = failure.failure().downcast_ref().unwrap();
 
             // failure cause chain
             // &failure::Context<CommandFailure> -> &errors::Error -> &FooError
             let failure: &failure::Context<CommandFailure> =
                 e.cause().unwrap().downcast_ref().unwrap();
             let failure: &errors::Error = failure.cause().unwrap().downcast_ref().unwrap();
-            let failure: &FooError = failure.cause().unwrap().downcast_ref().unwrap();
+            let _: &FooError = failure.cause().unwrap().downcast_ref().unwrap();
         }
 
         let progress_events: Vec<_> = progress_receiver.collect();

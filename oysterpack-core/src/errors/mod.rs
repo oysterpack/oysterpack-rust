@@ -24,13 +24,24 @@
 //!   2. the library crate - the error was produced by which library
 //!
 
+use chrono::{DateTime, Utc};
+use devops::SourceCodeLocation;
 use failure::{Context, Fail};
 use rusty_ulid::Ulid;
-use std::{fmt, ops::Deref, sync::Arc, time::SystemTime};
-use devops::SourceCodeLocation;
+use std::{fmt, sync::Arc};
 
 #[cfg(test)]
 mod tests;
+
+/// Returns devops::SourceCodeLocation, which refers to the source code location where this macro was invoked.
+#[macro_export]
+macro_rules! failure {
+    ($err_id:expr, $fail:expr) => {{
+        use devops;
+        use errors::Error;
+        Error::new($err_id, $fail, src_loc!())
+    }};
+}
 
 /// Decorates the failure cause with an ErrorId.
 /// - cause must implement the `Fail` trait
@@ -40,10 +51,10 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct Error {
     id: ErrorId,
+    timestamp: DateTime<Utc>,
+    loc: SourceCodeLocation,
     instance: InstanceId,
     failure: ArcFailure,
-    timestamp: SystemTime,
-    loc: SourceCodeLocation
 }
 
 impl Fail for Error {
@@ -58,7 +69,7 @@ impl fmt::Display for Error {
 
         let fail: &Fail = self.failure();
         if let Some(e) = fail.downcast_ref::<Context<Error>>() {
-            write!(f, "-({})", e.get_context())?;
+            write!(f, "({})", e.get_context())?;
             // Context will always have a cause, i.e., the underlying Error
             write!(f, "-({})", e.cause().unwrap())
         } else {
@@ -68,15 +79,18 @@ impl fmt::Display for Error {
 }
 
 impl Error {
-    /// Error constructor
+    /// Error constructor.
+    /// The error is logged.
     pub fn new(id: ErrorId, failure: impl Fail, loc: SourceCodeLocation) -> Error {
-        Error {
+        let err = Error {
             id,
             instance: InstanceId::new(),
             failure: ArcFailure::new(failure),
-            timestamp: SystemTime::now(),
-            loc
-        }
+            timestamp: Utc::now(),
+            loc,
+        };
+        error!("{}", err);
+        err
     }
 
     /// ErrorId getter
@@ -90,7 +104,13 @@ impl Error {
     }
 
     /// When the error occurred.
-    pub fn timestamp(&self) -> SystemTime {self.timestamp}
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+
+    pub fn loc(&self) -> &SourceCodeLocation {
+        &self.loc
+    }
 
     // TODO: This needs more structure to depict the error chain. Each error can have its own error chain.
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
@@ -196,9 +216,16 @@ impl fmt::Display for InstanceId {
 pub struct ArcFailure(Arc<Fail>);
 
 impl ArcFailure {
-    /// Wraps the provided error into a `ArcFailure`.
-    pub fn new<T: Fail>(err: T) -> ArcFailure {
-        ArcFailure(Arc::new(err))
+    /// Wraps the provided error into an `ArcFailure`.
+    /// If the failure already is an ArcFailure, then it will be cloned and returned.
+    pub fn new(failure: impl Fail) -> ArcFailure {
+        let failure = ArcFailure(Arc::new(failure));
+        {
+            if let Some(failure) = failure.downcast_ref::<ArcFailure>() {
+                return failure.clone();
+            }
+        }
+        failure
     }
 
     /// Attempts to downcast this `ArcFailure` to a particular `Fail` type by reference.

@@ -36,14 +36,15 @@ extern crate semver;
 extern crate serde;
 extern crate serde_json;
 
+#[macro_use]
+pub mod devops;
+pub use devops::*;
+
 pub mod build;
 pub mod errors;
 pub mod reactive;
 pub mod time;
 pub mod uid;
-pub mod devops;
-
-//mod monix;
 
 #[cfg(test)]
 mod tests;

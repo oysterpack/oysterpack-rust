@@ -15,7 +15,6 @@
 use super::*;
 use failure;
 use tests::*;
-use devops::SourceCodeLocation;
 
 const ERR_1: ErrorId = ErrorId(1);
 const ERR_2: ErrorId = ErrorId(2);
@@ -36,9 +35,9 @@ enum ClientError {
 impl Into<Error> for ClientError {
     fn into(self) -> Error {
         match self {
-            ClientError::Err1 => Error::new(ERR_1, self, SourceCodeLocation::new(module_path!(), line!())),
-            ClientError::Err2 => Error::new(ERR_2, self, SourceCodeLocation::new(module_path!(), line!())),
-            ClientError::Err3 => Error::new(ERR_3, self, SourceCodeLocation::new(module_path!(), line!())),
+            ClientError::Err1 => Error::new(ERR_1, self, src_loc!()),
+            ClientError::Err2 => Error::new(ERR_2, self, src_loc!()),
+            ClientError::Err3 => Error::new(ERR_3, self, src_loc!()),
         }
     }
 }
@@ -78,7 +77,7 @@ fn error_context() {
             assert_eq!(err.id(), ERR_1);
         }
 
-        let err = Error::new(ERR_2, failure, SourceCodeLocation::new(module_path!(), line!()));
+        let err = Error::new(ERR_2, failure, src_loc!());
         info!("err -> {}", err);
         debug!("err -> {:?}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_3, ERR_1]);
@@ -89,9 +88,9 @@ fn error_context() {
 fn error_id_chain() {
     run_test(|| {
         let err: Error = ClientError::Err1.into();
-        let err = Error::new(ERR_4, err, SourceCodeLocation::new(module_path!(), line!()));
-        let err = Error::new(ERR_5, err, SourceCodeLocation::new(module_path!(), line!()));
-        let err = Error::new(ERR_3, err, SourceCodeLocation::new(module_path!(), line!()));
+        let err = Error::new(ERR_4, err, src_loc!());
+        let err = Error::new(ERR_5, err, src_loc!());
+        let err = Error::new(ERR_3, err, src_loc!());
         info!("error_id_chain: {}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_1]);
     });

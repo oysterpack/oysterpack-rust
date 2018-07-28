@@ -14,6 +14,21 @@
 
 //! Provides support for DevOps tooling.
 
+/// Returns devops::SourceCodeLocation, which refers to the source code location where this macro was invoked.
+/// - `oysterpack_core::devops` needs to be in scope for this macro to function
+#[macro_export]
+macro_rules! src_loc {
+    () => {{
+        use devops;
+        devops::SourceCodeLocation::new(module_path!(), line!())
+    }};
+}
+
+#[cfg(test)]
+mod tests;
+
+use std::fmt;
+
 /// Refers to a source code location.
 /// This can be used to include information regarding where an error or events occur in the code.
 /// This will improve traceability.
@@ -24,13 +39,30 @@ pub struct SourceCodeLocation {
 }
 
 impl SourceCodeLocation {
-
     /// constructor - use the module_path!() and line!() macros provided by rust.
-    pub fn new(module_path: &'static str, line: u32) -> SourceCodeLocation { SourceCodeLocation {module_path,line}}
+    pub fn new(module_path: &'static str, line: u32) -> SourceCodeLocation {
+        SourceCodeLocation { module_path, line }
+    }
 
     /// refers source code line number
-    pub fn line(&self) -> u32 {self.line}
+    pub fn line(&self) -> u32 {
+        self.line
+    }
 
     /// refers to the source code module path
-    pub fn module_path(&self) -> u32 {self.line}
+    pub fn module_path(&self) -> &'static str {
+        self.module_path
+    }
+
+    /// returns the crate name, which is extracted from the module path
+    pub fn crate_name(&self) -> &'static str {
+        self.module_path.split("::").next().unwrap()
+    }
+}
+
+impl fmt::Display for SourceCodeLocation {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.module_path, self.line)
+    }
 }

@@ -52,7 +52,6 @@
 
 use crossbeam_channel as channel;
 use errors;
-use devops::SourceCodeLocation;
 use failure::Fail;
 use rusty_ulid::Ulid;
 use std::{
@@ -177,7 +176,11 @@ where
 
     fn command_error(&self, error: errors::Error) -> errors::Error {
         let command_failure = CommandFailure::new(self.id(), self.instance_id(), error.clone());
-        errors::Error::new(COMMAND_FAILURE_ERROR_ID, error.context(command_failure), SourceCodeLocation::new(module_path!(), line!()))
+        errors::Error::new(
+            COMMAND_FAILURE_ERROR_ID,
+            error.context(command_failure),
+            src_loc!(),
+        )
     }
 }
 
