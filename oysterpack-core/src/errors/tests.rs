@@ -32,20 +32,42 @@ enum ClientError {
     Err3,
 }
 
-impl Into<Error> for ClientError {
-    fn into(self) -> Error {
-        match self {
-            ClientError::Err1 => op_failure!(ERR_1, self),
-            ClientError::Err2 => op_failure!(ERR_2, self),
-            ClientError::Err3 => op_failure!(ERR_3, self),
-        }
-    }
+error_macro!(Err5, ERR_5);
+
+macro_rules! Err1 {
+    () => {
+        op_failure!(ERR_1, ClientError::Err1)
+    };
+}
+
+macro_rules! Err2 {
+    () => {
+        op_failure!(ERR_2, ClientError::Err2)
+    };
+}
+
+macro_rules! Err3 {
+    () => {
+        op_failure!(ERR_3, ClientError::Err3)
+    };
+}
+
+#[test]
+fn generated_error_macro() {
+    run_test(|| {
+        let err: Error = Err5!(ClientError::Err1);
+
+        info!("{}", err);
+        debug!("{:?}", err);
+
+        assert_eq!(err.error_id_chain(), vec![err.id]);
+    });
 }
 
 #[test]
 fn simple_error() {
     run_test(|| {
-        let err: Error = ClientError::Err1.into();
+        let err: Error = Err1!();
 
         info!("{}", err);
         debug!("{:?}", err);
@@ -57,10 +79,10 @@ fn simple_error() {
 #[test]
 fn error_context() {
     run_test(|| {
-        let err: Error = ClientError::Err1.into();
+        let err: Error = Err1!();
 
         // wrap the error with context using a new Error
-        let context: Error = ClientError::Err3.into();
+        let context: Error = Err3!();
         info!("context : {:?}", context);
         let failure: failure::Context<Error> = err.context(context.clone());
 
@@ -87,11 +109,11 @@ fn error_context() {
 #[test]
 fn error_id_chain() {
     run_test(|| {
-        let err: Error = ClientError::Err1.into();
+        let err: Error = Err2!();
         let err = op_failure!(ERR_4, err);
         let err = op_failure!(ERR_5, err);
         let err = op_failure!(ERR_3, err);
         info!("error_id_chain: {}", err);
-        assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_1]);
+        assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_2]);
     });
 }

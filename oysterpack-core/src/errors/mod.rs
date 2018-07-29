@@ -57,16 +57,7 @@ impl Fail for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ERR[{}]", self.id)?;
-
-        let fail: &Fail = self.failure();
-        if let Some(e) = fail.downcast_ref::<Context<Error>>() {
-            write!(f, "({})", e.get_context())?;
-            // Context will always have a cause, i.e., the underlying Error
-            write!(f, "-({})", e.cause().unwrap())
-        } else {
-            write!(f, "-({})", fail)
-        }
+        write!(f, "{:?}", self)
     }
 }
 
@@ -74,15 +65,13 @@ impl Error {
     /// Error constructor.
     /// The error is logged.
     pub fn new(id: ErrorId, failure: impl Fail, loc: SourceCodeLocation) -> Error {
-        let err = Error {
+        Error {
             id,
             instance: InstanceId::new(),
             failure: ArcFailure::new(failure),
             timestamp: Utc::now(),
             loc,
-        };
-        error!("{}", err);
-        err
+        }
     }
 
     /// ErrorId getter
