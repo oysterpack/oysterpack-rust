@@ -35,9 +35,9 @@ enum ClientError {
 impl Into<Error> for ClientError {
     fn into(self) -> Error {
         match self {
-            ClientError::Err1 => Error::new(ERR_1, self, src_loc!()),
-            ClientError::Err2 => Error::new(ERR_2, self, src_loc!()),
-            ClientError::Err3 => Error::new(ERR_3, self, src_loc!()),
+            ClientError::Err1 => op_failure!(ERR_1, self),
+            ClientError::Err2 => op_failure!(ERR_2, self),
+            ClientError::Err3 => op_failure!(ERR_3, self),
         }
     }
 }
@@ -77,7 +77,7 @@ fn error_context() {
             assert_eq!(err.id(), ERR_1);
         }
 
-        let err = Error::new(ERR_2, failure, src_loc!());
+        let err = op_failure!(ERR_2, failure);
         info!("err -> {}", err);
         debug!("err -> {:?}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_3, ERR_1]);
@@ -88,9 +88,9 @@ fn error_context() {
 fn error_id_chain() {
     run_test(|| {
         let err: Error = ClientError::Err1.into();
-        let err = Error::new(ERR_4, err, src_loc!());
-        let err = Error::new(ERR_5, err, src_loc!());
-        let err = Error::new(ERR_3, err, src_loc!());
+        let err = op_failure!(ERR_4, err);
+        let err = op_failure!(ERR_5, err);
+        let err = op_failure!(ERR_3, err);
         info!("error_id_chain: {}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_1]);
     });

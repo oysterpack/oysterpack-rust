@@ -12,35 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[macro_use]
-extern crate oysterpack_core;
+//! error related macros
 
-op_id!{
-    /// EventId comments can be specified.
-    EventId
-}
-
-#[test]
-fn event_id() {
-    let id = EventId::new();
-    println!("{:?}", id);
-}
-
-op_id!{Id}
-
-#[test]
-fn id() {
-    let id = Id::new();
-    println!("{:?}", id);
-}
-
-op_const_id! {
-    /// Unique Command ID
-    CommandId
-}
-
-#[test]
-fn command_id() {
-    let id = CommandId(1);
-    println!("{:?}", id);
+/// Invokes Error::new($err_id, $fail, src_loc!())
+///
+/// # Example
+///
+#[macro_export]
+macro_rules! op_failure {
+    ($err_id:expr, $fail:expr) => {{
+        use $crate::errors::Error;
+        Error::new($err_id, $fail, op_src_loc!())
+    }};
 }

@@ -35,7 +35,7 @@ impl FooError {
 
 impl Into<errors::Error> for FooError {
     fn into(self) -> errors::Error {
-        errors::Error::new(FooError::error_id(), self, src_loc!())
+        errors::Error::new(FooError::error_id(), self, op_src_loc!())
     }
 }
 

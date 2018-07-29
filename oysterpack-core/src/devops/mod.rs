@@ -14,15 +14,8 @@
 
 //! Provides support for DevOps tooling.
 
-/// Returns devops::SourceCodeLocation, which refers to the source code location where this macro was invoked.
-/// - `oysterpack_core::devops` needs to be in scope for this macro to function
-#[macro_export]
-macro_rules! src_loc {
-    () => {{
-        use devops;
-        devops::SourceCodeLocation::new(module_path!(), line!())
-    }};
-}
+#[macro_use]
+mod macros;
 
 #[cfg(test)]
 mod tests;

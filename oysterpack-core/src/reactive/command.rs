@@ -53,7 +53,6 @@
 use crossbeam_channel as channel;
 use errors;
 use failure::Fail;
-use rusty_ulid::Ulid;
 use std::{
     fmt::{self, Debug}, time::{Duration, Instant, SystemTime},
 };
@@ -176,11 +175,7 @@ where
 
     fn command_error(&self, error: errors::Error) -> errors::Error {
         let command_failure = CommandFailure::new(self.id(), self.instance_id(), error.clone());
-        errors::Error::new(
-            COMMAND_FAILURE_ERROR_ID,
-            error.context(command_failure),
-            src_loc!(),
-        )
+        op_failure!(COMMAND_FAILURE_ERROR_ID, error.context(command_failure))
     }
 }
 
@@ -365,12 +360,12 @@ impl Progress {
     }
 }
 
-uid_const! {
+op_const_id! {
     /// Unique Command ID
     CommandId
 }
 
-uid! {
+op_id! {
     /// Command Instance ID
     InstanceId
 }

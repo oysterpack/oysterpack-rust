@@ -29,18 +29,11 @@ use devops::SourceCodeLocation;
 use failure::{Context, Fail};
 use std::{fmt, sync::Arc};
 
+#[macro_use]
+mod macros;
+
 #[cfg(test)]
 mod tests;
-
-/// Returns devops::SourceCodeLocation, which refers to the source code location where this macro was invoked.
-#[macro_export]
-macro_rules! failure {
-    ($err_id:expr, $fail:expr) => {{
-        use devops;
-        use errors::Error;
-        Error::new($err_id, $fail, src_loc!())
-    }};
-}
 
 /// Decorates the failure cause with an ErrorId.
 /// - cause must implement the `Fail` trait
@@ -152,12 +145,12 @@ pub fn error_ref(failure: &Fail) -> Option<&Error> {
     None
 }
 
-uid_const! {
+op_const_id! {
     /// Unique Error ID
     ErrorId
 }
 
-uid!{
+op_id! {
     /// Unique Error Instance ID.
     /// This enables a specific error to be searched for withing another context, e.g., searching log events.
     InstanceId

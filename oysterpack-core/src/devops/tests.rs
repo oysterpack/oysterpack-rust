@@ -18,7 +18,7 @@ use tests;
 #[test]
 fn macro_src_loc() {
     tests::run_test(|| {
-        let src_loc: SourceCodeLocation = src_loc!();
+        let src_loc: SourceCodeLocation = op_src_loc!();
         debug!("src_loc = '{:?}'", src_loc);
         assert_eq!(src_loc.module_path(), "oysterpack_core::devops::tests");
         assert_eq!(src_loc.crate_name(), "oysterpack_core");
@@ -37,6 +37,6 @@ mod foo {
     use devops::SourceCodeLocation;
 
     pub(crate) fn src_loc() -> SourceCodeLocation {
-        src_loc!()
+        op_src_loc!()
     }
 }

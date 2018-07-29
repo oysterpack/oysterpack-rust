@@ -12,35 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[macro_use]
-extern crate oysterpack_core;
+//! devops macros
 
-op_id!{
-    /// EventId comments can be specified.
-    EventId
-}
-
-#[test]
-fn event_id() {
-    let id = EventId::new();
-    println!("{:?}", id);
-}
-
-op_id!{Id}
-
-#[test]
-fn id() {
-    let id = Id::new();
-    println!("{:?}", id);
-}
-
-op_const_id! {
-    /// Unique Command ID
-    CommandId
-}
-
-#[test]
-fn command_id() {
-    let id = CommandId(1);
-    println!("{:?}", id);
+/// Returns devops::SourceCodeLocation, which refers to the source code location where this macro was invoked.
+#[macro_export]
+macro_rules! op_src_loc {
+    () => {{
+        $crate::devops::SourceCodeLocation::new(module_path!(), line!())
+    }};
 }

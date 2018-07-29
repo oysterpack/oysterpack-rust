@@ -15,11 +15,11 @@
 #[macro_use]
 extern crate oysterpack_core;
 
-use oysterpack_core::devops::{self, SourceCodeLocation};
+use oysterpack_core::devops::SourceCodeLocation;
 
 #[test]
 fn macro_src_loc() {
-    let src_loc: SourceCodeLocation = src_loc!();
+    let src_loc: SourceCodeLocation = op_src_loc!();
     println!("src_loc = '{:?}'", src_loc);
     assert_eq!(src_loc.module_path(), "devops");
     assert_eq!(src_loc.crate_name(), "devops");
@@ -36,6 +36,6 @@ mod foo {
     use oysterpack_core::devops::SourceCodeLocation;
 
     pub(crate) fn src_loc() -> SourceCodeLocation {
-        src_loc!()
+        op_src_loc!()
     }
 }

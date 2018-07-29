@@ -16,69 +16,8 @@
 
 use rusty_ulid::{new_ulid_string, Ulid};
 
-/// Defines a new public struct for a universally unique identifier that is randomly generated.
-/// Documentation comments are optional.
-/// - `oysterpack_core::uid` needs to be in scope for this macro to function
-#[macro_export]
-macro_rules! uid {
-    (
-        $(#[$outer:meta])*
-        $UidName:ident
-    ) => {
-        $(#[$outer])*
-        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-        pub struct $UidName(u128);
-
-        impl $UidName {
-            /// constructs a new universally unique identifier
-            pub fn new() -> $UidName {
-                $UidName(::uid())
-            }
-
-            /// returns the id
-            pub fn id(&self) -> u128 {
-                self.0
-            }
-        }
-
-        impl ::std::fmt::Display for $UidName {
-            /// Displays the id in lower hex format
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{:x}", self.0)
-            }
-        }
-    };
-}
-
-/// Defines a new public struct for unique identifiers that need to be defined as constants.
-/// Documentation comments are optional.
-/// - `oysterpack_core::uid` needs to be in scope for this macro to function
-#[macro_export]
-macro_rules! uid_const {
-    (
-        $(#[$outer:meta])*
-        $UidName:ident
-    ) => {
-        $(#[$outer])*
-        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-        pub struct $UidName(pub u128);
-
-        impl $UidName {
-
-            /// returns the id
-            pub fn id(&self) -> u128 {
-                self.0
-            }
-        }
-
-        impl ::std::fmt::Display for $UidName {
-            /// Displays the id in lower hex format
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{:x}", self.0)
-            }
-        }
-    };
-}
+#[macro_use]
+mod macros;
 
 /// Returns a universally unique ddentifier
 pub fn uid() -> u128 {

@@ -46,3 +46,6 @@
 - [ ] Unit test code coverage must be 100%
 - [ ] Public API must have integration tests
 - [ ] Performance critical APIs must have benchmark tests
+
+## Macros
+- [ ] All OysterPack macros will be prefixed with `op_`, e.g., `op_id!{ UserId }`

@@ -36,15 +36,17 @@ extern crate semver;
 extern crate serde;
 extern crate serde_json;
 
+// The module declaration order matters because of macro dependencies.
+// The errors module depends on the macros defined within devops and uid modules.
+// Thus, the devops and uid modules need to be brought into scope before the errors module.
 #[macro_use]
 pub mod devops;
-pub use devops::*;
 #[macro_use]
 pub mod uid;
-pub use uid::*;
+#[macro_use]
+pub mod errors;
 
 pub mod build;
-pub mod errors;
 pub mod reactive;
 pub mod time;
 
