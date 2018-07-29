@@ -17,23 +17,37 @@
 /// Defines a new public struct for a universally unique identifier that is randomly generated.
 /// Documentation comments are optional.
 ///
-/// # Examples
+/// `op_id!{EventId}` will generate a public struct named `EventId`.
+/// - It will have the following methods:
+///   - `pub fn new() -> EventId`
+///   - `pub fn id(&self) -> u128`
+/// - It will implement the following traits:
+///   - Debug,
+///   - Copy, Clone,
+///   - Ord, PartialOrd,
+///   - Eq, PartialEq, Hash,
+///   - std::fmt::Display
+///   - serde::Serialize, serde::Deserialize
+///     - external crates will need to import the macros from `serde_derive`
+///
+/// # Example
 ///
 /// ```rust
 /// #[macro_use]
 /// extern crate oysterpack_core;
+/// #[macro_use]
+/// extern crate serde_derive;
 ///
 /// op_id! {
-///   /// EventId comments can be specified.
+///   /// Universally unique identifier for events
 ///   EventId
 /// }
 ///
 /// fn main() {
-///    /// EventId has been defined above
-///    let id = EventId::new();
-///    println!("{}", id);
+///    // generate a new universally unique EventId
+///    let event_id = EventId::new();
+///    let _: u128 = event_id.id();
 /// }
-///
 /// ```
 #[macro_export]
 macro_rules! op_id {
@@ -42,7 +56,7 @@ macro_rules! op_id {
         $UidName:ident
     ) => {
         $(#[$outer])*
-        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
         pub struct $UidName(u128);
 
         impl $UidName {
@@ -68,6 +82,40 @@ macro_rules! op_id {
 
 /// Defines a new public struct for unique identifiers that need to be defined as constants.
 /// Documentation comments are optional.
+///
+/// `op_const_id!{EventId}` will generate a public struct named `EventId`.
+/// - it is defined as a tuple struct
+/// - It will have the following methods:
+///   - `pub fn id(&self) -> u128`
+/// - It will implement the following traits:
+///   - Debug,
+///   - Copy, Clone,
+///   - Ord, PartialOrd,
+///   - Eq, PartialEq, Hash,
+///   - std::fmt::Display
+///   - serde::Serialize, serde::Deserialize
+///     - external crates will need to import the macros from `serde_derive`
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate oysterpack_core;
+/// #[macro_use]
+/// extern crate serde_derive;
+///
+/// op_const_id! {
+///   /// Error ID
+///   ErrorId
+/// }
+///
+/// const ERR_1: ErrorId = ErrorId(1);
+///
+/// fn main() {
+///    let err_id = ERR_1.id();
+///    assert_eq!(ERR_1, ErrorId(err_id));
+/// }
+/// ```
 #[macro_export]
 macro_rules! op_const_id {
     (
@@ -75,7 +123,7 @@ macro_rules! op_const_id {
         $UidName:ident
     ) => {
         $(#[$outer])*
-        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
         pub struct $UidName(pub u128);
 
         impl $UidName {

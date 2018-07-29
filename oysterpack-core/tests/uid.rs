@@ -14,6 +14,9 @@
 
 #[macro_use]
 extern crate oysterpack_core;
+//
+#[macro_use]
+extern crate serde_derive;
 
 op_id!{
     /// EventId comments can be specified.

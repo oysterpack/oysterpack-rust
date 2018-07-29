@@ -31,10 +31,10 @@ extern crate crossbeam_channel;
 extern crate failure;
 #[macro_use]
 extern crate serde_derive;
-extern crate built;
-extern crate semver;
 extern crate serde;
 extern crate serde_json;
+extern crate built;
+extern crate semver;
 
 // The module declaration order matters because of macro dependencies.
 // The errors module depends on the macros defined within devops and uid modules.
