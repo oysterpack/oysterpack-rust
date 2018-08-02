@@ -36,20 +36,28 @@ error_macro!(Err5, ERR_5);
 
 macro_rules! Err1 {
     () => {
-        op_failure!(ERR_1, ClientError::Err1)
+        op_error!(ERR_1, ClientError::Err1)
     };
 }
 
 macro_rules! Err2 {
     () => {
-        op_failure!(ERR_2, ClientError::Err2)
+        op_error!(ERR_2, ClientError::Err2)
     };
 }
 
 macro_rules! Err3 {
     () => {
-        op_failure!(ERR_3, ClientError::Err3)
+        op_error!(ERR_3, ClientError::Err3)
     };
+}
+
+#[test]
+fn arc_failure_downcast_ref() {
+    let err = Err3!();
+    let err = ArcFailure::new(err);
+    assert!(err.downcast_ref::<Error>().is_some());
+    assert!(err.downcast_ref::<ArcFailure>().is_none());
 }
 
 #[test]
@@ -80,29 +88,28 @@ fn simple_error() {
 fn error_context() {
     run_test(|| {
         let err: Error = Err1!();
+        let err_with_context = err.context("Some context");
 
-        // wrap the error with context using a new Error
-        let context: Error = Err3!();
-        info!("context : {:?}", context);
-        let failure: failure::Context<Error> = err.context(context.clone());
-
-        info!("failure -> {}", failure);
-        debug!("failure -> {:?}", failure);
+        info!("err_with_context -> {}", err_with_context);
+        debug!("err_with_context -> {:?}", err_with_context);
 
         // the context overrides the Error's Display
-        assert_eq!(format!("{}", context), format!("{}", failure));
+        assert_eq!(
+            format!("{}", err_with_context),
+            format!("{}", err_with_context)
+        );
 
         {
             // the failure cause is the underlying failure
-            let cause = failure.cause().unwrap();
+            let cause = err_with_context.cause().unwrap();
             let err: &Error = cause.downcast_ref::<Error>().unwrap();
             assert_eq!(err.id(), ERR_1);
         }
 
-        let err = op_failure!(ERR_2, failure);
+        let err = op_error!(ERR_2, err_with_context);
         info!("err -> {}", err);
         debug!("err -> {:?}", err);
-        assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_3, ERR_1]);
+        assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_1]);
     });
 }
 
@@ -110,9 +117,9 @@ fn error_context() {
 fn error_id_chain() {
     run_test(|| {
         let err: Error = Err2!();
-        let err = op_failure!(ERR_4, err);
-        let err = op_failure!(ERR_5, err);
-        let err = op_failure!(ERR_3, err);
+        let err = op_error!(ERR_4, err);
+        let err = op_error!(ERR_5, err);
+        let err = op_error!(ERR_3, err);
         info!("error_id_chain: {}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_2]);
     });

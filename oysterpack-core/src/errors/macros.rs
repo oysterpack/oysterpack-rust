@@ -22,12 +22,12 @@
 /// - `#[macro_use] extern crate log`
 ///
 /// # Example
-/// `op_failure!(ERR_AUTHZ_FAILED, failure);`
+/// `op_error!(ERR_AUTHZ_FAILED, failure);`
 ///
 /// where ERR_AUTHZ_FAILED is an `errors::ErrorId` and failure's type is `failure::Fail`
 ///
 #[macro_export]
-macro_rules! op_failure {
+macro_rules! op_error {
     ($err_id:expr, $fail:expr) => {{
         use $crate::errors::Error;
         let err = Error::new($err_id, $fail, op_src_loc!());
@@ -50,7 +50,7 @@ macro_rules! error_macro {
     ($name:ident, $err_id:expr) => {
         macro_rules! $name {
             ($failure: expr) => {
-                op_failure!($err_id, $failure)
+                op_error!($err_id, $failure)
             };
         }
     };

@@ -19,7 +19,8 @@ tokio = "0.1"
 chrono = { version = "0.4", features = ["serde", "time"] }
 rusty_ulid = "0.4.1"
 lazy_static = "1"
-failure = "0.1"
+failure = "0.1.2"
+failure_derive = "0.1.2"
 semver = "0.9"
 built = "0.3"
 

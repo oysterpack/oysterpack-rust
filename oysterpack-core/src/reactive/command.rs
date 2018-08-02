@@ -175,7 +175,7 @@ where
 
     fn command_error(&self, error: errors::Error) -> errors::Error {
         let command_failure = CommandFailure::new(self.id(), self.instance_id(), error.clone());
-        op_failure!(COMMAND_FAILURE_ERROR_ID, error.context(command_failure))
+        op_error!(COMMAND_FAILURE_ERROR_ID, error.context(command_failure))
     }
 }
 

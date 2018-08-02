@@ -26,8 +26,8 @@
 
 use chrono::{DateTime, Utc};
 use devops::SourceCodeLocation;
-use failure::{Context, Fail};
-use std::{fmt, sync::Arc};
+use failure::Fail;
+use std::{collections::HashSet, fmt, sync::Arc};
 
 #[macro_use]
 mod macros;
@@ -50,6 +50,8 @@ pub struct Error {
 }
 
 impl Fail for Error {
+    /// The failure that caused the Error is returned, i.e., the failure that is mapped to the ErrorId.
+    /// Thus, this will always return Some(&Fail).
     fn cause(&self) -> Option<&Fail> {
         Some(self.failure.failure())
     }
@@ -97,41 +99,44 @@ impl Error {
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
     /// The first ErrorId will be this Error's ErrorId.
     pub fn error_id_chain(&self) -> Vec<ErrorId> {
-        let mut error_ids = vec![self.id];
-
-        let mut fail: &Fail = self;
-        while let Some(cause) = fail.cause() {
-            if let Some(e) = error_ref(cause) {
-                error_ids.push(e.id());
+        fn collect_error_ids(error_ids: &mut Vec<ErrorId>, failure: &Fail) {
+            if let Some(cause) = failure.cause() {
+                if let Some(e) = cause.downcast_ref::<Error>() {
+                    error_ids.push(e.id());
+                }
+                collect_error_ids(error_ids, cause);
             }
-            fail = cause;
         }
+
+        let mut error_ids = vec![self.id];
+        collect_error_ids(&mut error_ids, self);
+
+        //        let failure: &Fail = self;
+        //        for cause in failure.iter_chain() {
+        //            if let Some(e) = error_ref(cause) {
+        //                error_ids.push(e.id());
+        //            }
+        //        }
 
         error_ids
     }
-}
 
-/// Tries to converts the failure to an Error reference.
-///
-/// It will succeed for the following cases:
-/// 1. failure is an Error
-/// 2. the failure type is Context<Error> - the context Error is returned
-/// 3. failure is a ArcFailure, where the underlying failure type is an Error
-///
-pub fn error_ref(failure: &Fail) -> Option<&Error> {
-    if let Some(e) = failure.downcast_ref::<Error>() {
-        return Some(e);
+    /// Returns all distinct ErrorId(s) that are referenced by the error chain.
+    /// It includes this Error's ErrorId. Thus, the returned HashSet will never be empty.
+    pub fn distinct_error_ids(&self) -> HashSet<ErrorId> {
+        fn collect_error_ids(error_ids: &mut HashSet<ErrorId>, failure: &Fail) {
+            for cause in failure.iter_chain() {
+                if let Some(e) = cause.downcast_ref::<Error>() {
+                    error_ids.insert(e.id());
+                }
+                collect_error_ids(error_ids, cause);
+            }
+        }
+
+        let mut error_ids = HashSet::new();
+        collect_error_ids(&mut error_ids, self);
+        error_ids
     }
-
-    if let Some(e) = failure.downcast_ref::<ArcFailure>() {
-        return error_ref(e.failure());
-    }
-
-    if let Some(e) = failure.downcast_ref::<Context<Error>>() {
-        return Some(e.get_context());
-    }
-
-    None
 }
 
 op_const_id! {
