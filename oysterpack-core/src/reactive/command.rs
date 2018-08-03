@@ -413,7 +413,7 @@ impl fmt::Display for CommandFailure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "CommandFailure(id={}, instance={}) {}",
+            "CommandFailure(CommandId({})/InstanceId({})/{})",
             self.command_id, self.instance_id, self.error
         )
     }

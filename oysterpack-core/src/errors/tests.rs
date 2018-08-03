@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use super::*;
-use failure;
 use tests::*;
 
 const ERR_1: ErrorId = ErrorId(1);
@@ -54,20 +53,20 @@ macro_rules! Err3 {
 
 #[test]
 fn arc_failure_downcast_ref() {
-    let err = Err3!();
+    let err: Error = Err3!();
     let err = ArcFailure::new(err);
-    assert!(err.downcast_ref::<Error>().is_some());
-    assert!(err.downcast_ref::<ArcFailure>().is_none());
+    assert!(err.failure().downcast_ref::<Error>().is_some());
+
+    let err: &Fail = &err;
+    assert!(err.downcast_ref::<ArcFailure>().is_some());
+    assert!(err.cause().unwrap().downcast_ref::<ClientError>().is_some());
 }
 
 #[test]
 fn generated_error_macro() {
     run_test(|| {
         let err: Error = Err5!(ClientError::Err1);
-
-        info!("{}", err);
         debug!("{:?}", err);
-
         assert_eq!(err.error_id_chain(), vec![err.id]);
     });
 }
@@ -76,10 +75,7 @@ fn generated_error_macro() {
 fn simple_error() {
     run_test(|| {
         let err: Error = Err1!();
-
-        info!("{}", err);
         debug!("{:?}", err);
-
         assert_eq!(err.error_id_chain(), vec![err.id]);
     });
 }
@@ -89,8 +85,6 @@ fn error_context() {
     run_test(|| {
         let err: Error = Err1!();
         let err_with_context = err.context("Some context");
-
-        info!("err_with_context -> {}", err_with_context);
         debug!("err_with_context -> {:?}", err_with_context);
 
         // the context overrides the Error's Display
@@ -107,7 +101,6 @@ fn error_context() {
         }
 
         let err = op_error!(ERR_2, err_with_context);
-        info!("err -> {}", err);
         debug!("err -> {:?}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_1]);
     });
@@ -120,7 +113,6 @@ fn error_id_chain() {
         let err = op_error!(ERR_4, err);
         let err = op_error!(ERR_5, err);
         let err = op_error!(ERR_3, err);
-        info!("error_id_chain: {}", err);
         assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_2]);
     });
 }

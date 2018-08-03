@@ -14,7 +14,7 @@
 
 #[macro_use]
 extern crate oysterpack_core;
-//
+// required because the op_id! and op_const_id! macros depend on the serde_derive macros to be in scope
 #[macro_use]
 extern crate serde_derive;
 

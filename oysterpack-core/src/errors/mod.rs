@@ -59,7 +59,7 @@ impl Fail for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "ErrorId({})({}): {}", self.id, self.loc, self.failure())
     }
 }
 
@@ -165,18 +165,11 @@ impl ArcFailure {
     pub fn new(failure: impl Fail) -> ArcFailure {
         let failure = ArcFailure(Arc::new(failure));
         {
-            if let Some(failure) = failure.downcast_ref::<ArcFailure>() {
+            if let Some(failure) = failure.0.downcast_ref::<ArcFailure>() {
                 return failure.clone();
             }
         }
         failure
-    }
-
-    /// Attempts to downcast this `ArcFailure` to a particular `Fail` type by reference.
-    ///
-    /// If the underlying error is not of type `T`, this will return [`None`](None()).
-    pub fn downcast_ref<T: Fail>(&self) -> Option<&T> {
-        self.0.downcast_ref()
     }
 
     /// Returns a reference to the underlying failure

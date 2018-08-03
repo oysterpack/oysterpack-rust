@@ -16,8 +16,6 @@
 #[macro_use]
 extern crate oysterpack_core;
 #[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate log;
