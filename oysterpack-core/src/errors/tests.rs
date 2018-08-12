@@ -67,7 +67,7 @@ fn generated_error_macro() {
     run_test(|| {
         let err: Error = Err5!(ClientError::Err1);
         debug!("{:?}", err);
-        assert_eq!(err.error_id_chain(), vec![err.id]);
+        assert_eq!(err.error_ids(), vec![err.id]);
     });
 }
 
@@ -76,7 +76,7 @@ fn simple_error() {
     run_test(|| {
         let err: Error = Err1!();
         debug!("{:?}", err);
-        assert_eq!(err.error_id_chain(), vec![err.id]);
+        assert_eq!(err.error_ids(), vec![err.id]);
     });
 }
 
@@ -102,7 +102,7 @@ fn error_context() {
 
         let err = op_error!(ERR_2, err_with_context);
         debug!("err -> {:?}", err);
-        assert_eq!(err.error_id_chain(), vec![ERR_2, ERR_1]);
+        assert_eq!(err.error_ids(), vec![ERR_2, ERR_1]);
     });
 }
 
@@ -113,6 +113,6 @@ fn error_id_chain() {
         let err = op_error!(ERR_4, err);
         let err = op_error!(ERR_5, err);
         let err = op_error!(ERR_3, err);
-        assert_eq!(err.error_id_chain(), vec![ERR_3, ERR_5, ERR_4, ERR_2]);
+        assert_eq!(err.error_ids(), vec![ERR_3, ERR_5, ERR_4, ERR_2]);
     });
 }

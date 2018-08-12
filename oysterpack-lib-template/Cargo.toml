@@ -10,11 +10,12 @@ readme = "README.md"
 build = "build.rs"
 
 [dependencies]
+built = "0.3"
 
 [dev-dependencies]
 version-sync = "0.5"
 
 [build-dependencies]
-built = "0.3"
+oysterpack_built = {path = "../oysterpack-built", version = "0.1"}
 
 [badges]

@@ -215,7 +215,7 @@ fn command_failure_with_progress_subscriber() {
         if let Some(Err(e)) = result {
             info!("Received Err result: {}", e);
             assert_eq!(
-                e.error_id_chain(),
+                e.error_ids(),
                 vec![COMMAND_FAILURE_ERROR_ID, FooError::error_id()]
             );
 
@@ -244,7 +244,7 @@ fn command_failure_with_progress_subscriber() {
         match progress.status() {
             &Status::FAILURE(ref err) => {
                 assert_eq!(err.id(), FooError::error_id());
-                let error_id_chain = err.error_id_chain();
+                let error_id_chain = err.error_ids();
                 // the error id chain should not contain a CommandFailure Error
                 // it is intentially not included with the Progress because the CommandFailure info
                 // would be redundant - it is already provided by Progress

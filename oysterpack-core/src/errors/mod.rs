@@ -95,10 +95,9 @@ impl Error {
         &self.loc
     }
 
-    // TODO: This needs more structure to depict the error chain. Each error can have its own error chain.
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
     /// The first ErrorId will be this Error's ErrorId.
-    pub fn error_id_chain(&self) -> Vec<ErrorId> {
+    pub fn error_ids(&self) -> Vec<ErrorId> {
         fn collect_error_ids(error_ids: &mut Vec<ErrorId>, failure: &Fail) {
             if let Some(cause) = failure.cause() {
                 if let Some(e) = cause.downcast_ref::<Error>() {
@@ -108,17 +107,9 @@ impl Error {
             }
         }
 
-        let mut error_ids = vec![self.id];
-        collect_error_ids(&mut error_ids, self);
-
-        //        let failure: &Fail = self;
-        //        for cause in failure.iter_chain() {
-        //            if let Some(e) = error_ref(cause) {
-        //                error_ids.push(e.id());
-        //            }
-        //        }
-
-        error_ids
+        let mut err_ds = vec![self.id];
+        collect_error_ids(&mut err_ds, self);
+        err_ds
     }
 
     /// Returns all distinct ErrorId(s) that are referenced by the error chain.

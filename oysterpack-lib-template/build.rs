@@ -12,16 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// TODO: Document crate
-//! # OysterPack XXX
+//! Gathers build time information for the crate - see https://crates.io/crates/built
 
-#![deny(missing_docs, missing_debug_implementations, warnings)]
-// TODO: update url
-#![doc(html_root_url = "https://docs.rs/oysterpack_lib_template/0.1.0")]
+extern crate oysterpack_built;
 
-extern crate built;
-
-pub mod build;
-
-#[cfg(test)]
-mod tests;
+fn main() {
+    oysterpack_built::write_library_built_file().expect("Failed to acquire build-time information");
+}

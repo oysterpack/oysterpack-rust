@@ -6,6 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use build;
+
 #[test]
 fn build_info() {
     println!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
