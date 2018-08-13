@@ -52,7 +52,7 @@ pub struct Error {
 impl Fail for Error {
     /// The failure that caused the Error is returned, i.e., the failure that is mapped to the ErrorId.
     /// Thus, this will always return Some(&Fail).
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         Some(self.failure.failure())
     }
 }
@@ -82,7 +82,7 @@ impl Error {
     }
 
     /// Returns the error cause
-    pub fn failure(&self) -> &Fail {
+    pub fn failure(&self) -> &dyn Fail {
         &self.failure
     }
 
@@ -98,7 +98,7 @@ impl Error {
     /// Returns the chain of ErrorId(s) from all chained failures that themselves are an Error.
     /// The first ErrorId will be this Error's ErrorId.
     pub fn error_ids(&self) -> Vec<ErrorId> {
-        fn collect_error_ids(error_ids: &mut Vec<ErrorId>, failure: &Fail) {
+        fn collect_error_ids(error_ids: &mut Vec<ErrorId>, failure: &dyn Fail) {
             if let Some(cause) = failure.cause() {
                 if let Some(e) = cause.downcast_ref::<Error>() {
                     error_ids.push(e.id());
@@ -115,7 +115,7 @@ impl Error {
     /// Returns all distinct ErrorId(s) that are referenced by the error chain.
     /// It includes this Error's ErrorId. Thus, the returned HashSet will never be empty.
     pub fn distinct_error_ids(&self) -> HashSet<ErrorId> {
-        fn collect_error_ids(error_ids: &mut HashSet<ErrorId>, failure: &Fail) {
+        fn collect_error_ids(error_ids: &mut HashSet<ErrorId>, failure: &dyn Fail) {
             for cause in failure.iter_chain() {
                 if let Some(e) = cause.downcast_ref::<Error>() {
                     error_ids.insert(e.id());
@@ -164,13 +164,13 @@ impl ArcFailure {
     }
 
     /// Returns a reference to the underlying failure
-    pub fn failure(&self) -> &Fail {
+    pub fn failure(&self) -> &dyn Fail {
         &*self.0
     }
 }
 
 impl Fail for ArcFailure {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         self.0.cause()
     }
 }

@@ -17,7 +17,7 @@ rayon = "1"
 tokio = "0.1"
 
 chrono = { version = "0.4", features = ["serde", "time"] }
-rusty_ulid = "0.4.1"
+rusty_ulid = "0.5"
 lazy_static = "1"
 failure = "0.1.2"
 failure_derive = "0.1.2"
