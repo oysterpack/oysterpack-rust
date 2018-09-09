@@ -54,7 +54,8 @@ use crossbeam_channel as channel;
 use errors;
 use failure::Fail;
 use std::{
-    fmt::{self, Debug}, time::{Duration, Instant, SystemTime},
+    fmt::{self, Debug},
+    time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
 

@@ -36,9 +36,6 @@ mod macros;
 mod tests;
 
 /// Decorates the failure cause with an ErrorId.
-/// - cause must implement the `Fail` trait
-///   - see https://boats.gitlab.io/failure/fail.html for more details about the `Fail` trait
-/// - cause provides the error context. The cause itself may be another Error.
 /// - errors are cloneable which enables errors to be sent on multiple channels, e.g., async error logging and tracking
 #[derive(Debug, Clone)]
 pub struct Error {
@@ -65,7 +62,6 @@ impl fmt::Display for Error {
 
 impl Error {
     /// Error constructor.
-    /// The error is logged.
     pub fn new(id: ErrorId, failure: impl Fail, loc: SourceCodeLocation) -> Error {
         Error {
             id,
