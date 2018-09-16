@@ -17,14 +17,15 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
-extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
+extern crate built;
 #[macro_use]
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
+extern crate chrono;
+extern crate rusty_ulid;
+#[macro_use]
+extern crate tokio;
 #[macro_use]
 extern crate crossbeam_channel;
 #[macro_use]
@@ -33,7 +34,6 @@ extern crate failure;
 extern crate failure_derive;
 #[macro_use]
 extern crate serde_derive;
-extern crate built;
 extern crate semver;
 extern crate serde;
 extern crate serde_json;
