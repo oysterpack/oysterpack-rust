@@ -61,7 +61,7 @@ use tokio::prelude::*;
 
 /// Command is a Future that executes the underlying Future.
 ///
-/// ### Features
+/// # Features
 /// - Command result Item type must implement the Send + Debug traits
 ///   - Send trait enables the item to be delivered via channels
 ///   - Debug trait is useful for logging purposes
@@ -79,12 +79,23 @@ use tokio::prelude::*;
 /// - Future's execution progress is tracked
 /// - Progress events can be reported via a channel
 ///
+/// # Logging
+///
+/// ## WARN Events
+/// - Future was polled after it has completed, which will always return Async::NotReady
+/// - Unable to send progress on subscriber_chan
+///
+/// ## DEBUG Events
+/// - Progress is logged after the underlying future is polled
+/// - Progress is logged when the Command goes out of scope, i.e., when Drop::drop() is invoked
+///
 #[derive(Debug)]
 pub struct Command<F: Future> {
+    /// underlying future is fused
     fut: future::Fuse<F>,
-    // tracks command future execution progress
+    /// tracks command future execution progress
     progress: Progress,
-    // used to report progress
+    /// used to report progress
     progress_sender_chan: Option<channel::Sender<Progress>>,
 }
 
@@ -177,6 +188,13 @@ where
     fn command_error(&self, error: errors::Error) -> errors::Error {
         let command_failure = CommandFailure::new(self.id(), self.instance_id(), error.clone());
         op_error!(COMMAND_FAILURE_ERROR_ID, error.context(command_failure))
+    }
+}
+
+impl<F: Future> Drop for Command<F>
+{
+    fn drop(&mut self) {
+        debug!("Command Dropped: {:?}", self.progress);
     }
 }
 
