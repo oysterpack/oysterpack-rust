@@ -24,11 +24,8 @@
 //!    [package]
 //!    build = "build.rs"
 //!
-//!    [dependencies]
-//!    oysterpack_built = "0.1.0"
-//!
 //!    [build-dependencies]
-//!    oysterpack_built = "0.1.0"
+//!    oysterpack_built = "0.1"
 //!    ```
 //!
 //! 2. Include the following in **build.rs**:
@@ -65,7 +62,7 @@
 //!    - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.1.1")]
 
 extern crate built;
 

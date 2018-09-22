@@ -1,47 +1,48 @@
-# oysterpack_built
+Provides the ability to gather information about the crate's cargo build.
 
-This builds upon [built](https://crates.io/crates/built) ... pun intended :)
+All OysterPack modules must provide build time info. This module standardizes the approach, which
+leverages [built](https://crates.io/crates/built).
 
 ## How to integrate within your project
 
 1. Add the following to **Cargo.toml**:
-    ```toml
-    [package]
-    build = "build.rs"
+   ```toml
+   [package]
+   build = "build.rs"
 
-    [build-dependencies]
-    oysterpack_built = "0.1.0"
-    ```
+   [build-dependencies]
+   oysterpack_built = "0.1"
+   ```
 
 2. Include the following in **build.rs**:
 
-    **Libraries**
-    ```rust
-    extern crate oysterpack_built;
+   **For Library Modules**
+   ```no_run
+   extern crate oysterpack_built;
 
-    fn main() {
-        oysterpack_built::write_lib_built_file().expect("Failed to acquire build-time information");
-    }
-    ```
+   fn main() {
+       oysterpack_built::write_library_built_file().expect("Failed to acquire build-time information");
+   }
+   ```
 
-    **Applications**
-    ```rust
-    extern crate oysterpack_built;
+   **For Application (Binary) Modules**
+   ```no_run
+   extern crate oysterpack_built;
 
-    fn main() {
-        oysterpack_built::write_app_built_file().expect("Failed to acquire build-time information");
-    }
-    ```
-    - includes application dependency info
-      - **NOTE:** dependency info can only be collected for standalone projects, i.e., this will not work for projects that are part of a Cargo workspace.
-        - Cargo.lock is used to get the application's dependencies. Since Cargo.lock is shared by all projects in a workspace, this approach won't work for workspaces.
+   fn main() {
+       oysterpack_built::write_app_built_file().expect("Failed to acquire build-time information");
+   }
+   ```
+   - includes application dependency info
+     - **NOTE:** dependency info can only be collected for standalone projects, i.e., this will not work for projects that are part of a Cargo workspace.
+       - Cargo.lock is used to get the application's dependencies. Since Cargo.lock is shared by all projects in a workspace, this approach won't work for workspaces.
 
 3. The build script will by default write a file named **built.rs** into Cargo's output directory. It can be picked up like this:
-    ```rust
-    // Use of a mod or pub mod is not actually necessary.
-    pub mod build {
-       // The file has been placed there by the build script.
-       include!(concat!(env!("OUT_DIR"), "/built.rs"));
-    }
-    ```
-    - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
+   ```no_run
+   // Use of a mod or pub mod is not actually necessary.
+   pub mod build {
+      // The file has been placed there by the build script.
+      include!(concat!(env!("OUT_DIR"), "/built.rs"));
+   }
+   ```
+   - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
