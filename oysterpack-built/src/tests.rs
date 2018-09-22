@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use build;
+extern crate chrono;
+extern crate semver;
 
-use {parse_datetime, parse_pkg_version};
+use self::chrono::{DateTime, ParseResult, Utc};
+use self::semver::{SemVerError, Version};
+
+use build;
 
 #[test]
 fn build_info() {
@@ -32,4 +36,19 @@ fn build_info() {
         build::FEATURES_STR,
         parse_datetime(build::BUILT_TIME_UTC).unwrap()
     );
+}
+
+/// Parses timestamps that are formatted according to **RFC 2822**, `Sat, 21 Jul 2018 15:59:46 GMT`.
+///
+/// [built](https://crates.io/crates/built) formats timestamps using RFC 2822:
+/// - `BUILT_TIME_UTC`
+fn parse_datetime(ts: &str) -> ParseResult<DateTime<Utc>> {
+    DateTime::parse_from_rfc2822(ts).map(|ts| ts.with_timezone(&Utc))
+}
+
+/// Parses versions according to semver format.
+///
+/// [built](https://crates.io/crates/built) formats the `PKG_VERSION` using semver.
+fn parse_pkg_version(ver: &str) -> Result<Version, SemVerError> {
+    Version::parse(ver)
 }
