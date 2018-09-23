@@ -16,6 +16,6 @@ build = "build.rs"
 version-sync = "0.5"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built"}
+oysterpack_built = {path = "../oysterpack-built", version = "0.2"}
 
 [badges]
