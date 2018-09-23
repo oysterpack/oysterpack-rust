@@ -13,21 +13,22 @@
 // limitations under the License.
 
 // TODO: Document crate
-//! # OysterPack XXX
+//!
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
 // TODO: update url
 #![doc(html_root_url = "https://docs.rs/oysterpack_lib_template/0.1.0")]
 
-extern crate built;
+#[macro_use]
+extern crate oysterpack_built_mod;
 #[macro_use]
 extern crate log;
 #[macro_use]
 extern crate lazy_static;
 extern crate chrono;
 
-pub mod build;
+op_build_mod!();
 
 #[cfg(test)]
 mod tests;

@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_built"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Built"
 license = "MIT/Apache-2.0"
@@ -15,8 +15,6 @@ built = "0.3"
 
 [dev-dependencies]
 version-sync = "0.5"
-chrono = "0.4"
-semver = "0.9"
 
 [build-dependencies]
 built = "0.3"

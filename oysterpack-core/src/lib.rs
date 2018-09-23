@@ -17,7 +17,8 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
-extern crate built;
+#[macro_use]
+extern crate oysterpack_built_mod;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -48,9 +49,10 @@ pub mod uid;
 #[macro_use]
 pub mod errors;
 
-pub mod build;
 pub mod reactive;
 pub mod time;
+
+op_build_mod!();
 
 #[cfg(test)]
 mod tests;

@@ -46,3 +46,12 @@ It is designed with programmers and system administrators in mind. glogg can be 
     ```
 
 3. [vagrant](https://www.vagrantup.com/)
+
+## Module Release Process and Checklist
+- [ ] ensure `#![deny(missing_docs, missing_debug_implementations, warnings)]` is enabled for compile
+- [ ] format the code via `cargo fmt`
+- [ ] review documentation: `cargo doc --open`
+- [ ] review CHANGELOG.md
+- [ ] review README.md
+- [ ] tag the module using the following naming convention : `{module_name}_v{module_version}`
+    - `git tag -a oysterpack_built_v0.2.0 -m "oysterpack_built 0.2.0 release"`

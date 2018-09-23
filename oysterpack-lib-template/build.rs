@@ -17,5 +17,5 @@
 extern crate oysterpack_built;
 
 fn main() {
-    oysterpack_built::write_library_built_file().expect("Failed to acquire build-time information");
+    oysterpack_built::write_library_built_file();
 }

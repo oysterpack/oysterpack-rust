@@ -62,7 +62,7 @@
 //!    - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.1")]
 
 extern crate built;
 

@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! provides build info gathered from cargo - see https://crates.io/crates/built
+//! Gathers build time information for the crate - see https://crates.io/crates/built
 
-include!(concat!(env!("OUT_DIR"), "/built.rs"));
+extern crate oysterpack_built;
+
+fn main() {
+    oysterpack_built::write_library_built_file();
+}
