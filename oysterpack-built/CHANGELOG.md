@@ -6,12 +6,18 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
-### Added
+## \[0.2.0\] 2018-09-23
 
 ### Changed
+- `build::write_library_built_file()` and `build::write_app_built_file()`
+    - returns () instead of io::Result<()>
+    - panics if build-time information fails to be acquired
 
-### Removed
+## \[0.1.1\] 2018-09-22
 
-### Deprecated
+### Changed
+- fixed README.md
+- updated docs
 
-### Fixed
+## \[0.1.0\] 2018-09-22
+Initial release

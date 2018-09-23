@@ -35,7 +35,7 @@
 //!    extern crate oysterpack_built;
 //!
 //!    fn main() {
-//!        oysterpack_built::write_library_built_file().expect("Failed to acquire build-time information");
+//!       oysterpack_built::write_library_built_file();
 //!    }
 //!    ```
 //!
@@ -44,7 +44,7 @@
 //!    extern crate oysterpack_built;
 //!
 //!    fn main() {
-//!        oysterpack_built::write_app_built_file().expect("Failed to acquire build-time information");
+//!       oysterpack_built::write_app_built_file();
 //!    }
 //!    ```
 //!    - includes application dependency info
@@ -62,7 +62,7 @@
 //!    - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.0")]
 
 extern crate built;
 

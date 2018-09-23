@@ -19,6 +19,8 @@ use std::{env, io, path};
 
 include!(concat!(env!("OUT_DIR"), "/built.rs"));
 
+/// Gathers build information and generates code to make it available at runtime.
+///
 /// If `dependencies` = true, then Cargo.lock is parsed to get this crate's dependencies and their versions.
 ///
 /// For this to work, Cargo.lock needs to actually be there; this is (usually) only true for executables
@@ -39,12 +41,22 @@ pub fn write_built_file(dependencies: bool) -> io::Result<()> {
     Ok(())
 }
 
+/// Gathers library build information and generates code to make it available at runtime.
+///
 /// Dependencies are not available for library crates
-pub fn write_library_built_file() -> io::Result<()> {
-    write_built_file(false)
+///
+/// # Panics
+/// - if build-time information failed to be acquired
+pub fn write_library_built_file() {
+    write_built_file(false).expect("Failed to acquire build-time information")
 }
 
+/// Gathers application binary build information and generates code to make it available at runtime.
+///
 /// Dependencies are available for binary crates
-pub fn write_app_built_file() -> io::Result<()> {
-    write_built_file(true)
+///
+/// # Panics
+/// - if build-time information failed to be acquired
+pub fn write_app_built_file() {
+    write_built_file(true).expect("Failed to acquire build-time information")
 }

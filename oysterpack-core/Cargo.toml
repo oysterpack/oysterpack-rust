@@ -35,7 +35,7 @@ version-sync = "0.5"
 fern = "0.5"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version = "0.1"}
+oysterpack_built = {path = "../oysterpack-built"}
 
 [badges]
 maintenance = { status = "actively-developed" }

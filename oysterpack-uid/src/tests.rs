@@ -24,8 +24,7 @@ fn init_logging() -> Result<(), fern::InitError> {
                 record.target(),
                 message
             ))
-        })
-        .level(log::LevelFilter::Warn)
+        }).level(log::LevelFilter::Warn)
         .level_for("oysterpack_uid", log::LevelFilter::Debug)
         .chain(io::stdout())
         .apply()?;
