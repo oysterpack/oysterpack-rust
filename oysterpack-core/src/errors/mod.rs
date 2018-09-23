@@ -126,12 +126,12 @@ impl Error {
     }
 }
 
-op_const_id! {
+op_const_uid! {
     /// Unique Error ID
     ErrorId
 }
 
-op_id! {
+op_uid! {
     /// Unique Error Instance ID.
     /// This enables a specific error to be searched for withing another context, e.g., searching log events.
     InstanceId

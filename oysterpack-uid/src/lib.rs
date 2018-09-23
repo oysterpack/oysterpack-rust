@@ -21,13 +21,31 @@
 
 #[macro_use]
 extern crate oysterpack_built_mod;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate lazy_static;
-extern crate chrono;
+extern crate rusty_ulid;
 
 op_build_mod!();
+
+use rusty_ulid::{new_ulid_string, Ulid};
+
+#[macro_use]
+mod macros;
+
+/// Returns a universally unique ddentifier
+pub fn uid() -> u128 {
+    Ulid::new().into()
+}
+
+/// Returns a universally unique lexicographically sortable identifier :
+/// - 128-bit compatibility with UUID
+/// - 1.21e+24 unique ULIDs per millisecond
+/// - Lexicographically sortable!
+/// - Canonically encoded as a 26 character string, as opposed to the 36 character UUID
+/// - Uses Crockford's base32 for better efficiency and readability (5 bits per character)
+/// - Case insensitive
+/// - No special characters (URL safe)
+pub fn ulid() -> String {
+    new_ulid_string()
+}
 
 #[cfg(test)]
 mod tests;

@@ -20,6 +20,8 @@
 #[macro_use]
 extern crate oysterpack_built_mod;
 #[macro_use]
+extern crate oysterpack_uid;
+#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate lazy_static;

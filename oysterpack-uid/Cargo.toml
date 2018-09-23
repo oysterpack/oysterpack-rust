@@ -11,16 +11,15 @@ readme = "README.md"
 build = "build.rs"
 
 [dependencies]
-oysterpack_built_mod = {path = "../oysterpack-built-mod"}
-log = "0.4"
-chrono = { version = "0.4", features = ["serde", "time"] }
-lazy_static = "1"
+oysterpack_built_mod = {path = "../oysterpack-built-mod", version= "0.1"}
+rusty_ulid = "0.5"
 
 [dev-dependencies]
 version-sync = "0.5"
-fern = "0.5"
+serde = "1"
+serde_derive = "1"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built"}
+oysterpack_built = {path = "../oysterpack-built", version = "0.2"}
 
 [badges]
