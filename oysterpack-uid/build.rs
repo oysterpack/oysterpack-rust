@@ -17,5 +17,5 @@
 extern crate oysterpack_built;
 
 fn main() {
-    oysterpack_built::write_library_built_file();
+    oysterpack_built::write_built_file();
 }

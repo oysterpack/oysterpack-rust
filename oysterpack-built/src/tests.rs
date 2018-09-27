@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use build;
+/// provides build-time information
+mod build {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
 
 #[test]
 fn build_info() {

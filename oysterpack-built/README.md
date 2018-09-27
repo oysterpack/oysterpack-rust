@@ -3,6 +3,9 @@ Provides the ability to gather information about the crate's cargo build.
 All OysterPack modules must provide build time info. This module standardizes the approach, which
 leverages [built](https://crates.io/crates/built).
 
+Take a look at the [changelog][changelog] for a detailed list of all changes.
+
+
 ## How to integrate within your project
 
 1. Add the following to **Cargo.toml**:
@@ -11,7 +14,7 @@ leverages [built](https://crates.io/crates/built).
    build = "build.rs"
 
    [build-dependencies]
-   oysterpack_built = "0.1"
+   oysterpack_built = "0.2"
    ```
 
 2. Include the following in **build.rs**:

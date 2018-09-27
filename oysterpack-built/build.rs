@@ -22,7 +22,7 @@ fn main() {
     write_built_file(false).expect("Failed to acquire build-time information");
 }
 
-/// Parsing Cargo.lockand writing lists of dependencies and their versions.
+/// Parsing Cargo.lock and writing lists of dependencies and their versions.
 ///
 /// For this to work, Cargo.lock needs to actually be there; this is (usually) only true for executables
 /// and not for libraries. Cargo will only create a Cargo.lock for the top-level crate in a dependency-tree.

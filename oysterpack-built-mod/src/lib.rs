@@ -32,7 +32,5 @@ macro_rules! op_build_mod {
     };
 }
 
-op_build_mod!();
-
 #[cfg(test)]
 mod tests;
