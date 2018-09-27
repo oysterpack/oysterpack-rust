@@ -8,18 +8,13 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-uid"
 documentation = "https://docs.rs/oysterpack_uid"
 readme = "README.md"
-build = "build.rs"
 
 [dependencies]
-oysterpack_built_mod = {path = "../oysterpack-built-mod", version= "0.1"}
 rusty_ulid = "0.5"
 
 [dev-dependencies]
 version-sync = "0.5"
 serde = "1"
 serde_derive = "1"
-
-[build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version = "0.2"}
 
 [badges]

@@ -16,8 +16,17 @@
 //! that was generated via [oysterpack_built](https://crates.io/crates/oysterpack_built)
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built_mod/0.1.0")]
+#![deny(missing_docs, missing_debug_implementations)]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built_mod/0.2.0")]
+
+#[macro_use]
+#[cfg(test)]
+extern crate log;
+#[macro_use]
+#[cfg(test)]
+extern crate lazy_static;
+#[cfg(test)]
+extern crate chrono;
 
 /// Generate a public module named `build` which includes build-time info generated via
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built)

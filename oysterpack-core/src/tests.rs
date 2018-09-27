@@ -8,8 +8,7 @@
 
 //! unit test support
 
-extern crate fern;
-use build;
+use fern;
 use chrono;
 use log;
 use std::io;
@@ -40,24 +39,4 @@ lazy_static! {
 pub fn run_test<F: FnOnce() -> ()>(test: F) {
     let _ = *INIT_FERN;
     test()
-}
-
-#[test]
-fn build_info() {
-    run_test(|| {
-        info!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
-        info!(
-            "This is version {}{}, built for {} by {}.",
-            build::PKG_VERSION,
-            build::GIT_VERSION.map_or_else(|| "".to_owned(), |v| format!(" (git {})", v)),
-            build::TARGET,
-            build::RUSTC_VERSION
-        );
-        info!(
-            "I was built with profile \"{}\", features \"{}\" on {}",
-            build::PROFILE,
-            build::FEATURES_STR,
-            build::BUILT_TIME_UTC
-        );
-    });
 }

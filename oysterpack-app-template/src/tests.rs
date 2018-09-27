@@ -10,8 +10,11 @@
 
 use chrono;
 use fern;
+
 use log;
 use std::io;
+
+use build;
 
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
@@ -24,8 +27,7 @@ fn init_logging() -> Result<(), fern::InitError> {
                 message
             ))
         }).level(log::LevelFilter::Warn)
-        // TODO: update module name
-        .level_for("oysterpack_lib_template", log::LevelFilter::Debug)
+        .level_for("oysterpack_app_template", log::LevelFilter::Debug)
         .chain(io::stdout())
         .apply()?;
 
@@ -39,4 +41,24 @@ lazy_static! {
 pub fn run_test<F: FnOnce() -> ()>(test: F) {
     let _ = *INIT_FERN;
     test()
+}
+
+#[test]
+fn build_info() {
+    run_test(|| {
+        info!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
+        info!(
+            "This is version {}{}, built for {} by {}.",
+            build::PKG_VERSION,
+            build::GIT_VERSION.map_or_else(|| "".to_owned(), |v| format!(" (git {})", v)),
+            build::TARGET,
+            build::RUSTC_VERSION
+        );
+        info!(
+            "I was built with profile \"{}\", features \"{}\" on {}",
+            build::PROFILE,
+            build::FEATURES_STR,
+            build::BUILT_TIME_UTC
+        );
+    });
 }

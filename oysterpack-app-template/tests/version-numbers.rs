@@ -6,4 +6,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! unit test support
+#[macro_use]
+extern crate version_sync;
+
+#[test]
+fn test_html_root_url() {
+    assert_html_root_url_updated!("src/main.rs");
+}

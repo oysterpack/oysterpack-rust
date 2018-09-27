@@ -18,11 +18,11 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
 #[macro_use]
-extern crate oysterpack_built_mod;
-#[macro_use]
 extern crate oysterpack_uid;
 #[macro_use]
 extern crate log;
+#[cfg(test)]
+extern crate fern;
 #[macro_use]
 extern crate lazy_static;
 extern crate chrono;
@@ -53,8 +53,6 @@ pub mod errors;
 
 pub mod reactive;
 pub mod time;
-
-op_build_mod!();
 
 #[cfg(test)]
 mod tests;

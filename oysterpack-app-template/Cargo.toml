@@ -1,5 +1,5 @@
 [package]
-name = "oysterpack_lib_template"
+name = "oysterpack_app_template"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack XXX"
@@ -8,14 +8,19 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 documentation = "https://docs.rs/oysterpack_XXX"
 readme = "README.md"
+build = "build.rs"
 
 [dependencies]
+oysterpack_built_mod = {path = "../oysterpack-built-mod", version="0.2"}
 log = "0.4"
+fern = "0.5"
+chrono = { version = "0.4", features = ["serde", "time"] }
 
 [dev-dependencies]
 version-sync = "0.5"
-fern = "0.5"
-chrono = { version = "0.4", features = ["serde", "time"] }
 lazy_static = "1"
+
+[build-dependencies]
+oysterpack_built = {path = "../oysterpack-built", version="0.2"}
 
 [badges]

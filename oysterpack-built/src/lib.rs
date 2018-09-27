@@ -14,14 +14,13 @@
 
 //! `oysterpack_built` is used as a build-time dependency to gather information about the cargo build
 //! environment. It serializes the build-time information into Rust-code, which can then be compiled
-//! into the final crate. To see what build-time information is gathered, see this crate's
-//! [build](https://docs.rs/oysterpack_built/0.2.2/oysterpack_built/build/) module.
+//! into the final crate.
 //!
 //! ## What is the Motivation?
 //! From a DevOps perspective, it is critical to know exactly what is deployed.
 //!
-//! All OysterPack application binaries must provide build time info. This module standardizes the
-//! approach, leveraging [built](https://crates.io/crates/built).
+//! `oysterpack_built` provides the same functionality as [built](https://crates.io/crates/built).
+//! Its main purpose is to standardize the integration for OysterPack apps.
 //!
 //! ## How to integrate within your project
 //!
@@ -47,17 +46,9 @@
 //!    }
 //!    ```
 //! 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
-//!    It can be picked up and compiled like this:
-//!    ```no_run
-//!    // Use of a mod or pub mod is not actually necessary.
-//!    pub mod build {
-//!       // The file has been placed there by the build script.
-//!       include!(concat!(env!("OUT_DIR"), "/built.rs"));
-//!    }
-//!    ```
-//!    - `OUT_DIR` [environment variable is set by Cargo for build scripts](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
-//!    - [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod) provides a macro to
-//!      eliminate the boilerplate
+//!    It can be picked up and compiled via the `op_build_mod!()` macro provided by [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod).
+//!    The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
+//!    information. See [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod) for details.
 //!
 
 #![deny(missing_docs, missing_debug_implementations)]

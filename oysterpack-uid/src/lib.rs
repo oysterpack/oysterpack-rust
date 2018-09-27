@@ -19,11 +19,7 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.0")]
 
-#[macro_use]
-extern crate oysterpack_built_mod;
 extern crate rusty_ulid;
-
-op_build_mod!();
 
 use rusty_ulid::{new_ulid_string, Ulid};
 

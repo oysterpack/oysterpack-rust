@@ -21,14 +21,15 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_lib_template/0.1.0")]
 
 #[macro_use]
-extern crate oysterpack_built_mod;
-#[macro_use]
 extern crate log;
-#[macro_use]
-extern crate lazy_static;
-extern crate chrono;
 
-op_build_mod!();
+#[cfg(test)]
+extern crate fern;
+#[macro_use]
+#[cfg(test)]
+extern crate lazy_static;
+#[cfg(test)]
+extern crate chrono;
 
 #[cfg(test)]
 mod tests;
