@@ -21,6 +21,6 @@ version-sync = "0.5"
 lazy_static = "1"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version="0.2"}
+oysterpack_built = "0.2"
 
 [badges]

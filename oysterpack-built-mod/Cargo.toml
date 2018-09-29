@@ -10,14 +10,18 @@ documentation = "https://docs.rs/oysterpack_built_mod"
 readme = "README.md"
 
 [dependencies]
+semver = {version = "0.9", features = ["serde"]}
+chrono = { version = "0.4", features = ["serde", "time"] }
+serde = "1"
+serde_derive = "1"
 
 [dev-dependencies]
-version-sync = "0.5"
 log = "0.4"
 fern = "0.5"
-chrono = { version = "0.4", features = ["serde", "time"] }
 lazy_static = "1"
+serde_json = "1.0"
 
 [build-dependencies]
+oysterpack_built = "0.2"
 
 [badges]

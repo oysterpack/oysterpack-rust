@@ -13,6 +13,9 @@ use fern;
 use log;
 use std::io;
 
+// TODO: update module name
+pub const MODULE_NAME: &str = "oysterpack_lib_template";
+
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -24,8 +27,7 @@ fn init_logging() -> Result<(), fern::InitError> {
                 message
             ))
         }).level(log::LevelFilter::Warn)
-        // TODO: update module name
-        .level_for("oysterpack_lib_template", log::LevelFilter::Debug)
+        .level_for(MODULE_NAME, log::LevelFilter::Debug)
         .chain(io::stdout())
         .apply()?;
 

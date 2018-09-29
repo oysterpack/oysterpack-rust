@@ -27,7 +27,7 @@ fn init_logging() -> Result<(), fern::InitError> {
                 message
             ))
         }).level(log::LevelFilter::Warn)
-        .level_for("oysterpack_app_template", log::LevelFilter::Debug)
+        .level_for(build::PKG_NAME, log::LevelFilter::Debug)
         .chain(io::stdout())
         .apply()?;
 
@@ -60,5 +60,6 @@ fn build_info() {
             build::FEATURES_STR,
             build::BUILT_TIME_UTC
         );
+        info!("{:?}", build::get());
     });
 }

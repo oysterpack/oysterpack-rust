@@ -56,7 +56,7 @@ fn configure_logging() {
                 message
             ))
         }).level(log::LevelFilter::Warn)
-        .level_for("oysterpack_app_template", log::LevelFilter::Info)
+        .level_for(build::PKG_NAME, log::LevelFilter::Info)
         .chain(io::stdout())
         .apply()
         .expect("Failed to configure logging");
