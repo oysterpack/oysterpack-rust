@@ -14,8 +14,6 @@ use log;
 use serde_json;
 use std::io;
 
-use super::*;
-
 op_build_mod!();
 
 fn init_logging() -> Result<(), fern::InitError> {

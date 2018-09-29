@@ -5,7 +5,10 @@ All user visible changes to this project will be documented in this file. The fo
 This project adheres to [Semantic Versioning](http://semver.org/), as described for Rust libraries in [RFC #1105](https://github.com/rust-lang/rfcs/blob/master/text/1105-api-evolution.md)
 
 ## \[Unreleased\]
-- type safe domain model is now provided for build-time info
+
+## \[0.2.0\] 2018-09-23
+- type safe domain model is now provided for build-time info, via the
+  `Build` struct
   - this requires the following crate dependencies:
     - [semver](https://crates.io/crates/semver)
     - [chrono](https://crates.io/crates/chrono)

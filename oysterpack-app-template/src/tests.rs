@@ -8,13 +8,12 @@
 
 //! unit test support
 
+use build;
 use chrono;
 use fern;
-
 use log;
+use serde_json;
 use std::io;
-
-use build;
 
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
@@ -60,6 +59,10 @@ fn build_info() {
             build::FEATURES_STR,
             build::BUILT_TIME_UTC
         );
-        info!("{:?}", build::get());
+        let build_info = build::get();
+        info!("build_info: {:?}", build_info);
+
+        let build_info_json = serde_json::to_string_pretty(&build_info).unwrap();
+        info!("build_info_json: {}", build_info_json);
     });
 }

@@ -16,7 +16,7 @@
 //!
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![deny(missing_docs, missing_debug_implementations, warnings)]
+#![deny(missing_docs, missing_debug_implementations)]
 // TODO: update url
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_template/0.1.0")]
 
@@ -26,10 +26,16 @@ extern crate oysterpack_built_mod;
 extern crate log;
 extern crate chrono;
 extern crate fern;
+extern crate semver;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
+extern crate serde_json;
 
 op_build_mod!();
 

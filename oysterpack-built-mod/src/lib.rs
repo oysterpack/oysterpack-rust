@@ -12,8 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This module provides a macro that will generate a public module that contains build-time info
-//! that was generated via [oysterpack_built](https://crates.io/crates/oysterpack_built)
+//! This module provides the `op_build_mod!()` macro that will generate a public module named `build`
+//! that contains build-time info. The build-time info is extracted during compilation via
+//! [oysterpack_built](https://crates.io/crates/oysterpack_built).
+//!
+//! The generated `build` module will consist of:
+//! - constants for each piece of build metadata
+//! - `fn get() -> Build`
+//!     - [Build](struct.Build.html) provides a consolidated view of the build-time metadata.
+//!       This makes it easier to work with the build-time metadata in a typesafe manner.
+//!
+//! **NOTE:** The `op_build_mod!()` depends on the following dependencies in order to compile:
+//! - [semver](https://crates.io/crates/semver)
+//! - [chrono](https://crates.io/crates/chrono)
+//!
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
@@ -49,53 +61,53 @@ macro_rules! op_build_mod {
             // The file has been placed there by the build script.
             include!(concat!(env!("OUT_DIR"), "/built.rs"));
 
-            /// Collects the build-time info to construct a Build instance
+            /// Collects the build-time info to construct a new Build instance
             pub fn get() -> $crate::Build {
                 let mut builder = $crate::BuildBuilder::new();
-                builder.timestamp(BUILT_TIME_UTC);
-                builder.target(
-                    $crate::TargetTriple(TARGET.to_string()),
-                    $crate::TargetEnv(CFG_ENV.to_string()),
-                    $crate::TargetOperatingSystem {
-                        family: CFG_FAMILY.to_string(),
-                        os: CFG_OS.to_string(),
-                    },
-                    $crate::TargetArchitecture(CFG_TARGET_ARCH.to_string()),
-                    $crate::Endian(CFG_ENDIAN.to_string()),
-                    $crate::PointerWidth(CFG_POINTER_WIDTH.parse().unwrap()),
+                builder.timestamp(
+                    ::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
+                        .map(|ts| ts.with_timezone(&::chrono::Utc))
+                        .unwrap(),
                 );
-                if let Some(ci) = CI_PLATFORM.map(|ci_platform| ci_platform.to_string()) {
-                    builder.ci_platform($crate::ContinuousIntegrationPlatform(ci));
+                builder.target(
+                    $crate::TargetTriple::new(TARGET),
+                    $crate::TargetEnv::new(CFG_ENV),
+                    $crate::TargetOperatingSystem::new(CFG_FAMILY.to_string(), CFG_OS.to_string()),
+                    $crate::TargetArchitecture::new(CFG_TARGET_ARCH),
+                    $crate::Endian::new(CFG_ENDIAN),
+                    $crate::PointerWidth::new(CFG_POINTER_WIDTH.parse().unwrap()),
+                );
+                if let Some(ci) = CI_PLATFORM {
+                    builder.ci_platform($crate::ContinuousIntegrationPlatform::new(ci));
                 }
-                if let Some(git_version) = GIT_VERSION.map(|git_version| git_version.to_string()) {
-                    builder.git_version($crate::GitVersion(git_version));
+                if let Some(git_version) = GIT_VERSION {
+                    builder.git_version($crate::GitVersion::new(git_version));
                 }
                 builder.compilation(
                     DEBUG,
                     FEATURES.iter().map(|feature| feature.to_string()).collect(),
-                    $crate::CompileOptLevel(OPT_LEVEL.parse().unwrap()),
-                    $crate::RustcVersion(RUSTDOC_VERSION.to_string()),
-                    $crate::TargetTriple(HOST.to_string()),
-                    $crate::BuildProfile(PROFILE.to_string()),
+                    $crate::CompileOptLevel::new(OPT_LEVEL.parse().unwrap()),
+                    $crate::RustcVersion::new(RUSTC_VERSION),
+                    $crate::TargetTriple::new(HOST),
+                    $crate::BuildProfile::new(PROFILE),
                 );
-                builder.package($crate::Package {
-                    name: PKG_NAME.to_string(),
-                    authors: PKG_AUTHORS
+                builder.package(
+                    PKG_NAME.to_string(),
+                    PKG_AUTHORS
                         .split(':')
                         .map(|author| author.to_string())
                         .collect(),
-                    description: PKG_DESCRIPTION.to_string(),
-                    version: $crate::semver::Version::parse(PKG_VERSION).unwrap(),
-                });
+                    PKG_DESCRIPTION.to_string(),
+                    ::semver::Version::parse(PKG_VERSION).unwrap(),
+                    PKG_HOMEPAGE.to_string(),
+                );
                 builder.build()
             }
         }
     };
 }
 
-/// Build contains the crate's build-time information.
-/// It collects the build-time info produced via [oysterpack_built](https://crates.io/crates/oysterpack_built)
-/// into a type safe struct.
+/// Build provides a consolidated view of the crate's build-time metadata.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Build {
     timestamp: DateTime<Utc>,
@@ -165,10 +177,7 @@ impl BuildBuilder {
 
     /// Set when the crate was compiled.
     /// - timestamp must be formatted per RFC2822
-    pub fn timestamp(&mut self, timestamp: &str) {
-        let timestamp = DateTime::parse_from_rfc2822(timestamp)
-            .map(|ts| ts.with_timezone(&Utc))
-            .unwrap();
+    pub fn timestamp(&mut self, timestamp: DateTime<Utc>) {
         self.timestamp = Some(timestamp);
     }
 
@@ -223,8 +232,21 @@ impl BuildBuilder {
     }
 
     /// Set package info
-    pub fn package(&mut self, package: Package) {
-        self.package = Some(package)
+    pub fn package(
+        &mut self,
+        name: String,
+        authors: Vec<String>,
+        description: String,
+        version: semver::Version,
+        homepage: String,
+    ) {
+        self.package = Some(Package {
+            name,
+            authors,
+            description,
+            version,
+            homepage,
+        })
     }
 
     /// Produces the Build.
@@ -266,6 +288,13 @@ impl BuildBuilder {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TargetTriple(String);
 
+impl TargetTriple {
+    /// TargetTriple constructor
+    pub fn new(triple: &str) -> TargetTriple {
+        TargetTriple(triple.to_string())
+    }
+}
+
 impl Display for TargetTriple {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(&self.0)
@@ -275,6 +304,13 @@ impl Display for TargetTriple {
 /// Target environment - corresponds to the abi part of the target triple
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TargetEnv(String);
+
+impl TargetEnv {
+    /// TargetEnv constructor
+    pub fn new(env: &str) -> TargetEnv {
+        TargetEnv(env.to_string())
+    }
+}
 
 impl Display for TargetEnv {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -286,6 +322,13 @@ impl Display for TargetEnv {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TargetArchitecture(String);
 
+impl TargetArchitecture {
+    /// TargetArchitecture constructor
+    pub fn new(arch: &str) -> TargetArchitecture {
+        TargetArchitecture(arch.to_string())
+    }
+}
+
 impl Display for TargetArchitecture {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(&self.0)
@@ -296,6 +339,13 @@ impl Display for TargetArchitecture {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Endian(String);
 
+impl Endian {
+    /// Endian constructor
+    pub fn new(endian: &str) -> Endian {
+        Endian(endian.to_string())
+    }
+}
+
 impl Display for Endian {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(&self.0)
@@ -305,6 +355,18 @@ impl Display for Endian {
 /// pointer width
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PointerWidth(u8);
+
+impl PointerWidth {
+    /// PointerWidth constructor
+    pub fn new(width: u8) -> PointerWidth {
+        PointerWidth(width)
+    }
+
+    /// pointer width
+    pub fn width(&self) -> u8 {
+        self.0
+    }
+}
 
 impl Display for PointerWidth {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -320,6 +382,11 @@ pub struct TargetOperatingSystem {
 }
 
 impl TargetOperatingSystem {
+    /// TargetOperatingSystem constructor
+    pub fn new(family: String, os: String) -> TargetOperatingSystem {
+        TargetOperatingSystem { family, os }
+    }
+
     /// Operating system family
     pub fn family(&self) -> &str {
         &self.family
@@ -378,6 +445,13 @@ impl Target {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ContinuousIntegrationPlatform(String);
 
+impl ContinuousIntegrationPlatform {
+    /// ContinuousIntegrationPlatform constructor
+    pub fn new(ci: &str) -> ContinuousIntegrationPlatform {
+        ContinuousIntegrationPlatform(ci.to_string())
+    }
+}
+
 impl Display for ContinuousIntegrationPlatform {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(&self.0)
@@ -431,6 +505,13 @@ impl Compilation {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RustcVersion(String);
 
+impl RustcVersion {
+    /// RustcVersion constructor
+    pub fn new(ver: &str) -> RustcVersion {
+        RustcVersion(ver.to_string())
+    }
+}
+
 impl Display for RustcVersion {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.write_str(&self.0)
@@ -440,6 +521,13 @@ impl Display for RustcVersion {
 /// Build profile used
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BuildProfile(String);
+
+impl BuildProfile {
+    /// BuildProfile constructor
+    pub fn new(profile: &str) -> BuildProfile {
+        BuildProfile(profile.to_string())
+    }
+}
 
 impl Display for BuildProfile {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -451,6 +539,13 @@ impl Display for BuildProfile {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CompileOptLevel(u8);
 
+impl CompileOptLevel {
+    /// CompileOptLevel constructor
+    pub fn new(opt_level: u8) -> CompileOptLevel {
+        CompileOptLevel(opt_level)
+    }
+}
+
 impl Display for CompileOptLevel {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
@@ -460,6 +555,13 @@ impl Display for CompileOptLevel {
 /// Contains HEAD's tag. The short commit id is used if HEAD is not tagged.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GitVersion(String);
+
+impl GitVersion {
+    /// GitVersion constructor
+    pub fn new(profile: &str) -> GitVersion {
+        GitVersion(profile.to_string())
+    }
+}
 
 impl Display for GitVersion {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -474,6 +576,7 @@ pub struct Package {
     authors: Vec<String>,
     description: String,
     version: semver::Version,
+    homepage: String,
 }
 
 impl Package {
@@ -483,12 +586,14 @@ impl Package {
         authors: Vec<String>,
         description: String,
         version: semver::Version,
+        homepage: String,
     ) -> Package {
         Package {
             name,
             authors,
             description,
             version,
+            homepage,
         }
     }
 
@@ -510,6 +615,11 @@ impl Package {
     /// Package version
     pub fn version(&self) -> &semver::Version {
         &self.version
+    }
+
+    /// Package homepage
+    pub fn homepage(&self) -> &str {
+        &self.homepage
     }
 }
 

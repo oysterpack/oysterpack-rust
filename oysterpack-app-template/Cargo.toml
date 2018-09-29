@@ -2,23 +2,28 @@
 name = "oysterpack_app_template"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack XXX"
+description = "OysterPack Application Template"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
-documentation = "https://docs.rs/oysterpack_XXX"
+documentation = "https://docs.rs/oysterpack_app_template"
 readme = "README.md"
 build = "build.rs"
 
 [dependencies]
 oysterpack_built_mod = {path = "../oysterpack-built-mod", version="0.2"}
+
+semver = {version = "0.9", features = ["serde"]}
 log = "0.4"
 fern = "0.5"
 chrono = { version = "0.4", features = ["serde", "time"] }
+serde = "1"
+serde_derive = "1"
 
 [dev-dependencies]
 version-sync = "0.5"
 lazy_static = "1"
+serde_json = "1.0"
 
 [build-dependencies]
 oysterpack_built = "0.2"
