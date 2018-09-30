@@ -62,7 +62,7 @@
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built_mod/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built_mod/0.2.1")]
 
 extern crate chrono;
 extern crate semver;
