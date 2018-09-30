@@ -18,6 +18,39 @@
 //!
 //! The generated `build` module will consist of:
 //! - constants for each piece of build metadata
+//!
+//! Constant | Type | Description
+//! -------- | ---- | -----------
+//! BUILT_TIME_UTC|&str|The built-time in RFC822, UTC
+//! CFG_ENDIAN|&str|The endianness, given by cfg!(target_endian).
+//! CFG_ENV|&str|The toolchain-environment, given by cfg!(target_env).
+//! CFG_FAMILY|&str|The OS-family, given by cfg!(target_family).
+//! CFG_OS|&str|The operating system, given by cfg!(target_os).
+//! CFG_POINTER_WIDTH|u8|The pointer width, given by cfg!(target_pointer_width).
+//! CFG_TARGET_ARCH|&str|The target architecture, given by cfg!(target_arch).
+//! CI_PLATFORM|Option<&str>|The Continuous Integration platform detected during compilation.
+//! DEBUG|bool|Value of DEBUG for the profile used during compilation.
+//! FEATURES|\[&str; N\]|The features that were enabled during compilation.
+//! FEATURES_STR|&str|The features as a comma-separated string.
+//! GIT_VERSION|Option<&str>|If the crate was compiled from within a git-repository, GIT_VERSION contains HEAD's tag. The short commit id is used if HEAD is not tagged.
+//! HOST|&str|The host triple of the rust compiler.
+//! NUM_JOBS|u32|The parallelism that was specified during compilation.
+//! OPT_LEVEL|&str|Value of OPT_LEVEL for the profile used during compilation.
+//! PKG_AUTHORS|&str|A colon-separated list of authors.
+//! PKG_DESCRIPTION|&str|The description.
+//! PKG_HOMEPAGE|&str|The homepage.
+//! PKG_NAME|&str|The name of the package.
+//! PKG_VERSION|&str|The full version.
+//! PKG_VERSION_MAJOR|&str|The major version.
+//! PKG_VERSION_MINOR|&str|The minor version.
+//! PKG_VERSION_PATCH|&str|The patch version.
+//! PKG_VERSION_PRE|&str|The pre-release version.
+//! PROFILE|&str|release for release builds, debug for other builds.
+//! RUSTC|&str|The compiler that cargo resolved to use.
+//! RUSTC_VERSION|&str|The output of rustc -V
+//! RUSTDOC|&str|The documentation generator that cargo resolved to use.
+//! RUSTDOC_VERSION|&str|The output of rustdoc -V
+//!
 //! - `fn get() -> Build`
 //!     - [Build](struct.Build.html) provides a consolidated view of the build-time metadata.
 //!       This makes it easier to work with the build-time metadata in a typesafe manner.
@@ -25,6 +58,75 @@
 //! **NOTE:** The `op_build_mod!()` depends on the following dependencies in order to compile:
 //! - [semver](https://crates.io/crates/semver)
 //! - [chrono](https://crates.io/crates/chrono)
+//!
+//! Below is an example of what the `op_build_mod!()` generates:
+//! ```compile_fail
+//! # extern crate oysterpack_built_mod;
+//!
+//! pub mod build {
+//!    pub const CI_PLATFORM: Option<&str> = None;
+//!    ///The full version
+//!    pub const PKG_VERSION: &str = "0.2.0";
+//!    ///The major version
+//!    pub const PKG_VERSION_MAJOR: &str = "0";
+//!    ///The minor version
+//!    pub const PKG_VERSION_MINOR: &str = "2";
+//!    ///The patch version
+//!    pub const PKG_VERSION_PATCH: &str = "0";
+//!    ///The pre-release version
+//!    pub const PKG_VERSION_PRE: &str = "";
+//!    ///A colon-separated list of authors
+//!    pub const PKG_AUTHORS: &str = "Alfio Zappala <oysterpack.inc@gmail.com>";
+//!    ///The name of the package
+//!    pub const PKG_NAME: &str = "oysterpack_built_mod";
+//!    ///The description
+//!    pub const PKG_DESCRIPTION: &str = "Provides macro to generate a build module which contains build-time information.";
+//!    ///The homepage
+//!    pub const PKG_HOMEPAGE: &str = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-built-mod";
+//!    ///The target triple that was being compiled for
+//!    pub const TARGET: &str = "x86_64-unknown-linux-gnu";
+//!    ///The host triple of the rust compiler
+//!    pub const HOST: &str = "x86_64-unknown-linux-gnu";
+//!    ///`release` for release builds, `debug` for other builds
+//!    pub const PROFILE: &str = "debug";
+//!    ///The compiler that cargo resolved to use
+//!    pub const RUSTC: &str = "rustc";
+//!    ///The documentation generator that cargo resolved to use
+//!    pub const RUSTDOC: &str = "rustdoc";
+//!    ///Value of OPT_LEVEL for the profile used during compilation
+//!    pub const OPT_LEVEL: &str = "0";
+//!    ///The parallelism that was specified during compilation
+//!    pub const NUM_JOBS: u32 = 8;
+//!    ///Value of DEBUG for the profile used during compilation
+//!    pub const DEBUG: bool = true;
+//!    ///The features that were enabled during compilation.
+//!    pub const FEATURES: [&str; 0] = [];
+//!    ///The features as a comma-separated string.
+//!    pub const FEATURES_STR: &str = "";
+//!    ///The output of `rustc -V`
+//!    pub const RUSTC_VERSION: &str = "rustc 1.29.1 (b801ae664 2018-09-20)";
+//!    ///The output of `rustdoc -V`
+//!    pub const RUSTDOC_VERSION: &str = "rustdoc 1.29.1 (b801ae664 2018-09-20)";
+//!    ///If the crate was compiled from within a git-repository, `GIT_VERSION` contains HEAD's tag. The short commit id is used if HEAD is not tagged.
+//!    pub const GIT_VERSION: Option<&str> = Some("oysterpack_built_v0.2.2-2-g04f64f0");
+//!    ///The built-time in RFC822, UTC
+//!    pub const BUILT_TIME_UTC: &str = "Sun, 30 Sep 2018 13:00:52 GMT";
+//!    ///The target architecture, given by `cfg!(target_arch)`.
+//!    pub const CFG_TARGET_ARCH: &str = "x86_64";
+//!    ///The endianness, given by `cfg!(target_endian)`.
+//!    pub const CFG_ENDIAN: &str = "little";
+//!    ///The toolchain-environment, given by `cfg!(target_env)`.
+//!    pub const CFG_ENV: &str = "gnu";
+//!    ///The OS-family, given by `cfg!(target_family)`.
+//!    pub const CFG_FAMILY: &str = "unix";
+//!    ///The operating system, given by `cfg!(target_os)`.
+//!    pub const CFG_OS: &str = "linux";
+//!    ///The pointer width, given by `cfg!(target_pointer_width)`.
+//!    pub const CFG_POINTER_WIDTH: &str = "64";
+//!
+//!    pub fn get() -> ::oysterpack_built_mod::Build { ... }
+//! }
+//! ```
 //!
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
@@ -49,7 +151,6 @@ extern crate fern;
 extern crate serde_json;
 
 use chrono::{DateTime, Utc};
-use std::fmt::{self, Display, Formatter};
 
 /// Generate a public module named `build` which includes build-time info generated via
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built)
@@ -102,6 +203,66 @@ macro_rules! op_build_mod {
                     PKG_HOMEPAGE.to_string(),
                 );
                 builder.build()
+            }
+        }
+    };
+}
+
+/// macro that generates a new type for a String
+macro_rules! op_tuple_struct_string {
+    (
+        $(#[$outer:meta])*
+        $name:ident
+    ) => {
+        $(#[$outer])*
+        #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+        pub struct $name (String);
+
+        impl $name {
+            /// TargetTriple constructor
+            pub fn new(value: &str) -> $name {
+                $name(value.to_string())
+            }
+
+            /// get the underlying value
+            pub fn get(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                f.write_str(&self.0)
+            }
+        }
+    };
+}
+
+/// macro that generates a new type where the underlying value implements Copy
+macro_rules! op_tuple_struct_copy {
+    (
+        $(#[$outer:meta])*
+        $name:ident($T:ty)
+    ) => {
+        $(#[$outer])*
+        #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+        pub struct $name ($T);
+
+        impl $name {
+            /// TargetTriple constructor
+            pub fn new(value: $T) -> $name {
+                $name(value)
+            }
+
+            /// get the underlying value
+            pub fn get(&self) -> $T {
+                self.0
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                write!(f, "{}", self.0)
             }
         }
     };
@@ -265,113 +426,48 @@ impl BuildBuilder {
     }
 }
 
-/// Platforms are identified by their “target triple” which is the string to inform the compiler
-/// what kind of output should be produced.
-///
-/// The target triple has the general format `<arch><sub>-<vendor>-<sys>-<abi>`, where:
-/// - `arch`
-///   - x86, arm, thumb, mips, etc.
-///   - On UNIXy systems, you can find this with the command uname -m.
-/// - `sub`
-///   - for example on ARM: v5, v6m, v7a, v7m, etc.
-/// - `vendor`
-///   - pc, apple, nvidia, ibm, etc.
-///   - On linux: usually unknown. On windows: pc. On OSX/iOS: apple
-/// - `sys`
-///   - none, linux, win32, darwin, cuda, etc.
-///   - On UNIXy systems, you can find this with the command uname -s
-/// - `abi`
-///   - eabi, gnu, android, macho, elf, etc.
-///   - On Linux, this refers to the libc implementation which you can find out with ldd --version.
-///   - Mac and *BSD systems don't provide multiple ABIs, so this field is omitted.
-///   - On Windows, AFAIK there are only two ABIs: gnu and msvc.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TargetTriple(String);
-
-impl TargetTriple {
-    /// TargetTriple constructor
-    pub fn new(triple: &str) -> TargetTriple {
-        TargetTriple(triple.to_string())
-    }
+op_tuple_struct_string! {
+    /// Platforms are identified by their “target triple” which is the string to inform the compiler
+    /// what kind of output should be produced.
+    ///
+    /// The target triple has the general format `<arch><sub>-<vendor>-<sys>-<abi>`, where:
+    /// - `arch`
+    ///   - x86, arm, thumb, mips, etc.
+    ///   - On UNIXy systems, you can find this with the command uname -m.
+    /// - `sub`
+    ///   - for example on ARM: v5, v6m, v7a, v7m, etc.
+    /// - `vendor`
+    ///   - pc, apple, nvidia, ibm, etc.
+    ///   - On linux: usually unknown. On windows: pc. On OSX/iOS: apple
+    /// - `sys`
+    ///   - none, linux, win32, darwin, cuda, etc.
+    ///   - On UNIXy systems, you can find this with the command uname -s
+    /// - `abi`
+    ///   - eabi, gnu, android, macho, elf, etc.
+    ///   - On Linux, this refers to the libc implementation which you can find out with ldd --version.
+    ///   - Mac and *BSD systems don't provide multiple ABIs, so this field is omitted.
+    ///   - On Windows, AFAIK there are only two ABIs: gnu and msvc.
+    TargetTriple
 }
 
-impl Display for TargetTriple {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+op_tuple_struct_string! {
+    /// Target environment - corresponds to the abi part of the target triple
+    TargetEnv
 }
 
-/// Target environment - corresponds to the abi part of the target triple
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TargetEnv(String);
-
-impl TargetEnv {
-    /// TargetEnv constructor
-    pub fn new(env: &str) -> TargetEnv {
-        TargetEnv(env.to_string())
-    }
+op_tuple_struct_string! {
+    /// Target architecture
+    TargetArchitecture
 }
 
-impl Display for TargetEnv {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+op_tuple_struct_string! {
+    /// endianness
+    Endian
 }
 
-/// Target architecture
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TargetArchitecture(String);
-
-impl TargetArchitecture {
-    /// TargetArchitecture constructor
-    pub fn new(arch: &str) -> TargetArchitecture {
-        TargetArchitecture(arch.to_string())
-    }
-}
-
-impl Display for TargetArchitecture {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// endianness
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Endian(String);
-
-impl Endian {
-    /// Endian constructor
-    pub fn new(endian: &str) -> Endian {
-        Endian(endian.to_string())
-    }
-}
-
-impl Display for Endian {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// pointer width
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PointerWidth(u8);
-
-impl PointerWidth {
-    /// PointerWidth constructor
-    pub fn new(width: u8) -> PointerWidth {
-        PointerWidth(width)
-    }
-
+op_tuple_struct_copy! {
     /// pointer width
-    pub fn width(&self) -> u8 {
-        self.0
-    }
-}
-
-impl Display for PointerWidth {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+    PointerWidth(u8)
 }
 
 /// The target operating system
@@ -441,21 +537,9 @@ impl Target {
     }
 }
 
-/// Continuous Integration platform
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ContinuousIntegrationPlatform(String);
-
-impl ContinuousIntegrationPlatform {
-    /// ContinuousIntegrationPlatform constructor
-    pub fn new(ci: &str) -> ContinuousIntegrationPlatform {
-        ContinuousIntegrationPlatform(ci.to_string())
-    }
-}
-
-impl Display for ContinuousIntegrationPlatform {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+op_tuple_struct_string! {
+    /// Continuous Integration platform
+    ContinuousIntegrationPlatform
 }
 
 /// Compilation info
@@ -501,72 +585,24 @@ impl Compilation {
     }
 }
 
-/// The output of rustc -V
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RustcVersion(String);
-
-impl RustcVersion {
-    /// RustcVersion constructor
-    pub fn new(ver: &str) -> RustcVersion {
-        RustcVersion(ver.to_string())
-    }
+op_tuple_struct_string! {
+    /// The output of rustc -V
+    RustcVersion
 }
 
-impl Display for RustcVersion {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+op_tuple_struct_string! {
+    /// Build profile used for compilation
+    BuildProfile
 }
 
-/// Build profile used
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct BuildProfile(String);
-
-impl BuildProfile {
-    /// BuildProfile constructor
-    pub fn new(profile: &str) -> BuildProfile {
-        BuildProfile(profile.to_string())
-    }
+op_tuple_struct_copy!{
+    /// Value of OPT_LEVEL for the profile used during compilation.
+    CompileOptLevel(u8)
 }
 
-impl Display for BuildProfile {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// Value of OPT_LEVEL for the profile used during compilation.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct CompileOptLevel(u8);
-
-impl CompileOptLevel {
-    /// CompileOptLevel constructor
-    pub fn new(opt_level: u8) -> CompileOptLevel {
-        CompileOptLevel(opt_level)
-    }
-}
-
-impl Display for CompileOptLevel {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Contains HEAD's tag. The short commit id is used if HEAD is not tagged.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct GitVersion(String);
-
-impl GitVersion {
-    /// GitVersion constructor
-    pub fn new(profile: &str) -> GitVersion {
-        GitVersion(profile.to_string())
-    }
-}
-
-impl Display for GitVersion {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+op_tuple_struct_string! {
+    /// Contains HEAD's tag. The short commit id is used if HEAD is not tagged.
+    GitVersion
 }
 
 /// Crate's package info, which is specified in cargo.toml.
