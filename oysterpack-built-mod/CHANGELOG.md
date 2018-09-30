@@ -6,7 +6,7 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
-## \[0.2.0\] 2018-09-23
+## \[0.2.2\] 2018-09-30
 - type safe domain model is now provided for build-time info, via the
   `Build` struct
   - this requires the following crate dependencies:
