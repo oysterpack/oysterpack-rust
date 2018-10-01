@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_built"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Built"
 license = "MIT/Apache-2.0"

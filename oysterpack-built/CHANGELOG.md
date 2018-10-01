@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.2.3\] 2018-10-01
+
+### Changed
+- fixed README.md formatting issues
+
 ## \[0.2.2\] 2018-09-26
 
 ### Changed

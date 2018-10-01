@@ -52,7 +52,7 @@
 //!
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.2")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.3")]
 
 extern crate built;
 
@@ -62,7 +62,7 @@ use std::{env, io, path};
 ///
 /// # Panics
 /// If build-time information failed to be gathered.
-pub fn write_built_file()  {
+pub fn write_built_file() {
     built::write_built_file().expect("Failed to acquire build-time information");
 }
 
