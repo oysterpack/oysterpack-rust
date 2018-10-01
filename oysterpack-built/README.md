@@ -12,27 +12,23 @@ Its main purpose is to standardize the integration for OysterPack apps.
 
 1. Add the following to **Cargo.toml**:
 
-       ```
-       [package]
-       build = "build.rs"
+           [package]
+           build = "build.rs"
 
-       [build-dependencies]
-       oysterpack_built = "0.2"
-       ```
+           [build-dependencies]
+           oysterpack_built = "0.2"
 
-       - `oysterpack_built` is added as a build dependency
-       - `build.rs` is the name of the cargo build script to use
-          - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
-            not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
+    - `oysterpack_built` is added as a build dependency
+    - `build.rs` is the name of the cargo build script to use
+        - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
+          not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
 2. Include the following in **build.rs**:
 
-       ```
-       extern crate oysterpack_built;
+           extern crate oysterpack_built;
 
-       fn main() {
-          oysterpack_built::write_built_file();
-       }
-       ```
+           fn main() {
+              oysterpack_built::write_built_file();
+           }
 
 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
    It can be picked up and compiled via the `op_build_mod!()` macro provided by [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod).
