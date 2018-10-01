@@ -54,6 +54,7 @@
 //! - `fn get() -> Build`
 //!     - [Build](struct.Build.html) provides a consolidated view of the build-time metadata.
 //!       This makes it easier to work with the build-time metadata in a typesafe manner.
+//!     - [Build](struct.Build.html) supports serialization via [serde](https://crates.io/crates/serde)
 //!
 //! **NOTE:** The `op_build_mod!()` depends on the following dependencies in order to compile:
 //! - [semver](https://crates.io/crates/semver)
