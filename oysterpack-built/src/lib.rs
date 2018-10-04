@@ -25,46 +25,88 @@
 //! ## How to integrate within your project
 //!
 //! 1. Add the following to **Cargo.toml**:
+//!
 //!    ```toml
 //!    [package]
 //!    build = "build.rs"
 //!
 //!    [build-dependencies]
-//!    oysterpack_built = "0.2"
+//!    oysterpack_built = "0.3"
 //!    ```
 //!    - `oysterpack_built` is added as a build dependency
 //!    - `build.rs` is the name of the cargo build script to use
 //!       - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
 //!         not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
+//!
 //! 2. Include the following in **build.rs**:
 //!
 //!    ```no_run
 //!    extern crate oysterpack_built;
 //!
 //!    fn main() {
-//!       oysterpack_built::write_built_file();
+//!       oysterpack_built::run();
 //!    }
 //!    ```
-//! 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
-//!    It can be picked up and compiled via the `op_build_mod!()` macro provided by [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod).
-//!    The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
-//!    information. See [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod) for details.
 //!
+//! 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
+//!    It can be picked up and compiled via the `op_build_mod!()` macro.
+//!    The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
+//!    information.
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.2.3")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
 
+extern crate semver;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate chrono;
+
+#[cfg(feature = "build-time")]
 extern crate built;
+#[cfg(feature = "build-time")]
+extern crate cargo;
+#[cfg(feature = "build-time")]
+extern crate failure;
+#[cfg(feature = "build-time")]
+extern crate petgraph;
 
-use std::{env, io, path};
+#[macro_use]
+#[cfg(test)]
+extern crate log;
+#[macro_use]
+#[cfg(test)]
+extern crate lazy_static;
+#[cfg(test)]
+extern crate fern;
+#[cfg(test)]
+extern crate serde_json;
 
-/// Gathers build information and generates code to make it available at runtime.
-///
-/// # Panics
-/// If build-time information failed to be gathered.
-pub fn write_built_file() {
-    built::write_built_file().expect("Failed to acquire build-time information");
-}
+#[cfg(feature = "build-time")]
+pub mod build_time;
+
+#[cfg(feature = "build-time")]
+pub use build_time::run;
+
+pub mod metadata;
+
+pub use metadata::Build;
+pub use metadata::BuildBuilder;
+pub use metadata::BuildProfile;
+pub use metadata::Compilation;
+pub use metadata::CompileOptLevel;
+pub use metadata::ContinuousIntegrationPlatform;
+pub use metadata::Endian;
+pub use metadata::GitVersion;
+pub use metadata::Package;
+pub use metadata::PointerWidth;
+pub use metadata::RustcVersion;
+pub use metadata::Target;
+pub use metadata::TargetArchitecture;
+pub use metadata::TargetEnv;
+pub use metadata::TargetOperatingSystem;
+pub use metadata::TargetTriple;
+
 
 #[cfg(test)]
 mod tests;

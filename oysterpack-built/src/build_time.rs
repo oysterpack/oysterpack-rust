@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Gathers build time information for the crate - see https://crates.io/crates/built
+//! used as a build dependency - activated via the build-time feature
 
-extern crate oysterpack_built;
+use built;
 
-fn main() {
-    oysterpack_built::run();
+/// Gathers build information and generates code to make it available at runtime.
+///
+/// # Panics
+/// If build-time information failed to be gathered.
+pub fn run() {
+    built::write_built_file().expect("Failed to acquire build-time information");
 }

@@ -11,7 +11,7 @@ readme = "README.md"
 build = "build.rs"
 
 [dependencies]
-oysterpack_built_mod = {path = "../oysterpack-built-mod", version="0.2"}
+oysterpack_built = {path = "../oysterpack-built", version="0.3"}
 
 semver = {version = "0.9", features = ["serde"]}
 log = "0.4"
@@ -26,6 +26,6 @@ lazy_static = "1"
 serde_json = "1.0"
 
 [build-dependencies]
-oysterpack_built = "0.2"
+oysterpack_built = {path = "../oysterpack-built", version="0.3", features = ["build-time"]}
 
 [badges]

@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Gathers build time information for the crate - see https://crates.io/crates/built
+//! Crate dependency domain model
 
-extern crate oysterpack_built;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Crate {
+    package_id: PackageId,
+    dependencies: Vec<Crate>,
+}
 
-fn main() {
-    oysterpack_built::run();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PackageId {
+    name: String,
+    version: String,
 }
