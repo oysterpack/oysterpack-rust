@@ -36,3 +36,8 @@ Its main purpose is to standardize the integration for OysterPack apps.
    information. See [oysterpack_built_mod](https://crates.io/crates/oysterpack_built_mod) for details.
 
 Take a look at the [changelog](CHANGELOG.md) for a detailed list of all changes.
+
+### Notes
+- When running tests, enable the "build-time" feature because the unit tests are testing the build-time feature
+
+            cargo test --features "build-time"

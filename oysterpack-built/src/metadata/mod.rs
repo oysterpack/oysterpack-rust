@@ -16,122 +16,7 @@
 
 use chrono::{DateTime, Utc};
 use semver;
-
-/// Generate a public module named `build` which includes build-time info generated via
-/// [oysterpack_built](https://crates.io/crates/oysterpack_built)
-#[macro_export]
-macro_rules! op_build_mod {
-    () => {
-        /// provides build-time information
-        pub mod build {
-            // The file has been placed there by the build script.
-            include!(concat!(env!("OUT_DIR"), "/built.rs"));
-
-            /// Collects the build-time info to construct a new Build instance
-            pub fn get() -> $crate::Build {
-                let mut builder = $crate::BuildBuilder::new();
-                builder.timestamp(
-                    ::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
-                        .map(|ts| ts.with_timezone(&::chrono::Utc))
-                        .unwrap(),
-                );
-                builder.target(
-                    $crate::TargetTriple::new(TARGET),
-                    $crate::TargetEnv::new(CFG_ENV),
-                    $crate::TargetOperatingSystem::new(CFG_FAMILY.to_string(), CFG_OS.to_string()),
-                    $crate::TargetArchitecture::new(CFG_TARGET_ARCH),
-                    $crate::Endian::new(CFG_ENDIAN),
-                    $crate::PointerWidth::new(CFG_POINTER_WIDTH.parse().unwrap()),
-                );
-                if let Some(ci) = CI_PLATFORM {
-                    builder.ci_platform($crate::ContinuousIntegrationPlatform::new(ci));
-                }
-                if let Some(git_version) = GIT_VERSION {
-                    builder.git_version($crate::GitVersion::new(git_version));
-                }
-                builder.compilation(
-                    DEBUG,
-                    FEATURES.iter().map(|feature| feature.to_string()).collect(),
-                    $crate::CompileOptLevel::new(OPT_LEVEL.parse().unwrap()),
-                    $crate::RustcVersion::new(RUSTC_VERSION),
-                    $crate::TargetTriple::new(HOST),
-                    $crate::BuildProfile::new(PROFILE),
-                );
-                builder.package(
-                    PKG_NAME.to_string(),
-                    PKG_AUTHORS
-                        .split(':')
-                        .map(|author| author.to_string())
-                        .collect(),
-                    PKG_DESCRIPTION.to_string(),
-                    ::semver::Version::parse(PKG_VERSION).unwrap(),
-                    PKG_HOMEPAGE.to_string(),
-                );
-                builder.build()
-            }
-        }
-    };
-}
-
-/// macro that generates a new type for a String
-macro_rules! op_tuple_struct_string {
-    (
-        $(#[$outer:meta])*
-        $name:ident
-    ) => {
-        $(#[$outer])*
-        #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-        pub struct $name (String);
-
-        impl $name {
-            /// TargetTriple constructor
-            pub fn new(value: &str) -> $name {
-                $name(value.to_string())
-            }
-
-            /// get the underlying value
-            pub fn get(&self) -> &str {
-                &self.0
-            }
-        }
-
-        impl ::std::fmt::Display for $name {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                f.write_str(&self.0)
-            }
-        }
-    };
-}
-
-/// macro that generates a new type where the underlying value implements Copy
-macro_rules! op_tuple_struct_copy {
-    (
-        $(#[$outer:meta])*
-        $name:ident($T:ty)
-    ) => {
-        $(#[$outer])*
-        #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-        pub struct $name ($T);
-
-        impl $name {
-            /// TargetTriple constructor
-            pub fn new(value: $T) -> $name {
-                $name(value)
-            }
-
-            /// get the underlying value
-            pub fn get(&self) -> $T {
-                self.0
-            }
-        }
-
-        impl ::std::fmt::Display for $name {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{}", self.0)
-            }
-        }
-    };
-}
+use std::fmt;
 
 /// Build provides a consolidated view of the crate's build-time metadata.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -265,13 +150,14 @@ impl BuildBuilder {
         description: String,
         version: semver::Version,
         homepage: String,
+        dependencies: Vec<PackageId>
     ) {
         self.package = Some(Package {
-            name,
+            id: PackageId { name, version },
             authors,
             description,
-            version,
             homepage,
+            dependencies
         })
     }
 
@@ -473,34 +359,44 @@ op_tuple_struct_string! {
 /// Crate's package info, which is specified in cargo.toml.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Package {
-    name: String,
+    id: PackageId,
     authors: Vec<String>,
     description: String,
-    version: semver::Version,
     homepage: String,
+    dependencies: Vec<PackageId>
 }
 
 impl Package {
     /// Package constructor
     pub fn new(
-        name: String,
+        id: PackageId,
         authors: Vec<String>,
         description: String,
-        version: semver::Version,
         homepage: String,
+        dependencies: Vec<PackageId>
     ) -> Package {
         Package {
-            name,
+            id,
             authors,
             description,
-            version,
             homepage,
+            dependencies
         }
+    }
+
+    /// Package id
+    pub fn id(&self) -> &PackageId {
+        &self.id
     }
 
     /// Package name
     pub fn name(&self) -> &str {
-        &self.name
+        &self.id.name
+    }
+
+    /// Package version
+    pub fn version(&self) -> &semver::Version {
+        &self.id.version
     }
 
     /// Package authors
@@ -513,18 +409,48 @@ impl Package {
         &self.description
     }
 
+    /// Package homepage
+    pub fn homepage(&self) -> &str {
+        &self.homepage
+    }
+
+    /// Effective package dependencies
+    pub fn dependencies(&self) -> &[PackageId] {
+        self.dependencies.as_slice()
+    }
+}
+
+/// Identifier for a specific version of a package.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
+pub struct PackageId {
+    name: String,
+    version: semver::Version,
+}
+
+impl PackageId {
+    /// PackageId constructor
+    pub fn new(name: String, version: semver::Version) -> PackageId {
+        PackageId { name, version }
+    }
+
+    /// Package name
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Package version
     pub fn version(&self) -> &semver::Version {
         &self.version
     }
+}
 
-    /// Package homepage
-    pub fn homepage(&self) -> &str {
-        &self.homepage
+impl fmt::Display for PackageId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}-{}", self.name, self.version)
     }
 }
 
 #[cfg(test)]
 mod tests;
 
-mod deps;
+pub mod dependency;

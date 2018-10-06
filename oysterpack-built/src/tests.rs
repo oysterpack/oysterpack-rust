@@ -12,6 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! provides unit test support
+
+use chrono;
+use fern;
+use log;
+use std::io;
+
+pub const MODULE_NAME: &str = "oysterpack_built";
+
+fn init_logging() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S%.6f]"),
+                record.level(),
+                record.target(),
+                message
+            ))
+        }).level(log::LevelFilter::Warn)
+        .level_for(MODULE_NAME, log::LevelFilter::Debug)
+        .chain(io::stdout())
+        .apply()?;
+
+    Ok(())
+}
+
+lazy_static! {
+    pub static ref INIT_FERN: Result<(), fern::InitError> = init_logging();
+}
+
+pub fn run_test<F: FnOnce() -> ()>(test: F) {
+    let _ = *INIT_FERN;
+    test()
+}
+
 use cargo::core::dependency::Kind;
 use cargo::core::manifest::ManifestMetadata;
 use cargo::core::package::PackageSet;
@@ -26,27 +62,25 @@ use petgraph;
 use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::EdgeDirection;
+use serde_json;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::{self, FromStr};
 
-/// provides build-time information
-mod build {
-    include!(concat!(env!("OUT_DIR"), "/built.rs"));
-}
+op_build_mod!();
 
 #[test]
 fn build_info() {
-    println!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
-    println!(
+    info!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
+    info!(
         "This is version {}{}, built for {} by {}.",
         build::PKG_VERSION,
         build::GIT_VERSION.map_or_else(|| "".to_owned(), |v| format!(" (git {})", v)),
         build::TARGET,
         build::RUSTC_VERSION
     );
-    println!(
+    info!(
         "I was built with profile \"{}\", features \"{}\" on {}",
         build::PROFILE,
         build::FEATURES_STR,
@@ -56,33 +90,42 @@ fn build_info() {
 
 #[test]
 fn test_cargo() {
-    let cargo_config = Config::default().unwrap();
-    let workspace = workspace(&cargo_config, None).unwrap();
-    let package = workspace.current().unwrap();
-    println!("package: {}-{}", package.name(), package.version());
-    let mut registry = registry(&cargo_config, &package).unwrap();
-    let (packages, resolve) = resolve(&mut registry, &workspace, None, false, true, true).unwrap();
-    println!("resolve: {:?}", resolve);
+    run_test(|| {
+        let cargo_config = Config::default().unwrap();
+        let workspace = workspace(&cargo_config, None).unwrap();
+        let package = workspace.current().unwrap();
+        info!("package: {}-{}", package.name(), package.version());
+        let mut registry = registry(&cargo_config, &package).unwrap();
+        let features = Some("build-time".to_string());
+        let (packages, resolve) =
+            resolve(&mut registry, &workspace, features, false, true, true).unwrap();
+        info!("packages: {:?}", packages);
+        info!("resolve: {:?}", resolve);
 
-    let ids = packages.package_ids().cloned().collect::<Vec<_>>();
-    let packages = registry.get(&ids);
+        let ids = packages.package_ids().cloned().collect::<Vec<_>>();
+        let packages = registry.get(&ids);
 
-    let root = package.package_id();
-    println!("root: {}", root);
+        let root = package.package_id();
+        info!("root: {}", root);
 
-    let rustc = cargo_config.rustc(Some(&workspace)).unwrap();
-    let target = Some(rustc.host.as_str());
-    println!("target: {:?}", target);
+        let rustc = cargo_config.rustc(Some(&workspace)).unwrap();
+        let target = Some(rustc.host.as_str());
+        info!("target: {:?}", target);
 
-    let cfgs = get_cfgs(&rustc, &target.map(|s| s.to_string())).unwrap();
-    let graph = build_graph(
-        &resolve,
-        &packages,
-        package.package_id(),
-        target,
-        cfgs.as_ref().map(|r| &**r),
-    ).unwrap();
-    println!("graph: {:?}", graph);
+        let cfgs = get_cfgs(&rustc, &target.map(|s| s.to_string())).unwrap();
+        info!("cfgs: {:?}", cfgs);
+        let graph = build_graph(
+            &resolve,
+            &packages,
+            package.package_id(),
+            target,
+            cfgs.as_ref().map(|r| &**r),
+        ).unwrap();
+        //debug!("graph: {:?}", graph);
+
+        //        let graph_json = serde_json::to_string_pretty(&graph);
+        //        info!("graph : {}", graph_json);
+    });
 }
 
 fn workspace(config: &Config, manifest_path: Option<PathBuf>) -> CargoResult<Workspace> {

@@ -14,36 +14,9 @@ use log;
 use semver;
 use serde_json;
 use std::io;
+use tests::*;
 
 op_build_mod!();
-
-fn init_logging() -> Result<(), fern::InitError> {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S%.6f]"),
-                record.level(),
-                record.target(),
-                message
-            ))
-        }).level(log::LevelFilter::Warn)
-        .level_for(build::PKG_NAME, log::LevelFilter::Debug)
-        .chain(io::stdout())
-        .apply()?;
-
-    Ok(())
-}
-
-lazy_static! {
-    pub static ref INIT_FERN: Result<(), fern::InitError> = init_logging();
-}
-
-/// Used to run tests. It ensures that logging has been initialized.
-pub fn run_test<F: FnOnce() -> ()>(test: F) {
-    let _ = *INIT_FERN;
-    test()
-}
 
 #[test]
 fn build_info() {
@@ -173,5 +146,56 @@ fn build_get() {
         );
         assert_eq!(build::PKG_HOMEPAGE, build_info.package().homepage());
         assert_eq!(build::PKG_DESCRIPTION, build_info.package().description());
+    });
+}
+
+use build_time::{
+    self,
+    build_dependency_graph
+};
+use petgraph::{
+    Graph,
+    dot::{Config, Dot}
+};
+use super::*;
+
+#[test]
+fn build_dependency_graph_all_features() {
+    run_test(|| {
+        let dependencies = build_dependency_graph(None);
+        info!(
+            "dependencies Dot diagram: {:?}",
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel])
+        );
+
+        let dependencies_json = serde_json::to_string_pretty(&dependencies).unwrap();
+        info!("dependencies : {}", dependencies_json);
+
+        let dependencies2: Graph<PackageId,dependency::Kind> = serde_json::from_str(&dependencies_json).unwrap();
+        assert_eq!(
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel]).to_string(),
+            Dot::with_config(&dependencies2, &[Config::EdgeNoLabel]).to_string()
+        );
+    });
+}
+
+#[test]
+fn build_dependency_graph_default_features() {
+    run_test(|| {
+        let features = vec!["default".to_string()];
+        let dependencies = build_dependency_graph(Some(features));
+        info!(
+            "dependencies Dot diagram: {:?}",
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel])
+        );
+
+        let dependencies_json = serde_json::to_string_pretty(&dependencies).unwrap();
+        info!("dependencies : {}", dependencies_json);
+
+        let dependencies2: Graph<PackageId,dependency::Kind> = serde_json::from_str(&dependencies_json).unwrap();
+        assert_eq!(
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel]).to_string(),
+            Dot::with_config(&dependencies2, &[Config::EdgeNoLabel]).to_string()
+        );
     });
 }

@@ -16,28 +16,20 @@
 
 extern crate built;
 
-use std::{env, io, path};
+use std::{env, io, path, fs::OpenOptions, io::{prelude::*}};
 
 fn main() {
-    write_built_file(false).expect("Failed to acquire build-time information");
-}
-
-/// Parsing Cargo.lock and writing lists of dependencies and their versions.
-///
-/// For this to work, Cargo.lock needs to actually be there; this is (usually) only true for executables
-/// and not for libraries. Cargo will only create a Cargo.lock for the top-level crate in a dependency-tree.
-/// In case of a library, the top-level crate will decide which crate/version combination to compile
-/// and there will be no Cargo.lock while the library gets compiled as a dependency.
-///
-/// Parsing Cargo.lock instead of Cargo.toml allows us to serialize the precise versions Cargo chose
-/// to compile. One can't, however, distinguish build-dependencies, dev-dependencies and dependencies.
-/// Furthermore, some dependencies never show up if Cargo had not been forced to actually use them
-/// (e.g. dev-dependencies with cargo test never having been executed).
-fn write_built_file(dependencies: bool) -> io::Result<()> {
     let src = env::var("CARGO_MANIFEST_DIR").unwrap();
     let dst = path::Path::new(&env::var("OUT_DIR").unwrap()).join("built.rs");
-    let mut options = built::Options::default();
-    options.set_dependencies(dependencies);
-    built::write_built_file_with_opts(&options, &src, &dst)?;
-    Ok(())
+    built::write_built_file_with_opts(&built::Options::default(), &src, &dst).expect("Failed to acquire build-time information");
+    let mut built_file = OpenOptions::new()
+        .append(true)
+        .open(&dst).expect("Failed to open file in append mode");
+
+
+    built_file.write_all(b"/// An array of effective dependencies as a JSON array.\n").unwrap();
+    writeln!(
+        built_file,
+        "pub const DEPENDENCIES_JSON: &str = \"[]\";",
+    ).unwrap();
 }

@@ -28,14 +28,13 @@ extern crate chrono;
 extern crate fern;
 extern crate semver;
 extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
-#[cfg(test)]
-extern crate serde_json;
 
 op_build_mod!();
 

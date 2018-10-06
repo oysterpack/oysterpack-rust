@@ -30,8 +30,16 @@
 //!    [package]
 //!    build = "build.rs"
 //!
+//!    [dependencies]
+//!    oysterpack_built = {path = "../oysterpack-built", version="0.3"}
+//!    semver = {version = "0.9", features = ["serde"]}
+//!    chrono = { version = "0.4", features = ["serde", "time"] }
+//!    serde = "1"
+//!    serde_derive = "1"
+//!    serde_json = "1"
+//!
 //!    [build-dependencies]
-//!    oysterpack_built = "0.3"
+//!    oysterpack_built = {path = "../oysterpack-built", version="0.3", features = ["build-time"]}
 //!    ```
 //!    - `oysterpack_built` is added as a build dependency
 //!    - `build.rs` is the name of the cargo build script to use
@@ -58,6 +66,7 @@
 
 extern crate semver;
 extern crate serde;
+extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 extern crate chrono;
@@ -79,8 +88,9 @@ extern crate log;
 extern crate lazy_static;
 #[cfg(test)]
 extern crate fern;
-#[cfg(test)]
-extern crate serde_json;
+
+#[macro_use]
+mod macros;
 
 #[cfg(feature = "build-time")]
 pub mod build_time;
@@ -107,6 +117,5 @@ pub use metadata::TargetEnv;
 pub use metadata::TargetOperatingSystem;
 pub use metadata::TargetTriple;
 
-
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

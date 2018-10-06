@@ -14,14 +14,27 @@
 
 //! Crate dependency domain model
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Crate {
-    package_id: PackageId,
-    dependencies: Vec<Crate>,
+use std::fmt;
+
+/// Represents the kind of dependency
+#[derive(PartialEq, Eq, Hash, Ord, PartialOrd, Clone, Debug, Copy, Serialize, Deserialize)]
+pub enum Kind {
+    /// Normal compile time dependency
+    Normal,
+    /// Dependency is used for testing purposes
+    Development,
+    /// Dependency is used at build time
+    Build,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PackageId {
-    name: String,
-    version: String,
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let label = match *self {
+            Kind::Normal => "Normal",
+            Kind::Development => "Development",
+            Kind::Build => "Build"
+        };
+        f.write_str(label)
+    }
 }
+
