@@ -150,14 +150,14 @@ impl BuildBuilder {
         description: String,
         version: semver::Version,
         homepage: String,
-        dependencies: Vec<PackageId>
+        dependencies: Vec<PackageId>,
     ) {
         self.package = Some(Package {
             id: PackageId { name, version },
             authors,
             description,
             homepage,
-            dependencies
+            dependencies,
         })
     }
 
@@ -363,7 +363,7 @@ pub struct Package {
     authors: Vec<String>,
     description: String,
     homepage: String,
-    dependencies: Vec<PackageId>
+    dependencies: Vec<PackageId>,
 }
 
 impl Package {
@@ -373,14 +373,14 @@ impl Package {
         authors: Vec<String>,
         description: String,
         homepage: String,
-        dependencies: Vec<PackageId>
+        dependencies: Vec<PackageId>,
     ) -> Package {
         Package {
             id,
             authors,
             description,
             homepage,
-            dependencies
+            dependencies,
         }
     }
 

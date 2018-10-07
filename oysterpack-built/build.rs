@@ -16,20 +16,20 @@
 
 extern crate built;
 
-use std::{env, io, path, fs::OpenOptions, io::{prelude::*}};
+use std::{env, fs::OpenOptions, io::prelude::*, path};
 
 fn main() {
     let src = env::var("CARGO_MANIFEST_DIR").unwrap();
     let dst = path::Path::new(&env::var("OUT_DIR").unwrap()).join("built.rs");
-    built::write_built_file_with_opts(&built::Options::default(), &src, &dst).expect("Failed to acquire build-time information");
+    built::write_built_file_with_opts(&built::Options::default(), &src, &dst)
+        .expect("Failed to acquire build-time information");
     let mut built_file = OpenOptions::new()
         .append(true)
-        .open(&dst).expect("Failed to open file in append mode");
+        .open(&dst)
+        .expect("Failed to open file in append mode");
 
-
-    built_file.write_all(b"/// An array of effective dependencies as a JSON array.\n").unwrap();
-    writeln!(
-        built_file,
-        "pub const DEPENDENCIES_JSON: &str = \"[]\";",
-    ).unwrap();
+    built_file
+        .write_all(b"/// An array of effective dependencies as a JSON array.\n")
+        .unwrap();
+    writeln!(built_file, "pub const DEPENDENCIES_JSON: &str = \"[]\";",).unwrap();
 }

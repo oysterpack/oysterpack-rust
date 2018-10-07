@@ -1,32 +1,27 @@
 [package]
-name = "oysterpack_app_template"
+name = "oysterpack_app_metadata"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Application Template"
+description = "OysterPack Application Metadata"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
-documentation = "https://docs.rs/oysterpack_app_template"
+documentation = "https://docs.rs/oysterpack_app_metadata"
 readme = "README.md"
-build = "build.rs"
 
 [dependencies]
-oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version="0.1"}
-
+log = "0.4"
 semver = {version = "0.9", features = ["serde"]}
 chrono = { version = "0.4", features = ["serde", "time"] }
 serde = "1"
 serde_derive = "1"
-serde_json = "1"
-
-log = "0.4"
-fern = "0.5"
 
 [dev-dependencies]
 version-sync = "0.5"
+fern = "0.5"
 lazy_static = "1"
+serde_json = "1.0"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version="0.3", features = ["build-time"]}
 
 [badges]

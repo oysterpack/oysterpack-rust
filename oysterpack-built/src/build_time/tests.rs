@@ -13,36 +13,51 @@
 // limitations under the License.
 
 use super::*;
+use oysterpack_app_metadata::metadata;
 use petgraph::dot::{Config, Dot};
 use serde_json;
 use tests::run_test;
-use metadata;
 
 op_build_mod!();
 
 #[test]
-fn build_dependency_graph_all_features() {
+fn build_dependency_graph_with_no_features() {
     run_test(|| {
         let dependencies = build_dependency_graph(None);
+
+
         info!(
             "dependencies Dot diagram: {:?}",
-            Dot::with_config(&dependencies, &[Config::EdgeNoLabel])
+            Dot::with_config(&dependencies.map(
+                |node_idx, node| {
+                    node.name().to_string()
+                },
+                |edge_index, edge| {
+                    *edge
+                }
+            ), &[Config::EdgeNoLabel])
         );
-        info!("all dependencies: {:?}",super::dependencies::all(&dependencies));
+        info!(
+            "all dependencies: {:?}",
+            super::dependencies::all(&dependencies)
+        );
 
         let dependencies_json = serde_json::to_string_pretty(&dependencies).unwrap();
         info!("dependencies : {}", dependencies_json);
 
-        let dependencies2: Graph<metadata::PackageId,metadata::dependency::Kind> = serde_json::from_str(&dependencies_json).unwrap();
+        let dependencies2: Graph<metadata::PackageId, metadata::dependency::Kind> =
+            serde_json::from_str(&dependencies_json).unwrap();
         assert_eq!(
             Dot::with_config(&dependencies, &[Config::EdgeNoLabel]).to_string(),
             Dot::with_config(&dependencies2, &[Config::EdgeNoLabel]).to_string()
         );
+
+        // TODO verify build-time dependencies are not included
     });
 }
 
 #[test]
-fn build_dependency_graph_default_features() {
+fn build_dependency_graph_with_default_features() {
     run_test(|| {
         let features = vec!["default".to_string()];
         let dependencies = build_dependency_graph(Some(features));
@@ -54,10 +69,38 @@ fn build_dependency_graph_default_features() {
         let dependencies_json = serde_json::to_string_pretty(&dependencies).unwrap();
         info!("dependencies : {}", dependencies_json);
 
-        let dependencies2: Graph<metadata::PackageId,metadata::dependency::Kind> = serde_json::from_str(&dependencies_json).unwrap();
+        let dependencies2: Graph<metadata::PackageId, metadata::dependency::Kind> =
+            serde_json::from_str(&dependencies_json).unwrap();
         assert_eq!(
             Dot::with_config(&dependencies, &[Config::EdgeNoLabel]).to_string(),
             Dot::with_config(&dependencies2, &[Config::EdgeNoLabel]).to_string()
         );
+
+        // TODO verify build-time dependencies are not included
+        // TODO verify that default features results in the same as no features being specified
+    });
+}
+
+#[test]
+fn build_dependency_graph_with_build_time_features() {
+    run_test(|| {
+        let features = vec!["build-time".to_string()];
+        let dependencies = build_dependency_graph(Some(features));
+        info!(
+            "dependencies Dot diagram: {:?}",
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel])
+        );
+
+        let dependencies_json = serde_json::to_string(&dependencies).unwrap();
+        info!("dependencies : {}", dependencies_json);
+
+        let dependencies2: Graph<metadata::PackageId, metadata::dependency::Kind> =
+            serde_json::from_str(&dependencies_json).unwrap();
+        assert_eq!(
+            Dot::with_config(&dependencies, &[Config::EdgeNoLabel]).to_string(),
+            Dot::with_config(&dependencies2, &[Config::EdgeNoLabel]).to_string()
+        );
+
+        // TODO verify build-time features are included
     });
 }

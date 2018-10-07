@@ -21,7 +21,7 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_template/0.1.0")]
 
 #[macro_use]
-extern crate oysterpack_built;
+extern crate oysterpack_app_metadata;
 #[macro_use]
 extern crate log;
 extern crate chrono;

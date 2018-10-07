@@ -14,13 +14,17 @@
 
 //! macros
 
-/// Generate a public module named `build` which includes build-time info generated via
-/// [oysterpack_built](https://crates.io/crates/oysterpack_built)
+/// Generate a public module which includes build-time info generated via
+/// [oysterpack_built](https://crates.io/crates/oysterpack_built).
+///
+/// The module default name is `build`, but it can be explicitly specified:
+/// - `op_build_mod!()' - generates 'pub mod build { ... }`
+/// - `op_build_mod!(build_md)` -
 #[macro_export]
 macro_rules! op_build_mod {
-    () => {
+    ($name:ident) => {
         /// provides build-time information
-        pub mod build {
+        pub mod $name {
             // The file has been placed there by the build script.
             include!(concat!(env!("OUT_DIR"), "/built.rs"));
 
@@ -54,7 +58,8 @@ macro_rules! op_build_mod {
                     $crate::TargetTriple::new(HOST),
                     $crate::BuildProfile::new(PROFILE),
                 );
-                let dependencies: Vec<$crate::metadata::PackageId> = ::serde_json::from_str(DEPENDENCIES_JSON).unwrap();
+                let dependencies: Vec<$crate::metadata::PackageId> =
+                    ::serde_json::from_str(DEPENDENCIES_JSON).unwrap();
                 builder.package(
                     PKG_NAME.to_string(),
                     PKG_AUTHORS
@@ -64,11 +69,14 @@ macro_rules! op_build_mod {
                     PKG_DESCRIPTION.to_string(),
                     ::semver::Version::parse(PKG_VERSION).unwrap(),
                     PKG_HOMEPAGE.to_string(),
-                    dependencies
+                    dependencies,
                 );
                 builder.build()
             }
         }
+    };
+    () => {
+        op_build_mod!(build);
     };
 }
 

@@ -18,29 +18,28 @@ use built;
 use cargo::{
     core::{
         dependency::Kind, manifest::ManifestMetadata, package::PackageSet,
-        registry::PackageRegistry, resolver::Method, Package, PackageId, Resolve,
-        Workspace,
+        registry::PackageRegistry, resolver::Method, Package, PackageId, Resolve, Workspace,
     },
     ops,
     util::{self, important_paths, CargoResult, Cfg, Rustc},
     Config,
 };
-use metadata::{self, dependency};
+use oysterpack_app_metadata::metadata::{self, dependency};
 use petgraph::{
     self,
-    graph::{Graph, NodeIndex},
+    graph::{Graph, NodeIndex, node_index},
     visit::EdgeRef,
+    Direction
 };
 use serde_json;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap,HashSet},
+    env,
+    fs::OpenOptions,
+    io::prelude::*,
     path,
     str::{self, FromStr},
-    env,
-    fs::{OpenOptions},
-    io::prelude::*
 };
-
 
 /// Gathers build information and generates code to make it available at runtime.
 ///
@@ -49,8 +48,8 @@ use std::{
 pub fn run() {
     let src = env::var("CARGO_MANIFEST_DIR").unwrap();
     let dst = path::Path::new(&env::var("OUT_DIR").unwrap()).join("built.rs");
-    built::write_built_file_with_opts(&built::Options::default(), &src, &dst).expect("Failed to acquire build-time information");
-
+    built::write_built_file_with_opts(&built::Options::default(), &src, &dst)
+        .expect("Failed to acquire build-time information");
 
     let write_dependencies = || {
         let env = build_env::get_environment();
@@ -60,16 +59,24 @@ pub fn run() {
         } else {
             Some(features)
         };
-        let dependency_graph = build_dependency_graph(features);
-        let all_dependencies : Vec<metadata::PackageId> = dependencies::all(&dependency_graph).into_iter().map(|pkg_id|pkg_id.clone()).collect();
-        let all_dependencies = serde_json::to_string(&all_dependencies).expect("Failed to serialize dependencies to JSON");
+        let mut dependency_graph = build_dependency_graph(features);
+        // remove the root package so that it does not show up in the list of dependencies for the root package
+        dependency_graph.remove_node(node_index(0));
+        let all_dependencies: Vec<metadata::PackageId> = dependencies::all(&dependency_graph)
+            .into_iter()
+            .map(|pkg_id| pkg_id.clone())
+            .collect();
+        let all_dependencies = serde_json::to_string(&all_dependencies)
+            .expect("Failed to serialize dependencies to JSON");
 
         let mut built_file = OpenOptions::new()
             .append(true)
-            .open(&dst).expect("Failed to open file in append mode");
+            .open(&dst)
+            .expect("Failed to open file in append mode");
 
-
-        built_file.write_all(b"/// An array of effective dependencies as a JSON array.\n").unwrap();
+        built_file
+            .write_all(b"/// An array of effective dependencies as a JSON array.\n")
+            .unwrap();
         writeln!(
             built_file,
             "pub const DEPENDENCIES_JSON: &str = r#\"{}\"#;",
@@ -92,6 +99,7 @@ pub fn build_dependency_graph(
     let package = workspace.current().unwrap();
     let mut registry = registry(&cargo_config, &package).unwrap();
     let features = features.map(|features| features.join(" "));
+    debug!("build_dependency_graph: features = {:?}", features);
     let (packages, resolve) = resolve(&mut registry, &workspace, features).unwrap();
 
     let ids = packages.package_ids().cloned().collect::<Vec<_>>();
@@ -108,32 +116,91 @@ pub fn build_dependency_graph(
         cfgs.as_ref().map(|r| &**r),
     ).unwrap();
 
-    let graph = graph.graph.filter_map(
+    filter_dependencies(graph.graph)
+}
+
+fn filter_dependencies<'a>(graph: petgraph::Graph<dependencies::Node<'a>, Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
+    debug!("build_dependency_graph: initial node count = {}",graph.node_count());
+
+    // convert Graph<Node, Kind> -> Graph<metadata::PackageId,metadata::dependency::Kind> in order to
+    // have a graph that we can serialize/deserialize via serde
+    let graph = graph.filter_map(
         |node_idx, node| {
-            Some(metadata::PackageId::new(
-                node.id.name().to_string(),
-                node.id.version().clone(),
-            ))
+            // drop nodes that are build dependencies
+            match graph.edges_directed(node_idx,Direction::Incoming)
+                .find(|edge| {
+                    match edge.weight() {
+                        Kind::Build => true,
+                        _ => false
+                    }
+                }) {
+                Some(_) => None,
+                None => {
+                    Some(metadata::PackageId::new(
+                        node.id.name().to_string(),
+                        node.id.version().clone(),
+                    ))
+                }
+            }
         },
         |edge_index, edge| match edge {
             Kind::Normal => Some(metadata::dependency::Kind::Normal),
-            _ => None,
+            _ => {
+                debug!("build_dependency_graph: dropping edge: {:?}", edge);
+                None
+            },
         },
     );
 
+    // remove nodes that have no edges
     let graph = graph.filter_map(
         |node_idx, node| {
             // remove nodes that have no edges
             match graph.neighbors_undirected(node_idx).detach().next(&graph) {
                 Some(_) => Some(node.clone()),
-                None => None,
+                None => {
+                    debug!("build_dependency_graph: dropping node with no edges: {}", node);
+                    None
+                },
             }
         },
         |edge_index, edge| Some(*edge),
     );
 
-    graph
+    remove_nodes_with_no_incoming_edges(graph)
 }
+
+/// remove nodes that have no incoming edges except for the root node
+fn remove_nodes_with_no_incoming_edges(graph: Graph<metadata::PackageId, dependency::Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
+    let mut removed_nodes = false;
+    let graph = graph.filter_map(
+        |node_idx, node| {
+            if node_idx.index() == 0 {
+                Some(node.clone())
+            } else {
+                // remove nodes that have no edges
+                match graph.neighbors_directed(node_idx, Direction::Incoming).detach().next(&graph) {
+                    Some(_) => Some(node.clone()),
+                    None => {
+                        debug!("build_dependency_graph: dropping node with no edges: {}", node);
+                        removed_nodes = true;
+                        None
+                    },
+                }
+            }
+
+        },
+        |edge_index, edge| Some(*edge),
+    );
+
+    if removed_nodes {
+        remove_nodes_with_no_incoming_edges(graph)
+    } else {
+        graph
+    }
+}
+
+
 
 fn workspace(config: &Config) -> CargoResult<Workspace> {
     let root = important_paths::find_root_manifest_for_wd(config.cwd())?;
@@ -253,8 +320,8 @@ fn build_graph<'a>(
 mod dependencies {
 
     use super::*;
+    use oysterpack_app_metadata::metadata;
     use petgraph;
-    use metadata;
 
     #[derive(Debug)]
     pub struct Node<'a> {
@@ -269,8 +336,13 @@ mod dependencies {
     }
 
     /// Returns all dependency package ids
-    pub fn all(graph: &petgraph::Graph<metadata::PackageId, metadata::dependency::Kind>) -> Vec<&metadata::PackageId> {
-        graph.raw_nodes().iter().map(|node|&node.weight).collect()
+    pub fn all(
+        graph: &petgraph::Graph<metadata::PackageId, metadata::dependency::Kind>,
+    ) -> Vec<&metadata::PackageId> {
+        let mut dependencies: Vec<&metadata::PackageId> =
+            graph.raw_nodes().iter().map(|node| &node.weight).collect();
+        dependencies.sort();
+        dependencies
     }
 }
 
@@ -305,7 +377,5 @@ mod build_env {
     }
 }
 
-
-
-#[cfg(test)]
+#[cfg(all(test, feature = "build-time"))]
 mod tests;

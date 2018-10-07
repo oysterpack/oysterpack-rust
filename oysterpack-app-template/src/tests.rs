@@ -60,7 +60,6 @@ fn build_info() {
             build::BUILT_TIME_UTC
         );
         let build_info = build::get();
-        info!("build_info: {:?}", build_info);
 
         let build_info_json = serde_json::to_string_pretty(&build_info).unwrap();
         info!("build_info_json: {}", build_info_json);

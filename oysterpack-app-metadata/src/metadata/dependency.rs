@@ -32,9 +32,8 @@ impl fmt::Display for Kind {
         let label = match *self {
             Kind::Normal => "Normal",
             Kind::Development => "Development",
-            Kind::Build => "Build"
+            Kind::Build => "Build",
         };
         f.write_str(label)
     }
 }
-

@@ -48,7 +48,7 @@
 //!
 //! 2. Include the following in **build.rs**:
 //!
-//!    ```no_run
+//!    ```ignore
 //!    extern crate oysterpack_built;
 //!
 //!    fn main() {
@@ -64,12 +64,16 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
 
+#[macro_use]
+extern crate log;
 extern crate semver;
 extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 extern crate chrono;
+#[macro_use]
+extern crate oysterpack_app_metadata;
 
 #[cfg(feature = "build-time")]
 extern crate built;
@@ -82,40 +86,15 @@ extern crate petgraph;
 
 #[macro_use]
 #[cfg(test)]
-extern crate log;
-#[macro_use]
-#[cfg(test)]
 extern crate lazy_static;
 #[cfg(test)]
 extern crate fern;
-
-#[macro_use]
-mod macros;
 
 #[cfg(feature = "build-time")]
 pub mod build_time;
 
 #[cfg(feature = "build-time")]
 pub use build_time::run;
-
-pub mod metadata;
-
-pub use metadata::Build;
-pub use metadata::BuildBuilder;
-pub use metadata::BuildProfile;
-pub use metadata::Compilation;
-pub use metadata::CompileOptLevel;
-pub use metadata::ContinuousIntegrationPlatform;
-pub use metadata::Endian;
-pub use metadata::GitVersion;
-pub use metadata::Package;
-pub use metadata::PointerWidth;
-pub use metadata::RustcVersion;
-pub use metadata::Target;
-pub use metadata::TargetArchitecture;
-pub use metadata::TargetEnv;
-pub use metadata::TargetOperatingSystem;
-pub use metadata::TargetTriple;
 
 #[cfg(test)]
 pub(crate) mod tests;

@@ -42,3 +42,10 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
     let _ = *INIT_FERN;
     test()
 }
+
+#[test]
+fn compiles() {
+    run_test(|| {
+        info!("it compiles :)")
+    });
+}
