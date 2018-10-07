@@ -18,14 +18,15 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.1.0")]
 
-#[macro_use]
-extern crate log;
 extern crate semver;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate chrono;
 
+#[cfg(test)]
+#[macro_use]
+extern crate log;
 #[cfg(test)]
 extern crate fern;
 #[macro_use]

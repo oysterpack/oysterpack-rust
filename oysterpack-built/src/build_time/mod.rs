@@ -73,7 +73,7 @@ pub fn run() {
         ), &[dot::Config::EdgeNoLabel]).to_string();
 
         // remove the root package so that it does not show up in the list of dependencies for the root package
-        dependency_graph.remove_node(node_index(0));
+        let _ = dependency_graph.remove_node(node_index(0));
         let all_dependencies: Vec<metadata::PackageId> = dependencies::all(&dependency_graph)
             .into_iter()
             .map(|pkg_id| pkg_id.clone())
