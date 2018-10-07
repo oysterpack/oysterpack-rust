@@ -29,7 +29,8 @@ use petgraph::{
     self,
     graph::{Graph, NodeIndex, node_index},
     visit::EdgeRef,
-    Direction
+    Direction,
+    dot
 };
 use serde_json;
 use std::{
@@ -60,6 +61,17 @@ pub fn run() {
             Some(features)
         };
         let mut dependency_graph = build_dependency_graph(features);
+
+
+        let graphviz_dependency_graph = dot::Dot::with_config(&dependency_graph.map(
+            |node_idx, node| {
+                format!("{}-{}",node.name().to_string(), node.version())
+            },
+            |edge_index, edge| {
+                *edge
+            }
+        ), &[dot::Config::EdgeNoLabel]).to_string();
+
         // remove the root package so that it does not show up in the list of dependencies for the root package
         dependency_graph.remove_node(node_index(0));
         let all_dependencies: Vec<metadata::PackageId> = dependencies::all(&dependency_graph)
@@ -81,6 +93,12 @@ pub fn run() {
             built_file,
             "pub const DEPENDENCIES_JSON: &str = r#\"{}\"#;",
             all_dependencies
+        ).unwrap();
+
+        writeln!(
+            built_file,
+            "/// graphviz .dot format for the dependency graph\npub const DEPENDENCIES_GRAPHVIZ: &str = r#\"{}\"#;",
+            graphviz_dependency_graph
         ).unwrap();
     };
 
@@ -119,7 +137,7 @@ pub fn build_dependency_graph(
     filter_dependencies(graph.graph)
 }
 
-fn filter_dependencies<'a>(graph: petgraph::Graph<dependencies::Node<'a>, Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
+fn filter_dependencies(graph: petgraph::Graph<dependencies::Node, Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
     debug!("build_dependency_graph: initial node count = {}",graph.node_count());
 
     // convert Graph<Node, Kind> -> Graph<metadata::PackageId,metadata::dependency::Kind> in order to

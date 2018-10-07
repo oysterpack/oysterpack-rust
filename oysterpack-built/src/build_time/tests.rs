@@ -30,7 +30,7 @@ fn build_dependency_graph_with_no_features() {
             "dependencies Dot diagram: {:?}",
             Dot::with_config(&dependencies.map(
                 |node_idx, node| {
-                    node.name().to_string()
+                    format!("{}-{}",node.name().to_string(), node.version())
                 },
                 |edge_index, edge| {
                     *edge
