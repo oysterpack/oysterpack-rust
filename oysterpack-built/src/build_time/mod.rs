@@ -26,15 +26,14 @@ use cargo::{
 };
 use oysterpack_app_metadata::metadata::{self, dependency};
 use petgraph::{
-    self,
-    graph::{Graph, NodeIndex, node_index},
+    self, dot,
+    graph::{node_index, Graph, NodeIndex},
     visit::EdgeRef,
     Direction,
-    dot
 };
 use serde_json;
 use std::{
-    collections::{hash_map::Entry, HashMap,HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     env,
     fs::OpenOptions,
     io::prelude::*,
@@ -62,15 +61,13 @@ pub fn run() {
         };
         let mut dependency_graph = build_dependency_graph(features);
 
-
-        let graphviz_dependency_graph = dot::Dot::with_config(&dependency_graph.map(
-            |node_idx, node| {
-                format!("{}-{}",node.name().to_string(), node.version())
-            },
-            |edge_index, edge| {
-                *edge
-            }
-        ), &[dot::Config::EdgeNoLabel]).to_string();
+        let graphviz_dependency_graph = dot::Dot::with_config(
+            &dependency_graph.map(
+                |node_idx, node| format!("{}={}", node.name().to_string(), node.version()),
+                |edge_index, edge| *edge,
+            ),
+            &[dot::Config::EdgeNoLabel],
+        ).to_string();
 
         // remove the root package so that it does not show up in the list of dependencies for the root package
         let _ = dependency_graph.remove_node(node_index(0));
@@ -123,6 +120,7 @@ pub fn build_dependency_graph(
     let ids = packages.package_ids().cloned().collect::<Vec<_>>();
     let packages = registry.get(&ids);
     let root = package.package_id();
+    debug!("build_dependency_graph: root package id = {}", root);
     let rustc = cargo_config.rustc(Some(&workspace)).unwrap();
     let target = Some(rustc.host.as_str());
     let cfgs = get_cfgs(&rustc, &target.map(|s| s.to_string())).unwrap();
@@ -137,28 +135,47 @@ pub fn build_dependency_graph(
     filter_dependencies(graph.graph)
 }
 
-fn filter_dependencies(graph: petgraph::Graph<dependencies::Node, Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
-    debug!("build_dependency_graph: initial node count = {}",graph.node_count());
+fn filter_dependencies(
+    graph: petgraph::Graph<dependencies::Node, Kind>,
+) -> Graph<metadata::PackageId, dependency::Kind> {
+    debug!(
+        "build_dependency_graph: initial node count = {}",
+        graph.node_count()
+    );
 
     // convert Graph<Node, Kind> -> Graph<metadata::PackageId,metadata::dependency::Kind> in order to
     // have a graph that we can serialize/deserialize via serde
     let graph = graph.filter_map(
         |node_idx, node| {
-            // drop nodes that are build dependencies
-            match graph.edges_directed(node_idx,Direction::Incoming)
-                .find(|edge| {
-                    match edge.weight() {
-                        Kind::Build => true,
-                        _ => false
-                    }
+            // drop nodes that are only used build dependencies but not as normal dependencies
+            match graph
+                .edges_directed(node_idx, Direction::Incoming)
+                .find(|edge| match edge.weight() {
+                    Kind::Build => true,
+                    _ => false,
                 }) {
-                Some(_) => None,
-                None => {
-                    Some(metadata::PackageId::new(
-                        node.id.name().to_string(),
-                        node.id.version().clone(),
-                    ))
+                Some(_) => {
+                    match graph.edges_directed(node_idx, Direction::Incoming).find(
+                        |edge| match edge.weight() {
+                            Kind::Normal => true,
+                            _ => false,
+                        },
+                    ) {
+                        Some(_) => {
+                            // keep the node because it is used as a normal dependency
+                            Some(metadata::PackageId::new(
+                                node.id.name().to_string(),
+                                node.id.version().clone(),
+                            ))
+                        }
+                        // drop the node because it is only used as a build dependency
+                        None => None,
+                    }
                 }
+                None => Some(metadata::PackageId::new(
+                    node.id.name().to_string(),
+                    node.id.version().clone(),
+                )),
             }
         },
         |edge_index, edge| match edge {
@@ -166,7 +183,7 @@ fn filter_dependencies(graph: petgraph::Graph<dependencies::Node, Kind>) -> Grap
             _ => {
                 debug!("build_dependency_graph: dropping edge: {:?}", edge);
                 None
-            },
+            }
         },
     );
 
@@ -177,9 +194,12 @@ fn filter_dependencies(graph: petgraph::Graph<dependencies::Node, Kind>) -> Grap
             match graph.neighbors_undirected(node_idx).detach().next(&graph) {
                 Some(_) => Some(node.clone()),
                 None => {
-                    debug!("build_dependency_graph: dropping node with no edges: {}", node);
+                    debug!(
+                        "build_dependency_graph: dropping node with no edges: {}",
+                        node
+                    );
                     None
-                },
+                }
             }
         },
         |edge_index, edge| Some(*edge),
@@ -189,7 +209,9 @@ fn filter_dependencies(graph: petgraph::Graph<dependencies::Node, Kind>) -> Grap
 }
 
 /// remove nodes that have no incoming edges except for the root node
-fn remove_nodes_with_no_incoming_edges(graph: Graph<metadata::PackageId, dependency::Kind>) -> Graph<metadata::PackageId, dependency::Kind> {
+fn remove_nodes_with_no_incoming_edges(
+    graph: Graph<metadata::PackageId, dependency::Kind>,
+) -> Graph<metadata::PackageId, dependency::Kind> {
     let mut removed_nodes = false;
     let graph = graph.filter_map(
         |node_idx, node| {
@@ -197,16 +219,22 @@ fn remove_nodes_with_no_incoming_edges(graph: Graph<metadata::PackageId, depende
                 Some(node.clone())
             } else {
                 // remove nodes that have no edges
-                match graph.neighbors_directed(node_idx, Direction::Incoming).detach().next(&graph) {
+                match graph
+                    .neighbors_directed(node_idx, Direction::Incoming)
+                    .detach()
+                    .next(&graph)
+                {
                     Some(_) => Some(node.clone()),
                     None => {
-                        debug!("build_dependency_graph: dropping node with no edges: {}", node);
+                        debug!(
+                            "build_dependency_graph: dropping node with no edges: {}",
+                            node
+                        );
                         removed_nodes = true;
                         None
-                    },
+                    }
                 }
             }
-
         },
         |edge_index, edge| Some(*edge),
     );
@@ -217,8 +245,6 @@ fn remove_nodes_with_no_incoming_edges(graph: Graph<metadata::PackageId, depende
         graph
     }
 }
-
-
 
 fn workspace(config: &Config) -> CargoResult<Workspace> {
     let root = important_paths::find_root_manifest_for_wd(config.cwd())?;

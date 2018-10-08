@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Defines the application metadata domain model
+//! Defines the application metadata domain model.
+//!
+//! The `op_build_mod!()`
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]

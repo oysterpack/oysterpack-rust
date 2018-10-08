@@ -19,8 +19,10 @@
 //! ## What is the Motivation?
 //! From a DevOps perspective, it is critical to know exactly what is deployed.
 //!
-//! `oysterpack_built` provides the same functionality as [built](https://crates.io/crates/built).
-//! Its main purpose is to standardize the integration for OysterPack apps.
+//! `oysterpack_built` builds upon [built](https://crates.io/crates/built). In addition, `oysterpack_built`
+//! gathers the crate's compile dependencies at build time and makes them available at runtime.
+//!
+//! Its main purpose is to standardize the build-time metadata integration for OysterPack apps.
 //!
 //! ## How to integrate within your project
 //!
@@ -31,7 +33,7 @@
 //!    build = "build.rs"
 //!
 //!    [dependencies]
-//!    oysterpack_built = {path = "../oysterpack-built", version="0.3"}
+//!    oysterpack_app_metadata = "0.1"
 //!    semver = {version = "0.9", features = ["serde"]}
 //!    chrono = { version = "0.4", features = ["serde", "time"] }
 //!    serde = "1"
@@ -45,6 +47,8 @@
 //!    - `build.rs` is the name of the cargo build script to use
 //!       - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
 //!         not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
+//!    - [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata) is the companion dependency
+//!      that provides the `op_build_mod!()` macro
 //!
 //! 2. Include the following in **build.rs**:
 //!

@@ -25,17 +25,15 @@ fn build_dependency_graph_with_no_features() {
     run_test(|| {
         let dependencies = build_dependency_graph(None);
 
-
         info!(
             "dependencies Dot diagram: {:?}",
-            Dot::with_config(&dependencies.map(
-                |node_idx, node| {
-                    format!("{}-{}",node.name().to_string(), node.version())
-                },
-                |edge_index, edge| {
-                    *edge
-                }
-            ), &[Config::EdgeNoLabel])
+            Dot::with_config(
+                &dependencies.map(
+                    |node_idx, node| format!("{}-{}", node.name().to_string(), node.version()),
+                    |edge_index, edge| *edge
+                ),
+                &[Config::EdgeNoLabel]
+            )
         );
         info!(
             "all dependencies: {:?}",
