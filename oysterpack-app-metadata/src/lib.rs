@@ -14,7 +14,7 @@
 
 //! Defines the application metadata domain model.
 //!
-//! The `op_build_mod!()`
+//! The [op_build_mod!](macro.op_build_mod.html) macro is used in conjunction with [oysterpack_built](https://crates.io/crates/oysterpack_built)
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]

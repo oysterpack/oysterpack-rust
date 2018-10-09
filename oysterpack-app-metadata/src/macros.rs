@@ -14,8 +14,12 @@
 
 //! macros
 
-/// Generate a public module which includes build-time info generated via
+/// Generates a public module which includes build-time info generated via
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built).
+///
+/// This macro is intended to be used by application binary crates that use
+/// [oysterpack_built](https://crates.io/crates/oysterpack_built) as a build dependency to collect
+/// application metadata at build-time.
 ///
 /// The module default name is `build`, but it can be explicitly specified:
 /// - `op_build_mod!()` generates:
@@ -29,6 +33,127 @@
 ///     ```ignore
 ///         pub mod build_md { ... }
 ///     ```
+/// 
+/// Below is a sample module package body that would be generated:
+/// 
+/// ```ignore
+/// pub mod build {
+///   /// Collects the build-time info to construct a new Build instance
+///   pub fn get() -> $crate::Build { ... }
+///
+///   /// The Continuous Integration platform detected during compilation.
+///   pub const CI_PLATFORM: Option<&str> = None;
+///   #[doc="The full version."]
+///   pub const PKG_VERSION: &str = "0.1.0";
+///   #[doc="The major version."]
+///   pub const PKG_VERSION_MAJOR: &str = "0";
+///   #[doc="The minor version."]
+///   pub const PKG_VERSION_MINOR: &str = "1";
+///   #[doc="The patch version."]
+///   pub const PKG_VERSION_PATCH: &str = "0";
+///   #[doc="The pre-release version."]
+///   pub const PKG_VERSION_PRE: &str = "";
+///   #[doc="A colon-separated list of authors."]
+///   pub const PKG_AUTHORS: &str = "Alfio Zappala <oysterpack.inc@gmail.com>";
+///   #[doc="The name of the package."]
+///   pub const PKG_NAME: &str = "oysterpack_app_template";
+///   #[doc="The description."]
+///   pub const PKG_DESCRIPTION: &str = "OysterPack Application Template";
+///   #[doc="The homepage."]
+///   pub const PKG_HOMEPAGE: &str = "https://github.com/oysterpack/oysterpack";
+///   #[doc="The target triple that was being compiled for."]
+///   pub const TARGET: &str = "x86_64-unknown-linux-gnu";
+///   #[doc="The host triple of the rust compiler."]
+///   pub const HOST: &str = "x86_64-unknown-linux-gnu";
+///   #[doc="`release` for release builds, `debug` for other builds."]
+///   pub const PROFILE: &str = "debug";
+///   #[doc="The compiler that cargo resolved to use."]
+///   pub const RUSTC: &str = "rustc";
+///   #[doc="The documentation generator that cargo resolved to use."]
+///   pub const RUSTDOC: &str = "rustdoc";
+///   #[doc="Value of OPT_LEVEL for the profile used during compilation."]
+///   pub const OPT_LEVEL: &str = "0";
+///   #[doc="The parallelism that was specified during compilation."]
+///   pub const NUM_JOBS: u32 = 8;
+///   #[doc="Value of DEBUG for the profile used during compilation."]
+///   pub const DEBUG: bool = true;
+///   /// The features that were enabled during compilation.
+///   pub const FEATURES: [&str; 0] = [];
+///   /// The features as a comma-separated string.
+///   pub const FEATURES_STR: &str = "";
+///   /// The output of `rustc -V`
+///   pub const RUSTC_VERSION: &str = "rustc 1.29.1 (b801ae664 2018-09-20)";
+///   /// The output of `rustdoc -V`
+///   pub const RUSTDOC_VERSION: &str = "rustdoc 1.29.1 (b801ae664 2018-09-20)";
+///   /// If the crate was compiled from within a git-repository, `GIT_VERSION` contains HEAD's tag. The short commit id is used if HEAD is not tagged.
+///   pub const GIT_VERSION: Option<&str> = Some("oysterpack_built_v0.2.3-8-g640aba3");
+///   /// The built-time in RFC822, UTC
+///   pub const BUILT_TIME_UTC: &str = "Tue, 09 Oct 2018 21:49:26 GMT";
+///   /// The target architecture, given by `cfg!(target_arch)`.
+///   pub const CFG_TARGET_ARCH: &str = "x86_64";
+///   /// The endianness, given by `cfg!(target_endian)`.
+///   pub const CFG_ENDIAN: &str = "little";
+///   /// The toolchain-environment, given by `cfg!(target_env)`.
+///   pub const CFG_ENV: &str = "gnu";
+///   /// The OS-family, given by `cfg!(target_family)`.
+///   pub const CFG_FAMILY: &str = "unix";
+///   /// The operating system, given by `cfg!(target_os)`.
+///   pub const CFG_OS: &str = "linux";
+///   /// The pointer width, given by `cfg!(target_pointer_width)`.
+///   pub const CFG_POINTER_WIDTH: &str = "64";
+///   /// graphviz .dot format for the dependency graph
+///   pub const DEPENDENCIES_GRAPHVIZ_DOT: &str = r#"digraph {
+///       0 [label="oysterpack_app_template=0.1.0"]
+///       1 [label="oysterpack_app_metadata=0.1.0"]
+///       2 [label="chrono=0.4.6"]
+///       3 [label="semver=0.9.0"]
+///       4 [label="serde_derive=1.0.79"]
+///       5 [label="log=0.4.5"]
+///       6 [label="serde=1.0.79"]
+///       7 [label="fern=0.5.6"]
+///       8 [label="cfg-if=0.1.5"]
+///       9 [label="proc-macro2=0.4.19"]
+///       10 [label="syn=0.15.6"]
+///       11 [label="quote=0.6.8"]
+///       12 [label="unicode-xid=0.1.0"]
+///       13 [label="time=0.1.40"]
+///       14 [label="libc=0.2.43"]
+///       15 [label="semver-parser=0.7.0"]
+///       16 [label="num-integer=0.1.39"]
+///       17 [label="num-traits=0.2.6"]
+///       0 -> 1
+///       0 -> 2
+///       0 -> 3
+///       0 -> 4
+///       0 -> 5
+///       0 -> 6
+///       0 -> 7
+///       7 -> 5
+///       5 -> 8
+///       4 -> 9
+///       4 -> 10
+///       4 -> 11
+///       11 -> 9
+///       10 -> 9
+///       10 -> 11
+///       10 -> 12
+///       9 -> 12
+///       13 -> 14
+///       3 -> 6
+///       3 -> 15
+///       2 -> 6
+///       2 -> 16
+///       2 -> 17
+///       2 -> 13
+///       16 -> 17
+///       1 -> 6
+///       1 -> 3
+///       1 -> 2
+///       1 -> 4
+///   }
+///   "#;
+/// }
+/// ```
 #[macro_export]
 macro_rules! op_build_mod {
     ($name:ident) => {
