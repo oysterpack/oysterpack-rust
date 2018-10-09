@@ -34,8 +34,6 @@ extern crate fern;
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
-#[cfg(test)]
-extern crate serde_json;
 
 #[macro_use]
 mod macros;
