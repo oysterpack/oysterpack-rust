@@ -99,8 +99,7 @@
 //! RUSTC_VERSION|&str|The output of rustc -V
 //! RUSTDOC|&str|The documentation generator that cargo resolved to use.
 //! RUSTDOC_VERSION|&str|The output of rustdoc -V
-//! DEPENDENCIES_JSON|&str|An array of effective dependencies as a JSON array
-//! DEPENDENCIES_GRAPHVIZ|&str|graphviz .dot format for the dependency graph
+//! DEPENDENCIES_GRAPHVIZ_DOT|&str|graphviz .dot format for the effective dependency graph
 //!
 //! - `fn get() -> Build`
 //!     - [Build](struct.Build.html) provides a consolidated view of the build-time metadata.

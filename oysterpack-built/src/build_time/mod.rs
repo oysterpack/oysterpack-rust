@@ -33,7 +33,7 @@ use petgraph::{
 };
 use serde_json;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap},
     env,
     fs::OpenOptions,
     io::prelude::*,
@@ -69,32 +69,14 @@ pub fn run() {
             &[dot::Config::EdgeNoLabel],
         ).to_string();
 
-        // remove the root package so that it does not show up in the list of dependencies for the root package
-        let _ = dependency_graph.remove_node(node_index(0));
-        let all_dependencies: Vec<metadata::PackageId> = dependencies::all(&dependency_graph)
-            .into_iter()
-            .map(|pkg_id| pkg_id.clone())
-            .collect();
-        let all_dependencies = serde_json::to_string(&all_dependencies)
-            .expect("Failed to serialize dependencies to JSON");
-
         let mut built_file = OpenOptions::new()
             .append(true)
             .open(&dst)
             .expect("Failed to open file in append mode");
 
-        built_file
-            .write_all(b"/// An array of effective dependencies as a JSON array.\n")
-            .unwrap();
         writeln!(
             built_file,
-            "pub const DEPENDENCIES_JSON: &str = r#\"{}\"#;",
-            all_dependencies
-        ).unwrap();
-
-        writeln!(
-            built_file,
-            "/// graphviz .dot format for the dependency graph\npub const DEPENDENCIES_GRAPHVIZ: &str = r#\"{}\"#;",
+            "/// graphviz .dot format for the dependency graph\npub const DEPENDENCIES_GRAPHVIZ_DOT: &str = r#\"{}\"#;",
             graphviz_dependency_graph
         ).unwrap();
     };

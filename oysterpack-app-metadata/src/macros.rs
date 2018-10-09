@@ -58,8 +58,6 @@ macro_rules! op_build_mod {
                     $crate::TargetTriple::new(HOST),
                     $crate::BuildProfile::new(PROFILE),
                 );
-                let dependencies: Vec<$crate::metadata::PackageId> =
-                    ::serde_json::from_str(DEPENDENCIES_JSON).unwrap();
                 builder.package(
                     PKG_NAME.to_string(),
                     PKG_AUTHORS
@@ -69,9 +67,27 @@ macro_rules! op_build_mod {
                     PKG_DESCRIPTION.to_string(),
                     ::semver::Version::parse(PKG_VERSION).unwrap(),
                     PKG_HOMEPAGE.to_string(),
-                    dependencies,
+                    package_dependencies(),
                 );
                 builder.build()
+            }
+
+            fn package_dependencies() -> Vec<$crate::metadata::PackageId> {
+                let mut dependencies: Vec<$crate::metadata::PackageId> = DEPENDENCIES_GRAPHVIZ_DOT
+                    .lines()
+                    .filter(|line| !line.contains("->") && line.contains("["))
+                    .skip(1)
+                    .map(|line| {
+                        let line = &line[line.find('"').unwrap() + 1..];
+                        let line = &line[..line.find('"').unwrap()];
+                        let tokens: Vec<&str> = line.split("=").collect();
+                        $crate::metadata::PackageId::new(
+                            tokens.get(0).unwrap().to_string(),
+                            ::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
+                        )
+                    }).collect();
+                dependencies.sort();
+                dependencies
             }
         }
     };

@@ -63,6 +63,9 @@ fn build_info() {
 
         let build_info_json = serde_json::to_string_pretty(&build_info).unwrap();
         info!("build_info_json: {}", build_info_json);
-        info!("Graphviz dependency graph: {}", build::DEPENDENCIES_GRAPHVIZ);
+        info!(
+            "Graphviz dependency graph: {}",
+            build::DEPENDENCIES_GRAPHVIZ_DOT
+        );
     });
 }
