@@ -35,10 +35,6 @@ fn build_dependency_graph_with_no_features() {
                 &[Config::EdgeNoLabel]
             )
         );
-        info!(
-            "all dependencies: {:?}",
-            super::dependencies::all(&dependencies)
-        );
 
         let dependencies_json = serde_json::to_string_pretty(&dependencies).unwrap();
         info!("dependencies : {}", dependencies_json);

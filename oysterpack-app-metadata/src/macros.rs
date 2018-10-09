@@ -18,8 +18,17 @@
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built).
 ///
 /// The module default name is `build`, but it can be explicitly specified:
-/// - `op_build_mod!()' - generates 'pub mod build { ... }`
-/// - `op_build_mod!(build_md)` -
+/// - `op_build_mod!()` generates:
+///
+///     ```ignore
+///         pub mod build { ... }
+///     ```
+///
+/// - `op_build_mod!(build_md)` generates:
+///
+///     ```ignore
+///         pub mod build_md { ... }
+///     ```
 #[macro_export]
 macro_rules! op_build_mod {
     ($name:ident) => {

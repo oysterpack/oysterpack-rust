@@ -61,7 +61,7 @@
 //!    ```
 //!
 //! 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
-//!    It can be picked up and compiled via the `op_build_mod!()` macro.
+//!    It can be picked up and compiled via the [op_build_mod!()](https://docs.rs/oysterpack_built/latest/oysterpack_app_metadata/macro.op_build_mod.html) macro,
 //!    The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
 //!    information.
 //!
@@ -117,10 +117,6 @@
 #[macro_use]
 extern crate log;
 extern crate semver;
-extern crate serde;
-extern crate serde_json;
-#[macro_use]
-extern crate serde_derive;
 extern crate chrono;
 #[macro_use]
 extern crate oysterpack_app_metadata;
@@ -139,6 +135,11 @@ extern crate petgraph;
 extern crate lazy_static;
 #[cfg(test)]
 extern crate fern;
+#[cfg(test)]
+extern crate serde;
+#[cfg(test)]
+extern crate serde_json;
+
 
 #[cfg(feature = "build-time")]
 pub mod build_time;

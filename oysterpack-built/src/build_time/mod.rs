@@ -27,11 +27,9 @@ use cargo::{
 use oysterpack_app_metadata::metadata::{self, dependency};
 use petgraph::{
     self, dot,
-    graph::{node_index, Graph, NodeIndex},
-    visit::EdgeRef,
+    graph::{Graph, NodeIndex},
     Direction,
 };
-use serde_json;
 use std::{
     collections::{hash_map::Entry, HashMap},
     env,
@@ -59,12 +57,12 @@ pub fn run() {
         } else {
             Some(features)
         };
-        let mut dependency_graph = build_dependency_graph(features);
+        let dependency_graph = build_dependency_graph(features);
 
         let graphviz_dependency_graph = dot::Dot::with_config(
             &dependency_graph.map(
-                |node_idx, node| format!("{}={}", node.name().to_string(), node.version()),
-                |edge_index, edge| *edge,
+                |_, node| format!("{}={}", node.name().to_string(), node.version()),
+                |_, edge| *edge,
             ),
             &[dot::Config::EdgeNoLabel],
         ).to_string();
@@ -160,7 +158,7 @@ fn filter_dependencies(
                 )),
             }
         },
-        |edge_index, edge| match edge {
+        |_, edge| match edge {
             Kind::Normal => Some(metadata::dependency::Kind::Normal),
             _ => {
                 debug!("build_dependency_graph: dropping edge: {:?}", edge);
@@ -184,7 +182,7 @@ fn filter_dependencies(
                 }
             }
         },
-        |edge_index, edge| Some(*edge),
+        |_, edge| Some(*edge),
     );
 
     remove_nodes_with_no_incoming_edges(graph)
@@ -218,7 +216,7 @@ fn remove_nodes_with_no_incoming_edges(
                 }
             }
         },
-        |edge_index, edge| Some(*edge),
+        |_, edge| Some(*edge),
     );
 
     if removed_nodes {
@@ -346,7 +344,6 @@ fn build_graph<'a>(
 mod dependencies {
 
     use super::*;
-    use oysterpack_app_metadata::metadata;
     use petgraph;
 
     #[derive(Debug)]
@@ -359,16 +356,6 @@ mod dependencies {
     pub struct Graph<'a> {
         pub graph: petgraph::Graph<Node<'a>, Kind>,
         pub nodes: HashMap<&'a PackageId, NodeIndex>,
-    }
-
-    /// Returns all dependency package ids
-    pub fn all(
-        graph: &petgraph::Graph<metadata::PackageId, metadata::dependency::Kind>,
-    ) -> Vec<&metadata::PackageId> {
-        let mut dependencies: Vec<&metadata::PackageId> =
-            graph.raw_nodes().iter().map(|node| &node.weight).collect();
-        dependencies.sort();
-        dependencies
     }
 }
 
