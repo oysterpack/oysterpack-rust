@@ -14,8 +14,13 @@
 
 //! Gathers build time information for the crate - see https://crates.io/crates/built
 
+extern crate mml;
 extern crate oysterpack_built;
 
 fn main() {
     oysterpack_built::run();
+    let _ = mml::src2both(
+        "src/metadata",
+        concat!("target/doc/", env!("CARGO_PKG_NAME")),
+    );
 }

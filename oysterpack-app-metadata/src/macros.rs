@@ -164,7 +164,7 @@ macro_rules! op_build_mod {
 
             /// Collects the build-time info to construct a new Build instance
             pub fn get() -> $crate::Build {
-                let mut builder = $crate::BuildBuilder::new();
+                let mut builder = $crate::metadata::BuildBuilder::new();
                 builder.timestamp(
                     ::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
                         .map(|ts| ts.with_timezone(&::chrono::Utc))
