@@ -111,15 +111,16 @@
 //! - [chrono](https://crates.io/crates/chrono)
 //! - [serde](https://crates.io/crates/serde)
 
-#![deny(missing_docs, missing_debug_implementations)]
+#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
 
 #[macro_use]
 extern crate log;
-extern crate semver;
 extern crate chrono;
+extern crate semver;
+extern crate serde;
 #[macro_use]
-extern crate oysterpack_app_metadata;
+extern crate serde_derive;
 
 #[cfg(feature = "build-time")]
 extern crate built;
@@ -136,10 +137,7 @@ extern crate lazy_static;
 #[cfg(test)]
 extern crate fern;
 #[cfg(test)]
-extern crate serde;
-#[cfg(test)]
 extern crate serde_json;
-
 
 #[cfg(feature = "build-time")]
 pub mod build_time;

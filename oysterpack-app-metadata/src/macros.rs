@@ -33,9 +33,9 @@
 ///     ```ignore
 ///         pub mod build_md { ... }
 ///     ```
-/// 
+///
 /// Below is a sample module package body that would be generated:
-/// 
+///
 /// ```ignore
 /// pub mod build {
 ///   /// Collects the build-time info to construct a new Build instance

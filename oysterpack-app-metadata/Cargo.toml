@@ -8,6 +8,7 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 documentation = "https://docs.rs/oysterpack_app_metadata"
 readme = "README.md"
+build = "build.rs"
 
 [dependencies]
 semver = {version = "0.9", features = ["serde"]}
@@ -20,7 +21,9 @@ version-sync = "0.5"
 log = "0.4"
 fern = "0.5"
 lazy_static = "1"
+serde_json = "1"
 
 [build-dependencies]
+oysterpack_built = {path = "../oysterpack-built", version="0.3", features = ["build-time"]}
 
 [badges]

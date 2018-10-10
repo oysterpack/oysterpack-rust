@@ -15,7 +15,7 @@ log = "0.4"
 [dev-dependencies]
 version-sync = "0.5"
 fern = "0.5"
-chrono = { version = "0.4", features = ["serde", "time"] }
+chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1"
 
 [badges]

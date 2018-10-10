@@ -17,7 +17,7 @@
 //! The [op_build_mod!](macro.op_build_mod.html) macro is used in conjunction with [oysterpack_built](https://crates.io/crates/oysterpack_built)
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![deny(missing_docs, missing_debug_implementations)]
+#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.1.0")]
 
 extern crate semver;
@@ -34,6 +34,8 @@ extern crate fern;
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
+extern crate serde_json;
 
 #[macro_use]
 mod macros;

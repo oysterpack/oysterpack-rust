@@ -13,12 +13,9 @@
 // limitations under the License.
 
 use super::*;
-use oysterpack_app_metadata::metadata;
 use petgraph::dot::{Config, Dot};
 use serde_json;
 use tests::run_test;
-
-op_build_mod!();
 
 #[test]
 fn build_dependency_graph_with_no_features() {
@@ -29,8 +26,8 @@ fn build_dependency_graph_with_no_features() {
             "dependencies Dot diagram: {:?}",
             Dot::with_config(
                 &dependencies.map(
-                    |node_idx, node| format!("{}-{}", node.name().to_string(), node.version()),
-                    |edge_index, edge| *edge
+                    |_, node| format!("{}-{}", node.name().to_string(), node.version()),
+                    |_, edge| *edge
                 ),
                 &[Config::EdgeNoLabel]
             )

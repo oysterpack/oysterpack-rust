@@ -16,15 +16,16 @@
 
 use built;
 use cargo::{
+    self,
     core::{
-        dependency::Kind, manifest::ManifestMetadata, package::PackageSet,
-        registry::PackageRegistry, resolver::Method, Package, PackageId, Resolve, Workspace,
+        manifest::ManifestMetadata, package::PackageSet, registry::PackageRegistry,
+        resolver::Method, Package, Resolve, Workspace,
     },
     ops,
     util::{self, important_paths, CargoResult, Cfg, Rustc},
     Config,
 };
-use oysterpack_app_metadata::metadata::{self, dependency};
+
 use petgraph::{
     self, dot,
     graph::{Graph, NodeIndex},
@@ -38,6 +39,70 @@ use std::{
     path,
     str::{self, FromStr},
 };
+
+/// build metadata
+pub(crate) mod metadata {
+    use semver;
+    use std::fmt;
+
+    /// Identifier for a specific version of a package.
+    #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
+    pub struct PackageId {
+        name: String,
+        version: semver::Version,
+    }
+
+    impl PackageId {
+        /// PackageId constructor
+        pub fn new(name: String, version: semver::Version) -> PackageId {
+            PackageId { name, version }
+        }
+
+        /// Package name
+        pub fn name(&self) -> &str {
+            &self.name
+        }
+
+        /// Package version
+        pub fn version(&self) -> &semver::Version {
+            &self.version
+        }
+    }
+
+    impl fmt::Display for PackageId {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}-{}", self.name, self.version)
+        }
+    }
+
+    pub mod dependency {
+        use std::fmt;
+
+        /// Represents the kind of dependency
+        #[derive(
+            PartialEq, Eq, Hash, Ord, PartialOrd, Clone, Debug, Copy, Serialize, Deserialize,
+        )]
+        pub enum Kind {
+            /// Normal compile time dependency
+            Normal,
+            /// Dependency is used for testing purposes
+            Development,
+            /// Dependency is used at build time
+            Build,
+        }
+
+        impl fmt::Display for Kind {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let label = match *self {
+                    Kind::Normal => "Normal",
+                    Kind::Development => "Development",
+                    Kind::Build => "Build",
+                };
+                f.write_str(label)
+            }
+        }
+    }
+}
 
 /// Gathers build information and generates code to make it available at runtime.
 ///
@@ -88,7 +153,7 @@ pub fn run() {
 /// If dependency graph failed to be built.
 pub fn build_dependency_graph(
     features: Option<Vec<String>>,
-) -> Graph<metadata::PackageId, dependency::Kind> {
+) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     let cargo_config = Config::default().unwrap();
     let workspace = workspace(&cargo_config).unwrap();
     let package = workspace.current().unwrap();
@@ -116,8 +181,8 @@ pub fn build_dependency_graph(
 }
 
 fn filter_dependencies(
-    graph: petgraph::Graph<dependencies::Node, Kind>,
-) -> Graph<metadata::PackageId, dependency::Kind> {
+    graph: petgraph::Graph<dependencies::Node, cargo::core::dependency::Kind>,
+) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     debug!(
         "build_dependency_graph: initial node count = {}",
         graph.node_count()
@@ -131,13 +196,13 @@ fn filter_dependencies(
             match graph
                 .edges_directed(node_idx, Direction::Incoming)
                 .find(|edge| match edge.weight() {
-                    Kind::Build => true,
+                    cargo::core::dependency::Kind::Build => true,
                     _ => false,
                 }) {
                 Some(_) => {
                     match graph.edges_directed(node_idx, Direction::Incoming).find(
                         |edge| match edge.weight() {
-                            Kind::Normal => true,
+                            cargo::core::dependency::Kind::Normal => true,
                             _ => false,
                         },
                     ) {
@@ -159,7 +224,7 @@ fn filter_dependencies(
             }
         },
         |_, edge| match edge {
-            Kind::Normal => Some(metadata::dependency::Kind::Normal),
+            cargo::core::dependency::Kind::Normal => Some(metadata::dependency::Kind::Normal),
             _ => {
                 debug!("build_dependency_graph: dropping edge: {:?}", edge);
                 None
@@ -190,8 +255,8 @@ fn filter_dependencies(
 
 /// remove nodes that have no incoming edges except for the root node
 fn remove_nodes_with_no_incoming_edges(
-    graph: Graph<metadata::PackageId, dependency::Kind>,
-) -> Graph<metadata::PackageId, dependency::Kind> {
+    graph: Graph<metadata::PackageId, metadata::dependency::Kind>,
+) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     let mut removed_nodes = false;
     let graph = graph.filter_map(
         |node_idx, node| {
@@ -287,7 +352,7 @@ fn get_cfgs(rustc: &Rustc, target: &Option<String>) -> CargoResult<Option<Vec<Cf
 fn build_graph<'a>(
     resolve: &'a Resolve,
     packages: &'a PackageSet,
-    root: &'a PackageId,
+    root: &'a cargo::core::PackageId,
     target: Option<&str>,
     cfgs: Option<&[Cfg]>,
 ) -> CargoResult<dependencies::Graph<'a>> {
@@ -348,14 +413,14 @@ mod dependencies {
 
     #[derive(Debug)]
     pub struct Node<'a> {
-        pub id: &'a PackageId,
+        pub id: &'a cargo::core::PackageId,
         pub metadata: &'a ManifestMetadata,
     }
 
     #[derive(Debug)]
     pub struct Graph<'a> {
-        pub graph: petgraph::Graph<Node<'a>, Kind>,
-        pub nodes: HashMap<&'a PackageId, NodeIndex>,
+        pub graph: petgraph::Graph<Node<'a>, cargo::core::dependency::Kind>,
+        pub nodes: HashMap<&'a cargo::core::PackageId, NodeIndex>,
     }
 }
 

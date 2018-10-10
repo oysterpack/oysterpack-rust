@@ -13,10 +13,8 @@ build = "build.rs"
 [dependencies]
 oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version="0.1"}
 
-semver = {version = "0.9", features = ["serde"]}
-chrono = { version = "0.4", features = ["serde", "time"] }
-serde = "1"
-serde_derive = "1"
+semver = {version = "0.9"}
+chrono = { version = "0.4"}
 
 log = "0.4"
 fern = "0.5"

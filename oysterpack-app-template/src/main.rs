@@ -24,12 +24,10 @@
 extern crate oysterpack_app_metadata;
 #[macro_use]
 extern crate log;
-extern crate chrono;
 extern crate fern;
+
+extern crate chrono;
 extern crate semver;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
 
 #[macro_use]
 #[cfg(test)]
