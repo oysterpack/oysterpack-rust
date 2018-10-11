@@ -452,5 +452,3 @@ impl fmt::Display for PackageId {
 
 #[cfg(test)]
 mod tests;
-
-pub mod dependency;

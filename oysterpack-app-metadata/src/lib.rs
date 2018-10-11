@@ -16,7 +16,7 @@
 //!
 //! The [op_build_mod!](macro.op_build_mod.html) macro is used in conjunction with [oysterpack_built](https://crates.io/crates/oysterpack_built)
 //!
-//! [uml](ml.svg)
+//! [uml](target/doc/oysterpack_app_metadata/ml.svg)
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations, warnings)]

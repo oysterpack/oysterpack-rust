@@ -1,14 +1,11 @@
-`oysterpack_built` is used as a build-time dependency to gather information about the cargo build
-environment. It serializes the build-time information into Rust-code, which can then be compiled
-into the final crate.
-
-## What is the Motivation?
 From a DevOps perspective, it is critical to know exactly what is deployed.
+`oysterpack_built` is used as a build-time dependency to gather application build related metadata.
+The information is gathered from the cargo build. It produces a Rust source file named **built.rs** in the project's build script output directory.
+The location can be obtained via:
 
-`oysterpack_built` builds upon [built](https://crates.io/crates/built). In addition, `oysterpack_built`
-gathers the crate's compile dependencies at build time and makes them available at runtime.
-
-Its main purpose is to standardize the build-time metadata integration for OysterPack apps.
+```ignore
+let built_rs = concat!(env!("OUT_DIR"), "/built.rs");
+```
 
 ## How to integrate within your project
 
@@ -28,10 +25,10 @@ Its main purpose is to standardize the build-time metadata integration for Oyste
    ```
    - `oysterpack_built` is added as a build dependency
    - `build.rs` is the name of the cargo build script to use
-      - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
-        not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
-   - [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata) is the companion dependency
-     that provides the `op_build_mod!()` macro
+   - [oysterpack_app_metadata][oysterpack_app_metadata] is used in conjuction with this crate to load the application build metadata
+     into the domain model defined by [oysterpack_app_metadata][oysterpack_app_metadata]
+
+[oysterpack_app_metadata]: https://crates.io/crates/oysterpack_app_metadata
 
 2. Include the following in **build.rs**:
 
@@ -43,13 +40,8 @@ Its main purpose is to standardize the build-time metadata integration for Oyste
    }
    ```
 
-3. The build script will by default write a file named **built.rs** into Cargo's output directory.
-   It can be picked up and compiled via the [op_build_mod!()](https://docs.rs/oysterpack_built/latest/oysterpack_app_metadata/macro.op_build_mod.html) macro,
-   The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
-   information.
-
-The generated `build` module will consist of:
-- constants for each piece of build metadata
+3. The build script will by default write a file named **built.rs** into
+   Cargo's build output directory, which will contain the following constants:
 
 Constant | Type | Description
 -------- | ---- | -----------
@@ -83,3 +75,22 @@ RUSTC_VERSION|&str|The output of rustc -V
 RUSTDOC|&str|The documentation generator that cargo resolved to use.
 RUSTDOC_VERSION|&str|The output of rustdoc -V
 DEPENDENCIES_GRAPHVIZ_DOT|&str|graphviz .dot format for the effective dependency graph
+
+The application metadata can be loaded via [oysterpack_app_metadata op_build_mod!()](https://docs.rs/oysterpack_app_metadata/latest/oysterpack_app_metadata/macro.op_build_mod.html)):
+
+```ignore
+#[macro_use]
+extern crate oysterpack_app_metadata;
+extern crate chrono;
+extern crate semver;
+
+// loads the application metadata into `pub mod build {...}'
+op_build_mod!()
+
+use oysterpack_app_metadata::Build;
+
+fn main () {
+    let app_build = build::get();
+    // integrate the application build metadata ...
+}
+```

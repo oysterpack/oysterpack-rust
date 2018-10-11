@@ -188,15 +188,5 @@
 <path fill="none" stroke="black" stroke-dasharray="5,2" d="M1178,-858.41C1178,-850.498 1178,-842.186 1178,-833.684"/>
 <polygon fill="black" stroke="black" points="1178,-833.558 1174,-827.558 1178,-821.558 1182,-827.558 1178,-833.558"/>
 </g>
-<!-- ndKind -->
-<g id="node8" class="node"><title>ndKind</title>
-<polygon fill="none" stroke="black" points="1372.5,-877.5 1372.5,-968.5 1509.5,-968.5 1509.5,-877.5 1372.5,-877.5"/>
-<text text-anchor="middle" x="1441" y="-953.3" font-family="Times,serif" font-size="14.00">&lt;&lt;&lt;Enumeration&gt;&gt;&gt;</text>
-<text text-anchor="middle" x="1441" y="-938.3" font-family="Times,serif" font-size="14.00">Kind</text>
-<polyline fill="none" stroke="black" points="1372.5,-930.5 1509.5,-930.5 "/>
-<text text-anchor="middle" x="1441" y="-915.3" font-family="Times,serif" font-size="14.00">Normal</text>
-<text text-anchor="middle" x="1441" y="-900.3" font-family="Times,serif" font-size="14.00">Development</text>
-<text text-anchor="middle" x="1441" y="-885.3" font-family="Times,serif" font-size="14.00">Build</text>
-</g>
 </g>
 </svg>

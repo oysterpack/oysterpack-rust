@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! `oysterpack_built` is used as a build-time dependency to gather information about the cargo build
-//! environment. It serializes the build-time information into Rust-code, which can then be compiled
-//! into the final crate.
-//!
-//! ## What is the Motivation?
 //! From a DevOps perspective, it is critical to know exactly what is deployed.
+//! `oysterpack_built` is used as a build-time dependency to gather application build related metadata.
+//! The information is gathered from the cargo build. It produces a Rust source file named **built.rs**
+//! in the project's build script output directory. The location can be obtained via:
 //!
-//! `oysterpack_built` builds upon [built](https://crates.io/crates/built). In addition, `oysterpack_built`
-//! gathers the crate's compile dependencies at build time and makes them available at runtime.
-//!
-//! Its main purpose is to standardize the build-time metadata integration for OysterPack apps.
+//! ```ignore
+//! let built_rs = concat!(env!("OUT_DIR"), "/built.rs");
+//! ```
 //!
 //! ## How to integrate within your project
 //!
@@ -42,9 +39,10 @@
 //!    ```
 //!    - `oysterpack_built` is added as a build dependency
 //!    - `build.rs` is the name of the cargo build script to use
-//!    - [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata) is the companion dependency
-//!      that provides the `op_build_mod!()` macro which is used to load the application metadata generated
-//!      by `oysterpack_built`.
+//!    - [oysterpack_app_metadata][oysterpack_app_metadata] is used in conjuction with this crate to
+//!      load the application build metadata into the domain model defined by [oysterpack_app_metadata][oysterpack_app_metadata]
+//!
+//! [oysterpack_app_metadata]: https://crates.io/crates/oysterpack_app_metadata
 //!
 //! 2. Include the following in **build.rs**:
 //!
@@ -56,7 +54,7 @@
 //!    }
 //!    ```
 //!
-//! 3. The build script will by default write a file named **built.rs** into Cargo's output directory,
+//! 3. The build script will write a file named **built.rs** into Cargo's build output directory,
 //!    which will contain the following constants:
 //!
 //! Constant | Type | Description
@@ -110,7 +108,6 @@
 //!     // integrate the application build metadata ...
 //! }
 //! ```
-//!
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]

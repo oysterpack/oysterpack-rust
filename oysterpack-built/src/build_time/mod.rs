@@ -105,6 +105,7 @@ pub(crate) mod metadata {
 }
 
 /// Gathers build information and generates code to make it available at runtime.
+/// It writes a file named **built.rs** into Cargo's build output directory.
 ///
 /// # Panics
 /// If build-time information failed to be gathered.
