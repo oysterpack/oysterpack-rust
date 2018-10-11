@@ -159,13 +159,10 @@ pub fn build_dependency_graph(
     let package = workspace.current().unwrap();
     let mut registry = registry(&cargo_config, &package).unwrap();
     let features = features.map(|features| features.join(" "));
-    debug!("build_dependency_graph: features = {:?}", features);
     let (packages, resolve) = resolve(&mut registry, &workspace, features).unwrap();
 
     let ids = packages.package_ids().cloned().collect::<Vec<_>>();
     let packages = registry.get(&ids);
-    let root = package.package_id();
-    debug!("build_dependency_graph: root package id = {}", root);
     let rustc = cargo_config.rustc(Some(&workspace)).unwrap();
     let target = Some(rustc.host.as_str());
     let cfgs = get_cfgs(&rustc, &target.map(|s| s.to_string())).unwrap();
@@ -183,11 +180,6 @@ pub fn build_dependency_graph(
 fn filter_dependencies(
     graph: petgraph::Graph<dependencies::Node, cargo::core::dependency::Kind>,
 ) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
-    debug!(
-        "build_dependency_graph: initial node count = {}",
-        graph.node_count()
-    );
-
     // convert Graph<Node, Kind> -> Graph<metadata::PackageId,metadata::dependency::Kind> in order to
     // have a graph that we can serialize/deserialize via serde
     let graph = graph.filter_map(
@@ -225,10 +217,7 @@ fn filter_dependencies(
         },
         |_, edge| match edge {
             cargo::core::dependency::Kind::Normal => Some(metadata::dependency::Kind::Normal),
-            _ => {
-                debug!("build_dependency_graph: dropping edge: {:?}", edge);
-                None
-            }
+            _ => None,
         },
     );
 
@@ -236,16 +225,7 @@ fn filter_dependencies(
     let graph = graph.filter_map(
         |node_idx, node| {
             // remove nodes that have no edges
-            match graph.neighbors_undirected(node_idx).detach().next(&graph) {
-                Some(_) => Some(node.clone()),
-                None => {
-                    debug!(
-                        "build_dependency_graph: dropping node with no edges: {}",
-                        node
-                    );
-                    None
-                }
-            }
+            graph.neighbors_undirected(node_idx).detach().next(&graph).map(|_|node.clone())
         },
         |_, edge| Some(*edge),
     );
@@ -455,5 +435,5 @@ mod build_env {
     }
 }
 
-#[cfg(all(test, feature = "build-time"))]
+#[cfg(test)]
 mod tests;

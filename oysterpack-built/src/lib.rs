@@ -100,16 +100,6 @@
 //! RUSTDOC|&str|The documentation generator that cargo resolved to use.
 //! RUSTDOC_VERSION|&str|The output of rustdoc -V
 //! DEPENDENCIES_GRAPHVIZ_DOT|&str|graphviz .dot format for the effective dependency graph
-//!
-//! - `fn get() -> Build`
-//!     - [Build](struct.Build.html) provides a consolidated view of the build-time metadata.
-//!       This makes it easier to work with the build-time metadata in a typesafe manner.
-//!     - [Build](struct.Build.html) supports serialization via [serde](https://crates.io/crates/serde)
-//!
-//! **NOTE:** The `op_build_mod!()` depends on the following dependencies in order to compile:
-//! - [semver](https://crates.io/crates/semver)
-//! - [chrono](https://crates.io/crates/chrono)
-//! - [serde](https://crates.io/crates/serde)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
@@ -122,13 +112,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
-#[cfg(feature = "build-time")]
 extern crate built;
-#[cfg(feature = "build-time")]
 extern crate cargo;
-#[cfg(feature = "build-time")]
 extern crate failure;
-#[cfg(feature = "build-time")]
 extern crate petgraph;
 
 #[macro_use]
@@ -139,10 +125,7 @@ extern crate fern;
 #[cfg(test)]
 extern crate serde_json;
 
-#[cfg(feature = "build-time")]
 pub mod build_time;
-
-#[cfg(feature = "build-time")]
 pub use build_time::run;
 
 #[cfg(test)]

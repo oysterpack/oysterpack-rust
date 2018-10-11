@@ -11,15 +11,15 @@ readme = "README.md"
 
 [dependencies]
 log = "0.4"
-semver = {version = "0.9"}
-chrono = { version = "0.4"}
+semver = "0.9"
+chrono = "0.4"
 serde = "1"
 serde_derive = "1"
 
-built = {version = "0.3", optional = true}
-cargo = {version = "0.30", optional = true}
-failure = {version = "0.1", optional = true}
-petgraph = {version =  "0.4", features = ["serde-1"], optional = true}
+built = "0.3"
+cargo = "0.30"
+failure = "0.1"
+petgraph = {version =  "0.4", features = ["serde-1"]}
 
 [dev-dependencies]
 version-sync = "0.5"
@@ -28,8 +28,3 @@ lazy_static = "1"
 serde_json = "1.0"
 
 [badges]
-
-[features]
-default = []
-
-build-time = ["built", "cargo", "failure", "petgraph"]

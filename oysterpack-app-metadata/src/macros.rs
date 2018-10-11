@@ -21,6 +21,10 @@
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built) as a build dependency to collect
 /// application metadata at build-time.
 ///
+/// **NOTE:** This macro depends on the following dependencies in order to compile:
+/// - [semver](https://crates.io/crates/semver)
+/// - [chrono](https://crates.io/crates/chrono)
+///
 /// The module default name is `build`, but it can be explicitly specified:
 /// - `op_build_mod!()` generates:
 ///
