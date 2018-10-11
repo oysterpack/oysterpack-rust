@@ -42,10 +42,9 @@
 //!    ```
 //!    - `oysterpack_built` is added as a build dependency
 //!    - `build.rs` is the name of the cargo build script to use
-//!       - NOTE: By default Cargo looks up for "build.rs" file in a package root (even if you do
-//!         not specify a value for build - see [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html)).
 //!    - [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata) is the companion dependency
-//!      that provides the `op_build_mod!()` macro
+//!      that provides the `op_build_mod!()` macro which is used to load the application metadata generated
+//!      by `oysterpack_built`.
 //!
 //! 2. Include the following in **build.rs**:
 //!
@@ -57,13 +56,8 @@
 //!    }
 //!    ```
 //!
-//! 3. The build script will by default write a file named **built.rs** into Cargo's output directory.
-//!    It can be picked up and compiled via the [op_build_mod!()](https://docs.rs/oysterpack_built/latest/oysterpack_app_metadata/macro.op_build_mod.html) macro,
-//!    The `op_build_mod!()` will create a public module named *build*, which will contain the build-time
-//!    information.
-//!
-//! The generated `build` module will consist of:
-//! - constants for each piece of build metadata
+//! 3. The build script will by default write a file named **built.rs** into Cargo's output directory,
+//!    which will contain the following constants:
 //!
 //! Constant | Type | Description
 //! -------- | ---- | -----------
@@ -97,6 +91,26 @@
 //! RUSTDOC|&str|The documentation generator that cargo resolved to use.
 //! RUSTDOC_VERSION|&str|The output of rustdoc -V
 //! DEPENDENCIES_GRAPHVIZ_DOT|&str|graphviz .dot format for the effective dependency graph
+//!
+//! The application metadata can be loaded via [oysterpack_app_metadata op_build_mod!()](https://docs.rs/oysterpack_app_metadata/latest/oysterpack_app_metadata/macro.op_build_mod.html)):
+//!
+//! ```ignore
+//! #[macro_use]
+//! extern crate oysterpack_app_metadata;
+//! extern crate chrono;
+//! extern crate semver;
+//!
+//! // loads the application metadata into `pub mod build {...}'
+//! op_build_mod!()
+//!
+//! use oysterpack_app_metadata::Build;
+//!
+//! fn main () {
+//!     let app_build = build::get();
+//!     // integrate the application build metadata ...
+//! }
+//! ```
+//!
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
