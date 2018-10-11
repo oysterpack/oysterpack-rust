@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! used as a build dependency - activated via the build-time feature
+//! collects application metadata at build time
 
 use built;
 use cargo::{
     self,
     core::{
-        manifest::ManifestMetadata, package::PackageSet, registry::PackageRegistry,
-        resolver::Method, Package, Resolve, Workspace,
+        package::PackageSet, registry::PackageRegistry, resolver::Method, Package, Resolve,
+        Workspace,
     },
     ops,
     util::{self, important_paths, CargoResult, Cfg, Rustc},
@@ -147,11 +147,11 @@ pub fn run() {
     write_dependencies();
 }
 
-/// resolves dependencies and constructs a dependency graph
+/// resolves dependencies and constructs a dependency graph for the current crate
 ///
 /// # Panics
 /// If dependency graph failed to be built.
-pub fn build_dependency_graph(
+fn build_dependency_graph(
     features: Option<Vec<String>>,
 ) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     let cargo_config = Config::default().unwrap();
@@ -225,7 +225,11 @@ fn filter_dependencies(
     let graph = graph.filter_map(
         |node_idx, node| {
             // remove nodes that have no edges
-            graph.neighbors_undirected(node_idx).detach().next(&graph).map(|_|node.clone())
+            graph
+                .neighbors_undirected(node_idx)
+                .detach()
+                .next(&graph)
+                .map(|_| node.clone())
         },
         |_, edge| Some(*edge),
     );
@@ -340,10 +344,7 @@ fn build_graph<'a>(
         graph: petgraph::Graph::new(),
         nodes: HashMap::new(),
     };
-    let node = dependencies::Node {
-        id: root,
-        metadata: packages.get(root)?.manifest().metadata(),
-    };
+    let node = dependencies::Node { id: root };
     graph.nodes.insert(root, graph.graph.add_node(node));
 
     let mut pending = vec![root];
@@ -371,10 +372,7 @@ fn build_graph<'a>(
                     Entry::Occupied(e) => *e.get(),
                     Entry::Vacant(e) => {
                         pending.push(dep_id);
-                        let node = dependencies::Node {
-                            id: dep_id,
-                            metadata: packages.get(dep_id)?.manifest().metadata(),
-                        };
+                        let node = dependencies::Node { id: dep_id };
                         *e.insert(graph.graph.add_node(node))
                     }
                 };
@@ -394,7 +392,6 @@ mod dependencies {
     #[derive(Debug)]
     pub struct Node<'a> {
         pub id: &'a cargo::core::PackageId,
-        pub metadata: &'a ManifestMetadata,
     }
 
     #[derive(Debug)]

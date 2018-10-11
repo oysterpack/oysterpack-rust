@@ -34,14 +34,11 @@
 //!
 //!    [dependencies]
 //!    oysterpack_app_metadata = "0.1"
-//!    semver = {version = "0.9", features = ["serde"]}
-//!    chrono = { version = "0.4", features = ["serde", "time"] }
-//!    serde = "1"
-//!    serde_derive = "1"
-//!    serde_json = "1"
+//!    semver = "0.9"
+//!    chrono = "0.4"
 //!
 //!    [build-dependencies]
-//!    oysterpack_built = {path = "../oysterpack-built", version="0.3", features = ["build-time"]}
+//!    oysterpack_built = "0.3"
 //!    ```
 //!    - `oysterpack_built` is added as a build dependency
 //!    - `build.rs` is the name of the cargo build script to use

@@ -6,6 +6,12 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.3.0\] 2018-10-10
+
+### Added
+- DEPENDENCIES_GRAPHVIZ_DOT
+  - crate dependencies in Graphviz DOT format
+
 ## \[0.2.3\] 2018-10-01
 
 ### Changed
