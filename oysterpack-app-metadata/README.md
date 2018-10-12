@@ -1,1 +1,1 @@
-![Application build-time metadata domain model](target/doc/oysterpack_app_metadata/ml.svg)
+![Application build-time metadata domain model](doc/oysterpack_app_metadata/ml.svg)

@@ -19,8 +19,5 @@ extern crate oysterpack_built;
 
 fn main() {
     oysterpack_built::run();
-    let _ = mml::src2both(
-        "src/metadata",
-        concat!("target/doc/", env!("CARGO_PKG_NAME")),
-    );
+    let _ = mml::src2both("src/metadata", concat!("doc/", env!("CARGO_PKG_NAME")));
 }
