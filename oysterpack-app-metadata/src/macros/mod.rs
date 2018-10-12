@@ -25,17 +25,38 @@
 /// - [semver](https://crates.io/crates/semver)
 /// - [chrono](https://crates.io/crates/chrono)
 ///
-/// The module default name is `build`, but it can be explicitly specified:
-/// - `op_build_mod!()` generates:
+/// The macro can be invoked in 3 different ways:
+/// - `op_build_mod!()`
 ///
 ///     ```ignore
-///         pub mod build { ... }
+///         pub mod build {
+///             include!(concat!(env!("OUT_DIR"), "/built.rs"));
+///
+///             /// Collects the build-time info to construct a new Build instance
+///             pub fn get() -> $crate::Build { ... }
+///         }
 ///     ```
 ///
-/// - `op_build_mod!(build_md)` generates:
+/// - `op_build_mod!($name:ident)`
 ///
 ///     ```ignore
-///         pub mod build_md { ... }
+///         pub mod $name {
+///             include!(concat!(env!("OUT_DIR"), "/built.rs"));
+///
+///             /// Collects the build-time info to construct a new Build instance
+///             pub fn get() -> $crate::Build { ... }
+///         }
+///     ```
+///
+/// - `op_build_mod!($name:ident, $file:expr)`
+///
+///     ```ignore
+///         pub mod $name {
+///             include!($file));
+///
+///             /// Collects the build-time info to construct a new Build instance
+///             pub fn get() -> $crate::Build { ... }
+///         }
 ///     ```
 ///
 /// Below is a sample module package body that would be generated:
@@ -160,14 +181,33 @@
 /// ```
 #[macro_export]
 macro_rules! op_build_mod {
-    ($name:ident) => {
+    ($name:ident, $file:expr) => {
         /// provides build-time information
         pub mod $name {
             // The file has been placed there by the build script.
-            include!(concat!(env!("OUT_DIR"), "/built.rs"));
+            include!($file);
 
             /// Collects the build-time info to construct a new Build instance
             pub fn get() -> $crate::Build {
+                fn package_dependencies() -> Vec<$crate::metadata::PackageId> {
+                    let mut dependencies: Vec<$crate::metadata::PackageId> =
+                        DEPENDENCIES_GRAPHVIZ_DOT
+                            .lines()
+                            .filter(|line| !line.contains("->") && line.contains("["))
+                            .skip(1)
+                            .map(|line| {
+                                let line = &line[line.find('"').unwrap() + 1..];
+                                let line = &line[..line.find('"').unwrap()];
+                                let tokens: Vec<&str> = line.split("=").collect();
+                                $crate::metadata::PackageId::new(
+                                    tokens.get(0).unwrap().to_string(),
+                                    ::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
+                                )
+                            }).collect();
+                    dependencies.sort();
+                    dependencies
+                }
+
                 let mut builder = $crate::metadata::BuildBuilder::new();
                 builder.timestamp(
                     ::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
@@ -209,28 +249,13 @@ macro_rules! op_build_mod {
                 );
                 builder.build()
             }
-
-            fn package_dependencies() -> Vec<$crate::metadata::PackageId> {
-                let mut dependencies: Vec<$crate::metadata::PackageId> = DEPENDENCIES_GRAPHVIZ_DOT
-                    .lines()
-                    .filter(|line| !line.contains("->") && line.contains("["))
-                    .skip(1)
-                    .map(|line| {
-                        let line = &line[line.find('"').unwrap() + 1..];
-                        let line = &line[..line.find('"').unwrap()];
-                        let tokens: Vec<&str> = line.split("=").collect();
-                        $crate::metadata::PackageId::new(
-                            tokens.get(0).unwrap().to_string(),
-                            ::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
-                        )
-                    }).collect();
-                dependencies.sort();
-                dependencies
-            }
         }
     };
+    ($name:ident) => {
+        op_build_mod!($name, concat!(env!("OUT_DIR"), "/built.rs"));
+    };
     () => {
-        op_build_mod!(build);
+        op_build_mod!(build, concat!(env!("OUT_DIR"), "/built.rs"));
     };
 }
 
@@ -293,3 +318,6 @@ macro_rules! op_tuple_struct_copy {
         }
     };
 }
+
+#[cfg(test)]
+mod tests;
