@@ -19,5 +19,28 @@ extern crate oysterpack_built;
 
 fn main() {
     oysterpack_built::run();
-    let _ = mml::src2both("src/metadata", concat!("doc/", env!("CARGO_PKG_NAME")));
+    generate_uml_graphviz();
+}
+
+/// Generates UML class diagrams for the metadata module in Graphviz DOT and SVG format.
+/// The generated files will be located within
+fn generate_uml_graphviz() {
+    use std::{env, path};
+
+    let src = path::Path::new("src").join("metadata");
+    let dest = path::Path::new(&env::var("OUT_DIR").unwrap())
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("doc")
+        .join(env!("CARGO_PKG_NAME"));
+    match mml::src2both(src.as_path(), dest.as_path()) {
+        Err(err) => panic!("Failed to generate UML class diagrams: {}", err),
+        _ => (),
+    }
 }

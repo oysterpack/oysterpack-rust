@@ -44,5 +44,21 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
 
 #[test]
 fn compiles() {
-    run_test(|| info!("it compiles :)"));
+    run_test(|| {
+        info!("it compiles :)");
+
+        use std::{env, path};
+        let doc_dir = path::Path::new(&env::var("OUT_DIR").unwrap())
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("doc")
+            .join(env!("CARGO_PKG_NAME"));
+        info!("doc_dir: {}", doc_dir.to_str().unwrap());
+    });
 }

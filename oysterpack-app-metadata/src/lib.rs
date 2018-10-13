@@ -19,6 +19,9 @@
 //! metadata source file. This crate is used to load the application build netadata via the
 //! [op_build_mod](macro.op_build_mod.html) macro.
 //!
+//! ## Application Build Metadata Domain Model
+//! ![uml](ml.svg)
+//!
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations, warnings)]
