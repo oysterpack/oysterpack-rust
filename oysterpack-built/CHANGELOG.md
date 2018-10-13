@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.3.1\] 2018-10-13
+There were no code changes made. This purpose of this release was to augment the crate metadata.
+
+## \[0.3.0\] 2018-10-10
+
+### Added
+- [Collect crate dependencies](https://github.com/oysterpack/oysterpack/issues/1)
+
 ## \[0.3.0\] 2018-10-10
 
 ### Added

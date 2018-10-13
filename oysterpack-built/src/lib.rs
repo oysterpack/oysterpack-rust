@@ -22,6 +22,9 @@
 //! ```
 //!
 //! ## How to integrate within your project
+//! This crate meant to be used in conjunction with [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata).
+//! This crate generates the application build metadata source file.
+//! [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata) is used to load the application build netadata.
 //!
 //! 1. Add the following to **Cargo.toml**:
 //!
@@ -110,7 +113,7 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.1")]
 
 #[macro_use]
 extern crate log;
