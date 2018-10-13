@@ -12,36 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack UID
-//! This crate is used to generate unique identifiers.
+//! Provides generic type safe Universally Unique Lexicographically Sortable Identifiers ([ulid](https://github.com/ulid/spec)):
+//! - ulids are associated with a type
+//! - are serializable, i.e., [Serde](https://docs.rs/serde) compatible
+//! - are threadsafe
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![deny(missing_docs, missing_debug_implementations)]
+#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.0")]
 
 extern crate rusty_ulid;
-
-use rusty_ulid::{new_ulid_string, Ulid};
-
+extern crate serde;
 #[macro_use]
-mod macros;
+extern crate serde_derive;
+extern crate chrono;
 
-/// Returns a universally unique ddentifier
-pub fn uid() -> u128 {
-    Ulid::new().into()
-}
+#[cfg(test)]
+#[macro_use]
+extern crate log;
+#[cfg(test)]
+extern crate fern;
+#[macro_use]
+#[cfg(test)]
+extern crate lazy_static;
 
-/// Returns a universally unique lexicographically sortable identifier :
-/// - 128-bit compatibility with UUID
-/// - 1.21e+24 unique ULIDs per millisecond
-/// - Lexicographically sortable!
-/// - Canonically encoded as a 26 character string, as opposed to the 36 character UUID
-/// - Uses Crockford's base32 for better efficiency and readability (5 bits per character)
-/// - Case insensitive
-/// - No special characters (URL safe)
-pub fn ulid() -> String {
-    new_ulid_string()
-}
+pub mod uid;
+
+pub use uid::Uid;
 
 #[cfg(test)]
 mod tests;
