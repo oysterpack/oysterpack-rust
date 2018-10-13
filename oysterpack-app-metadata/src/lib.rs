@@ -14,7 +14,7 @@
 
 //! Defines the application metadata domain model.
 //!
-//! This crate is meant to be used in conjunction with [oysterpack_built](https://crates.io/crates/oysterpack_built).
+//! It is meant to be used in conjunction with [oysterpack_built](https://crates.io/crates/oysterpack_built).
 //! [oysterpack_built](https://crates.io/crates/oysterpack_built) generates the application build
 //! metadata source file. This crate is used to load the application build netadata via the
 //! [op_build_mod](macro.op_build_mod.html) macro.
@@ -23,7 +23,6 @@
 //! ![uml](ml.svg)
 //!
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.1.0")]
 
