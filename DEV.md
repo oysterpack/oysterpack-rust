@@ -51,6 +51,7 @@ It is designed with programmers and system administrators in mind. glogg can be 
 - [ ] ensure `#![deny(missing_docs, missing_debug_implementations, warnings)]` is enabled for compile
 - [ ] format the code via `cargo fmt`
 - [ ] review documentation: `cargo doc --open`
+- [ ] review Cargo.toml
 - [ ] review CHANGELOG.md
 - [ ] review README.md
 - [ ] tag the module using the following naming convention : `{module_name}_v{module_version}`

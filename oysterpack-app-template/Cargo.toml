@@ -9,6 +9,7 @@ homepage = "https://github.com/oysterpack/oysterpack"
 documentation = "https://docs.rs/oysterpack_app_template"
 readme = "README.md"
 build = "build.rs"
+publish = false
 
 [dependencies]
 oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version="0.1"}

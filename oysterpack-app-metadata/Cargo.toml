@@ -5,10 +5,11 @@ authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Application Metadata"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-app-metadata"
 documentation = "https://docs.rs/oysterpack_app_metadata"
 readme = "README.md"
 build = "build.rs"
+keywords = ["metadata"]
 
 [dependencies]
 semver = {version = "0.9", features = ["serde"]}
@@ -28,3 +29,4 @@ oysterpack_built = {path = "../oysterpack-built", version="0.3"}
 mml = "0.1.41"
 
 [badges]
+maintenance = {status = "actively-developed"}

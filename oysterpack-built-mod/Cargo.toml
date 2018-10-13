@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_built_mod"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "Provides macro to generate a build module which contains build-time information."
 license = "MIT/Apache-2.0"
@@ -25,3 +25,4 @@ serde_json = "1.0"
 oysterpack_built = "0.2"
 
 [badges]
+maintenance = {status = "deprecated"}

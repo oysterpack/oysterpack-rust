@@ -5,9 +5,11 @@ authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack XXX"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-XXX"
 documentation = "https://docs.rs/oysterpack_XXX"
 readme = "README.md"
+keywords = []
+categories = []
 
 [dependencies]
 log = "0.4"
@@ -19,3 +21,4 @@ chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1"
 
 [badges]
+maintenance = {status = "actively-developed"}
