@@ -39,9 +39,12 @@ fn generate_uml_graphviz() {
         .unwrap()
         .join("doc")
         .join(env!("CARGO_PKG_NAME"));
-    if let Err(_) = mml::src2both(src.as_path(), dest.as_path()) {
-        if let Err(err) = mml::src2both("src", concat!("target/doc/", env!("CARGO_PKG_NAME"))) {
-            panic!("Failed to generate UML class diagrams: {}", err)
+    if !dest.exists() {
+        if let Err(err) = std::fs::create_dir_all(dest.as_path()) {
+            panic!("Failed to create doc directory: {}", err);
         }
+    }
+    if let Err(err) = mml::src2both(src.as_path(), dest.as_path()) {
+        panic!("Failed to generate UML class diagrams: {}", err);
     }
 }
