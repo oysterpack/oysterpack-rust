@@ -21,7 +21,6 @@
 //!
 //! ## Application Build Metadata Domain Model
 //! ![uml](ml.svg)
-//!
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.1.3")]

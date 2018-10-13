@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! ## Application Build Metadata Domain Model
-//! ![uml](../ml.svg)
+//! Application build metadata domain model
 
 use chrono::{DateTime, Utc};
 use semver;
