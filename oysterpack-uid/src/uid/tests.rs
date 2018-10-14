@@ -20,9 +20,11 @@ use std::{cmp::Ordering, str::FromStr};
 use tests::run_test;
 
 struct O;
+
 type Oid = Uid<O>;
 
 trait Foo {}
+
 type FooId = Uid<dyn Foo + Send>;
 
 // New Ids should be unique
@@ -92,3 +94,89 @@ fn uid_is_thread_safe() {
     let t = thread::spawn(move || id);
     assert!(t.join().unwrap() == id);
 }
+
+pub mod Errors {
+    /// Typsafe Id
+    #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+    pub struct Id(u128);
+
+    impl Id {
+        /// returns the id
+        pub fn id(&self) -> u128 {
+            self.0
+        }
+    }
+
+    impl ::std::fmt::Display for Id {
+        /// Displays the id in lower hex format
+        fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            write!(f,"{}",self.0)
+        }
+    }
+
+    impl From<u128> for Id {
+        fn from(id: u128) -> Self {
+            Id(id)
+        }
+    }
+
+    // ID_1
+    pub const ID_1: Id = Id(1);
+    //
+    pub const ID_2: Id = Id(2);
+    pub const ID_3: Id = Id(3);
+
+    pub enum Ids {
+        ID_1,
+        ID_2,
+        ID_3
+    }
+
+    impl Ids {
+        pub fn id(&self) -> Id {
+            match self {
+                Ids::ID_1 => ID_1,
+                Ids::ID_2 => ID_2,
+                Ids::ID_3 => ID_3,
+            }
+        }
+    }
+
+    impl Ids {
+        pub fn from(id: u128) -> Option<Self> {
+            match id {
+                1 => Some(Ids::ID_1),
+                2 => Some(Ids::ID_2),
+                3 => Some(Ids::ID_3),
+                _ => None
+            }
+        }
+    }
+
+
+    impl ::std::fmt::Display for Ids {
+        /// Displays the id in lower hex format
+        fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            let (label, id) = match self {
+                Ids::ID_1 => ("ID_1",ID_1),
+                Ids::ID_2 => ("ID_2",ID_2),
+                Ids::ID_3 => ("ID_3",ID_3),
+            };
+            write!(f, "{}({})", label, id)
+        }
+    }
+
+
+
+}
+
+//op_ids! {
+//    Errors(u128) {
+//        /// ID_1
+//        ID_1 = 1,
+//        /// ID_2
+//        ID_2 = 2,
+//        /// ID_3
+//        ID_3 = 3
+//    }
+//}

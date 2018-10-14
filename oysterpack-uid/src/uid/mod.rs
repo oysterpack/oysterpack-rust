@@ -24,6 +24,12 @@ use std::{
     str::FromStr,
 };
 
+#[macro_use]
+mod macros;
+
+#[cfg(test)]
+mod tests;
+
 /// Represents a ULID for some type T.
 ///
 /// # Examples
@@ -64,13 +70,10 @@ impl<T: ?Sized> Uid<T> {
     /// Creates the next strictly monotonic ULID for the given previous ULID.
     /// Returns None if the random part of the next ULID would overflow.
     pub fn next(previous: Uid<T>) -> Option<Uid<T>> {
-        Ulid::next_strictly_monotonic(previous.ulid())
-            .map(|next| {
-                Uid {
-                    id: next.into(),
-                    _type: PhantomData,
-                }
-            })
+        Ulid::next_strictly_monotonic(previous.ulid()).map(|next| Uid {
+            id: next.into(),
+            _type: PhantomData,
+        })
     }
 
     /// returns the id
@@ -220,6 +223,3 @@ impl From<rusty_ulid::crockford::DecodingError> for DecodingError {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
