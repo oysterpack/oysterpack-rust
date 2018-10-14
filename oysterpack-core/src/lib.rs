@@ -17,7 +17,6 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
-#[macro_use]
 extern crate oysterpack_uid;
 #[macro_use]
 extern crate log;

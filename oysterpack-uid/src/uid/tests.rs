@@ -71,6 +71,16 @@ fn uid_ordered() {
 }
 
 #[test]
+fn uid_next() {
+    let mut id = FooId::new();
+    for _ in 0..1000 {
+        let temp = id.clone().increment().unwrap();
+        assert!(temp > id);
+        id = temp;
+    }
+}
+
+#[test]
 fn uid_is_thread_safe() {
     use std::thread;
 

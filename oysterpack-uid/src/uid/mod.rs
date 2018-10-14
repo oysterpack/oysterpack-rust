@@ -61,6 +61,18 @@ impl<T: ?Sized> Uid<T> {
         }
     }
 
+    /// Creates the next strictly monotonic ULID for the given previous ULID.
+    /// Returns None if the random part of the next ULID would overflow.
+    pub fn next(previous: Uid<T>) -> Option<Uid<T>> {
+        Ulid::next_strictly_monotonic(previous.ulid())
+            .map(|next| {
+                Uid {
+                    id: next.into(),
+                    _type: PhantomData,
+                }
+            })
+    }
+
     /// returns the id
     pub fn id(&self) -> u128 {
         self.id
@@ -69,6 +81,12 @@ impl<T: ?Sized> Uid<T> {
     /// Returns the timestamp of this ULID as a DateTime<Utc>.
     pub fn datetime(&self) -> DateTime<Utc> {
         self.ulid().datetime()
+    }
+
+    /// Returns a new ULID with the random part incremented by one.
+    /// Returns None if the new ULID overflows.
+    pub fn increment(self) -> Option<Uid<T>> {
+        Self::next(self)
     }
 
     fn ulid(&self) -> Ulid {

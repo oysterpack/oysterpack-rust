@@ -27,6 +27,7 @@
 use chrono::{DateTime, Utc};
 use devops::SourceCodeLocation;
 use failure::Fail;
+use oysterpack_uid::Uid;
 use std::{collections::HashSet, fmt, sync::Arc};
 
 #[macro_use]
@@ -126,16 +127,18 @@ impl Error {
     }
 }
 
-op_const_uid! {
+op_const_id! {
     /// Unique Error ID
     ErrorId
 }
 
-op_uid! {
-    /// Unique Error Instance ID.
-    /// This enables a specific error to be searched for withing another context, e.g., searching log events.
-    InstanceId
-}
+/// Represents an Error instance
+#[derive(Debug)]
+pub struct Instance;
+
+/// Error instance ULID
+/// This enables a specific error to be searched for withing another context, e.g., searching log events.
+pub type InstanceId = Uid<Instance>;
 
 /// ArcFailure is a thread-safe reference-counting pointer to an instance of Fail.
 /// It provides shared ownership to a Fail instance.

@@ -79,12 +79,10 @@ fn command_future_success_with_no_progress_subscriber() {
             .and_then(move |result| {
                 s.send(result);
                 future::finished(result)
-            })
-            .map(|ts| {
+            }).map(|ts| {
                 info!("{:?}", system_time::to_date_time(ts));
                 ()
-            })
-            .map_err(|_| ());
+            }).map_err(|_| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
@@ -115,12 +113,10 @@ fn command_success_with_no_progress_subscriber() {
             .and_then(move |result| {
                 s.send(result);
                 future::finished(result)
-            })
-            .map(|ts| {
+            }).map(|ts| {
                 info!("{:?}", system_time::to_date_time(ts));
                 ()
-            })
-            .map_err(|_| ());
+            }).map_err(|_| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
@@ -156,12 +152,10 @@ fn command_success_with_progress_subscriber() {
             .and_then(move |result| {
                 s.send(result);
                 future::finished(result)
-            })
-            .map(|ts| {
+            }).map(|ts| {
                 info!("{:?}", system_time::to_date_time(ts));
                 ()
-            })
-            .map_err(|_| ());
+            }).map_err(|_| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();
@@ -205,8 +199,7 @@ fn command_failure_with_progress_subscriber() {
             .then(move |result| {
                 s.send(result.clone());
                 future::finished(result)
-            })
-            .map(|_: Result<SystemTime, errors::Error>| ());
+            }).map(|_: Result<SystemTime, errors::Error>| ());
         tokio::run(foo_cmd);
 
         let result = r.try_recv();

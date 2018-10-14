@@ -53,6 +53,7 @@
 use crossbeam_channel as channel;
 use errors;
 use failure::Fail;
+use oysterpack_uid::Uid;
 use std::{
     fmt::{self, Debug},
     time::{Duration, Instant, SystemTime},
@@ -191,8 +192,7 @@ where
     }
 }
 
-impl<F: Future> Drop for Command<F>
-{
+impl<F: Future> Drop for Command<F> {
     fn drop(&mut self) {
         debug!("Command Dropped: {:?}", self.progress);
     }
@@ -384,10 +384,12 @@ op_const_id! {
     CommandId
 }
 
-op_id! {
-    /// Command Instance ID
-    InstanceId
-}
+/// Represents a Command instance
+#[derive(Debug)]
+pub struct Instance;
+
+/// Command instance ULID
+pub type InstanceId = Uid<Instance>;
 
 /// CommandFailure provides the context for command failures
 #[derive(Debug, Clone)]
