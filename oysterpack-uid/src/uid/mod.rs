@@ -16,6 +16,10 @@
 
 use chrono::{DateTime, Utc};
 use rusty_ulid::{self, Ulid};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use std::{
     cmp::Ordering,
     fmt,
@@ -47,17 +51,117 @@ mod tests;
 /// trait Foo{}
 /// // traits are not Send. Send is added to the type def in order to satisfy Uid type constraints
 /// // in order to be able to send the Uid across threads
-/// type FooId = Uid<dyn Foo + Send>;
+/// type FooId = Uid<dyn Foo + Send + Sync>;
 /// let id = FooId::new();
 /// ```
-#[derive(Serialize, Deserialize)]
 pub struct Uid<T: ?Sized> {
     id: u128,
-    #[serde(skip)]
     _type: PhantomData<T>,
 }
 
-impl<T: ?Sized> Uid<T> {
+impl<T: 'static> Serialize for Uid<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u128(self.id)
+    }
+}
+
+impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct UidVisitor<T: 'static>(PhantomData<&'static T>);
+
+        impl<'de, T: 'static> Visitor<'de> for UidVisitor<T> {
+            type Value = Uid<T>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("i128")
+            }
+
+            fn visit_i8<E>(self, value: i8) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value > 0 {
+                    Ok(Uid::from(value as u128))
+                } else {
+                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
+                }
+            }
+
+            fn visit_i32<E>(self, value: i32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value > 0 {
+                    Ok(Uid::from(value as u128))
+                } else {
+                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
+                }
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value > 0 {
+                    Ok(Uid::from(value as u128))
+                } else {
+                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
+                }
+            }
+
+            #[inline]
+            fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value > 0 {
+                    Ok(Uid::from(value as u128))
+                } else {
+                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
+                }
+            }
+
+            fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Uid::from(u128::from(value)))
+            }
+
+            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Uid::from(u128::from(value)))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Uid::from(u128::from(value)))
+            }
+
+            #[inline]
+            fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Uid::from(value))
+            }
+        }
+
+        deserializer.deserialize_i128(UidVisitor(PhantomData))
+    }
+}
+
+impl<T: 'static + ?Sized> Uid<T> {
     /// New Uid instances are guaranteed to be lexographically sortable if they are created within the same
     /// millisecond. In other words, Uid(s) created within the same millisecond are random.
     pub fn new() -> Uid<T> {
@@ -97,54 +201,54 @@ impl<T: ?Sized> Uid<T> {
     }
 }
 
-impl<T: ?Sized> fmt::Display for Uid<T> {
+impl<T: 'static + ?Sized> fmt::Display for Uid<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let ulid: Ulid = self.ulid();
         f.write_str(&ulid.to_string())
     }
 }
 
-impl<T: ?Sized> PartialEq for Uid<T> {
+impl<T: 'static + ?Sized> PartialEq for Uid<T> {
     fn eq(&self, other: &Uid<T>) -> bool {
         self.id == other.id
     }
 }
 
-impl<T: ?Sized> PartialOrd for Uid<T> {
+impl<T: 'static + ?Sized> PartialOrd for Uid<T> {
     fn partial_cmp(&self, other: &Uid<T>) -> Option<Ordering> {
         self.id.partial_cmp(&other.id)
     }
 }
 
-impl<T: ?Sized> Eq for Uid<T> {}
+impl<T: 'static + ?Sized> Eq for Uid<T> {}
 
-impl<T: ?Sized> Ord for Uid<T> {
+impl<T: 'static + ?Sized> Ord for Uid<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.id.cmp(&other.id)
     }
 }
 
-impl<T: ?Sized> Hash for Uid<T> {
+impl<T: 'static + ?Sized> Hash for Uid<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
 }
 
-impl<T: ?Sized> Copy for Uid<T> {}
+impl<T: 'static + ?Sized> Copy for Uid<T> {}
 
-impl<T: ?Sized> Clone for Uid<T> {
+impl<T: 'static + ?Sized> Clone for Uid<T> {
     fn clone(&self) -> Uid<T> {
         *self
     }
 }
 
-impl<T: ?Sized> fmt::Debug for Uid<T> {
+impl<T: 'static + ?Sized> fmt::Debug for Uid<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}", self.id)
     }
 }
 
-impl<T: ?Sized> From<[u8; 16]> for Uid<T> {
+impl<T: 'static + ?Sized> From<[u8; 16]> for Uid<T> {
     fn from(bytes: [u8; 16]) -> Self {
         let ulid: Ulid = Ulid::from(bytes);
         Uid {
@@ -154,7 +258,7 @@ impl<T: ?Sized> From<[u8; 16]> for Uid<T> {
     }
 }
 
-impl<T: ?Sized> From<u128> for Uid<T> {
+impl<T: 'static + ?Sized> From<u128> for Uid<T> {
     fn from(id: u128) -> Self {
         let ulid: Ulid = Ulid::from(id);
         Uid {
@@ -164,7 +268,7 @@ impl<T: ?Sized> From<u128> for Uid<T> {
     }
 }
 
-impl<T: ?Sized> From<(u64, u64)> for Uid<T> {
+impl<T: 'static + ?Sized> From<(u64, u64)> for Uid<T> {
     fn from(id: (u64, u64)) -> Self {
         let ulid: Ulid = Ulid::from(id);
         Uid {
@@ -174,7 +278,7 @@ impl<T: ?Sized> From<(u64, u64)> for Uid<T> {
     }
 }
 
-impl<T: ?Sized> FromStr for Uid<T> {
+impl<T: 'static + ?Sized> FromStr for Uid<T> {
     type Err = DecodingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -186,13 +290,13 @@ impl<T: ?Sized> FromStr for Uid<T> {
     }
 }
 
-impl<T: ?Sized> From<Uid<T>> for u128 {
+impl<T: 'static + ?Sized> From<Uid<T>> for u128 {
     fn from(ulid: Uid<T>) -> Self {
         ulid.id
     }
 }
 
-impl<T: ?Sized> From<Uid<T>> for (u64, u64) {
+impl<T: 'static + ?Sized> From<Uid<T>> for (u64, u64) {
     fn from(ulid: Uid<T>) -> Self {
         (
             (ulid.id >> 64) as u64,

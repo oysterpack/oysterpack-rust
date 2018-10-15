@@ -21,11 +21,9 @@
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.0")]
 
+extern crate chrono;
 extern crate rusty_ulid;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate chrono;
 
 #[cfg(test)]
 #[macro_use]
@@ -35,6 +33,8 @@ extern crate fern;
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
+extern crate serde_json;
 
 pub mod uid;
 
