@@ -103,134 +103,25 @@ fn uid_serde() {
     run_test(|| {
         let id = Uid::<Foo>::new();
         let id_json = serde_json::to_string(&id).unwrap();
-        info!("id json: {}", id_json);
+        info!("uid_serde(): id json: {}", id_json);
         let id2 = serde_json::from_str(&id_json).unwrap();
         assert_eq!(id, id2);
     });
 }
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Id(pub u128);
-
-impl Id {
-    /// returns the id
-    pub fn id(&self) -> u128 {
-        self.0
+#[test]
+fn op_id_macro() {
+    op_int_type! {
+        /// ErrorId
+        ErrorId
     }
-}
 
-impl ::std::fmt::Display for Id {
-    /// Displays the id in lower hex format
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{:x}", self.0)
-    }
-}
+    const ERR_1 : ErrorId = ErrorId(1);
 
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
-
-use std::fmt;
-
-impl Serialize for Id {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u128(self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for Id {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct IdVisitor;
-
-        impl<'de> Visitor<'de> for IdVisitor {
-            type Value = Id;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("i128")
-            }
-
-            fn visit_i8<E>(self, value: i8) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Id(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            fn visit_i32<E>(self, value: i32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Id(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Id(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            #[inline]
-            fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Id(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Id(u128::from(value)))
-            }
-
-            fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Id(u128::from(value)))
-            }
-
-            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Id(u128::from(value)))
-            }
-
-            #[inline]
-            fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Id(value))
-            }
-        }
-
-        deserializer.deserialize_i128(IdVisitor)
-    }
+    run_test(||{
+        let id_json = serde_json::to_string(&ERR_1).unwrap();
+        info!("op_id_macro(): id json: {}", id_json);
+        let id2 = serde_json::from_str(&id_json).unwrap();
+        assert_eq!(ERR_1, id2);
+    });
 }

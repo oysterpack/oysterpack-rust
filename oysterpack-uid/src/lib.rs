@@ -21,8 +21,9 @@
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.0")]
 
-extern crate chrono;
 extern crate rusty_ulid;
+extern crate chrono;
+#[cfg(any(test, feature = "serde"))]
 extern crate serde;
 
 #[cfg(test)]

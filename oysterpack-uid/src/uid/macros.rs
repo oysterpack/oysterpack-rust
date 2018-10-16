@@ -14,31 +14,28 @@
 
 //! uid macros
 
-/// Defines a new public struct for identifiers that need to be defined as constants.
-/// Documentation comments are optional.
-///
-/// `op_id!{EventId}` will generate a public struct named `EventId`.
-/// - it is defined as a tuple struct
-/// - It will have the following methods:
+/// Generates a new type for an unsigned int.
+/// - it is defined as a public tuple struct
+/// - documentation comments are optional.
+/// - it will have the following methods:
 ///   - `pub fn id(&self) -> u128`
-/// - It will implement the following traits:
+/// - it will implement the following traits:
 ///   - Debug,
 ///   - Copy, Clone,
 ///   - Ord, PartialOrd,
 ///   - Eq, PartialEq, Hash,
 ///   - std::fmt::Display
 ///   - serde::Serialize, serde::Deserialize
-///     - external crates will need to import the macros from `serde_derive`
+///     - external crates will need to import the macros from `serde`
 ///
 /// # Example
 ///
 /// ```rust
 /// #[macro_use]
 /// extern crate oysterpack_uid;
-/// #[macro_use]
-/// extern crate serde_derive;
+/// extern crate serde;
 ///
-/// op_id! {
+/// op_int_type! {
 ///   /// Error ID
 ///   ErrorId
 /// }
@@ -51,27 +48,87 @@
 /// }
 /// ```
 #[macro_export]
-macro_rules! op_id {
+macro_rules! op_int_type {
     (
         $(#[$outer:meta])*
-        $UidName:ident
+        $Name:ident
     ) => {
         $(#[$outer])*
-        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
-        pub struct $UidName(pub u128);
+        #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+        pub struct $Name(pub u128);
 
-        impl $UidName {
+        impl $Name {
 
-            /// returns the id
+            /// returns the ID
             pub fn id(&self) -> u128 {
                 self.0
             }
         }
 
-        impl ::std::fmt::Display for $UidName {
+        impl ::std::fmt::Display for $Name {
             /// Displays the id in lower hex format
             fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{:x}", self.0)
+                write!(f, "{}", self.0)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl ::serde::Serialize for $Name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                serializer.serialize_u128(self.0)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> ::serde::Deserialize<'de> for $Name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+
+                struct IdVisitor;
+
+                impl<'de> ::serde::de::Visitor<'de> for IdVisitor {
+                    type Value = $Name;
+
+                    fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                        formatter.write_str("u128")
+                    }
+
+                    fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        Ok($Name(u128::from(value)))
+                    }
+
+                    fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        Ok($Name(u128::from(value)))
+                    }
+
+                    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        Ok($Name(u128::from(value)))
+                    }
+
+                    #[inline]
+                    fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
+                    where
+                        E: ::serde::de::Error,
+                    {
+                        Ok($Name(value))
+                    }
+                }
+
+                deserializer.deserialize_u128(IdVisitor)
             }
         }
     };

@@ -59,6 +59,7 @@ pub struct Uid<T: ?Sized> {
     _type: PhantomData<T>,
 }
 
+#[cfg(feature = "serde")]
 impl<T: 'static> Serialize for Uid<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -68,6 +69,7 @@ impl<T: 'static> Serialize for Uid<T> {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -79,54 +81,10 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
             type Value = Uid<T>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("i128")
-            }
-
-            fn visit_i8<E>(self, value: i8) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Uid::from(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            fn visit_i32<E>(self, value: i32) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Uid::from(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Uid::from(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
+                formatter.write_str("u128")
             }
 
             #[inline]
-            fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                if value > 0 {
-                    Ok(Uid::from(value as u128))
-                } else {
-                    Err(E::custom(format!("u128 must be >= 0: {}", value)))
-                }
-            }
-
             fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
             where
                 E: de::Error,
@@ -134,6 +92,7 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
                 Ok(Uid::from(u128::from(value)))
             }
 
+            #[inline]
             fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
             where
                 E: de::Error,
@@ -141,6 +100,7 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
                 Ok(Uid::from(u128::from(value)))
             }
 
+            #[inline]
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
             where
                 E: de::Error,
@@ -157,7 +117,7 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
             }
         }
 
-        deserializer.deserialize_i128(UidVisitor(PhantomData))
+        deserializer.deserialize_u128(UidVisitor(PhantomData))
     }
 }
 
