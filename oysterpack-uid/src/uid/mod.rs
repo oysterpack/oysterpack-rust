@@ -28,24 +28,46 @@ use std::{
     str::FromStr,
 };
 
-#[macro_use]
-mod macros;
-
 #[cfg(test)]
 mod tests;
 
+/// Returns a new ULID
+pub fn ulid() -> String {
+    rusty_ulid::new_ulid_string()
+}
+
+/// Returns a new ULID
+pub fn ulid_u128() -> u128 {
+    rusty_ulid::Ulid::new().into()
+}
+
+/// Converts a ULID string representation into u128
+pub fn into_ulid_u128(ulid: &str) -> Result<u128, DecodingError> {
+    rusty_ulid::Ulid::from_str(ulid)
+        .map(|ulid| ulid.into())
+        .map_err(|err| DecodingError::from(err))
+}
+
+/// Converts a ULID u128 representation into String
+pub fn into_ulid_string(ulid: u128) -> String {
+    rusty_ulid::Ulid::from(ulid).to_string()
+}
+
 /// Represents a ULID for some type T.
+///
+/// By default, Uid is serializable via serde. If serialization is not needed then you can opt out by
+/// including the dependency with default features disabled : `default-features = false`.
 ///
 /// # Examples
 ///
-/// ## Defining an Id for a struct
+/// ## Defining a Uid for a struct
 /// ```rust
 /// # use oysterpack_uid::Uid;
 /// struct Domain;
 /// type DomainId = Uid<Domain>;
 /// let id = DomainId::new();
 /// ```
-/// ## Defining an Id for a trait
+/// ## Defining a Uid for a trait
 /// ```rust
 /// # use oysterpack_uid::Uid;
 /// trait Foo{}

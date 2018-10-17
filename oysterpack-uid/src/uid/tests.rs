@@ -15,7 +15,7 @@
 //! unit tests
 #![allow(warnings)]
 
-use super::Uid;
+use super::{into_ulid_string, into_ulid_u128, ulid, ulid_u128, Uid};
 use serde_json;
 use std::{cmp::Ordering, str::FromStr};
 use tests::run_test;
@@ -110,18 +110,22 @@ fn uid_serde() {
 }
 
 #[test]
-fn op_id_macro() {
-    op_int_type! {
-        /// ErrorId
-        ErrorId
-    }
+fn ulid_functions() {
+    run_test(|| {
+        use std::collections::HashSet;
+        let count = 100000;
 
-    const ERR_1 : ErrorId = ErrorId(1);
+        let mut hashes = HashSet::new();
+        for _ in 0..count {
+            assert!(hashes.insert(ulid()))
+        }
 
-    run_test(||{
-        let id_json = serde_json::to_string(&ERR_1).unwrap();
-        info!("op_id_macro(): id json: {}", id_json);
-        let id2 = serde_json::from_str(&id_json).unwrap();
-        assert_eq!(ERR_1, id2);
+        for uid in hashes {
+            let uid_u128 = into_ulid_u128(&uid).unwrap();
+            let uid2 = into_ulid_string(uid_u128);
+            assert_eq!(uid, uid2);
+        }
+
+        assert!(into_ulid_u128("INVALID").is_err());
     });
 }
