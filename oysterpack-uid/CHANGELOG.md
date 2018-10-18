@@ -6,12 +6,10 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
-### Added
+## 0.1.1
 
-### Changed
+No code changes - just fixing documentation.
 
-### Removed
+## 0.1.0
 
-### Deprecated
-
-### Fixed
+Initial release

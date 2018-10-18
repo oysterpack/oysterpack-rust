@@ -58,7 +58,7 @@
 //! including the dependency with default features disabled : `default-features = false`.
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.1")]
 
 extern crate chrono;
 extern crate rusty_ulid;
