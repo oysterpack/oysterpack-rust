@@ -15,7 +15,7 @@
 //! unit tests
 #![allow(warnings)]
 
-use super::{into_ulid_string, into_ulid_u128, ulid, ulid_u128, Uid};
+use super::{ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, Uid};
 use serde_json;
 use std::{cmp::Ordering, str::FromStr};
 use tests::run_test;
@@ -121,11 +121,11 @@ fn ulid_functions() {
         }
 
         for uid in hashes {
-            let uid_u128 = into_ulid_u128(&uid).unwrap();
-            let uid2 = into_ulid_string(uid_u128);
+            let uid_u128 = ulid_str_into_u128(&uid).unwrap();
+            let uid2 = ulid_u128_into_string(uid_u128);
             assert_eq!(uid, uid2);
         }
 
-        assert!(into_ulid_u128("INVALID").is_err());
+        assert!(ulid_str_into_u128("INVALID").is_err());
     });
 }

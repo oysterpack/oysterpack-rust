@@ -29,6 +29,3 @@ serde_json = "1"
 oysterpack_built = {path = "../oysterpack-built", version="0.3"}
 
 [badges]
-
-[profile.release]
-lto = true

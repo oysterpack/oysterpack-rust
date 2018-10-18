@@ -42,14 +42,14 @@ pub fn ulid_u128() -> u128 {
 }
 
 /// Converts a ULID string representation into u128
-pub fn into_ulid_u128(ulid: &str) -> Result<u128, DecodingError> {
+pub fn ulid_str_into_u128(ulid: &str) -> Result<u128, DecodingError> {
     rusty_ulid::Ulid::from_str(ulid)
         .map(|ulid| ulid.into())
         .map_err(|err| DecodingError::from(err))
 }
 
 /// Converts a ULID u128 representation into String
-pub fn into_ulid_string(ulid: u128) -> String {
+pub fn ulid_u128_into_string(ulid: u128) -> String {
     rusty_ulid::Ulid::from(ulid).to_string()
 }
 
@@ -60,14 +60,14 @@ pub fn into_ulid_string(ulid: u128) -> String {
 ///
 /// # Examples
 ///
-/// ## Defining a Uid for a struct
+/// ## Uid for structs
 /// ```rust
 /// # use oysterpack_uid::Uid;
 /// struct Domain;
 /// type DomainId = Uid<Domain>;
 /// let id = DomainId::new();
 /// ```
-/// ## Defining a Uid for a trait
+/// ## Uid for traits
 /// ```rust
 /// # use oysterpack_uid::Uid;
 /// trait Foo{}
