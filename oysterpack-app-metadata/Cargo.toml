@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_app_metadata"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Application Metadata"
 license = "MIT/Apache-2.0"
@@ -24,7 +24,6 @@ fern = "0.5"
 lazy_static = "1"
 
 [build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version="0.3"}
 mml = "0.1.41"
 
 [badges]

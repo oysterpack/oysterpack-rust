@@ -15,10 +15,8 @@
 //! Gathers build time information for the crate - see https://crates.io/crates/built
 
 extern crate mml;
-extern crate oysterpack_built;
 
 fn main() {
-    oysterpack_built::run();
     generate_uml_graphviz();
 }
 

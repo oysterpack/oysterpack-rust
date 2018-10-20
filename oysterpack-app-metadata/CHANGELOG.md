@@ -6,11 +6,22 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.3.1\] 2018-10-20
+
+### Removed
+- oysterpack_built as a build dependency - no longer needed
+
 ## \[0.3.0\] 2018-10-20
+
+### Changed
 - re-exported metadata::PackageId
+
+### Removed
 - `op_build_mod!()` has been extracted out into its own crate : [oysterpack_app_metadata_macros](https://crates.io/crates/oysterpack_app_metadata_macros)
 
 ## \[0.2.0\] 2018-10-20
+
+### Changed
 - re-exported the `semver` and `chrono` crates because the `op_build_mod!()`
   macro depends on them. This makes the macro self-contained within this crate.
 
