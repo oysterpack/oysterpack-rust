@@ -23,8 +23,8 @@ mod tests;
 use std::fmt;
 
 /// Refers to a source code location.
-/// This can be used to include information regarding where an error or events occur in the code.
-/// This will improve traceability.
+/// This can be used to include information regarding where an error or event occur in the code to
+/// provide traceability.
 #[derive(Debug, Clone)]
 pub struct SourceCodeLocation {
     module_path: &'static str,

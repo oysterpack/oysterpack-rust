@@ -59,6 +59,8 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
+#[macro_use]
+use newtype;
 
 /// Command is a Future that executes the underlying Future.
 ///
@@ -379,9 +381,10 @@ impl Progress {
     }
 }
 
-op_const_id! {
+op_newtype! {
     /// Unique Command ID
-    CommandId
+    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+    pub CommandId(pub u128)
 }
 
 /// Represents a Command instance
@@ -434,7 +437,7 @@ impl fmt::Display for CommandFailure {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "CommandFailure(CommandId({})/InstanceId({})/{})",
+            "CommandFailure({:?})/InstanceId({})/{})",
             self.command_id, self.instance_id, self.error
         )
     }

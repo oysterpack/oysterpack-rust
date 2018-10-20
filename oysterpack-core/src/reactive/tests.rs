@@ -16,12 +16,12 @@ use super::command::*;
 use crossbeam_channel as channel;
 use errors;
 use failure::{self, Fail};
+use oysterpack_uid::ulid_u128;
 use std::time::SystemTime;
 use time::system_time;
 use tokio::{self, prelude::*};
 
 use tests::*;
-use uid::*;
 
 #[derive(Fail, Debug, Clone, Copy)]
 #[fail(display = "Foo error.")]
@@ -40,7 +40,7 @@ impl Into<errors::Error> for FooError {
 }
 
 lazy_static! {
-    static ref FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(uid());
+    static ref FOO_ERROR_ID: errors::ErrorId = errors::ErrorId(ulid_u128());
 }
 
 fn line() -> u32 {

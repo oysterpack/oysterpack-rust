@@ -22,13 +22,14 @@
 //! - Errors are tracked against crates in 2 ways :
 //!   1. the binary crate - within which app the error occurred
 //!   2. the library crate - the error was produced by which library
-//!
 
 use chrono::{DateTime, Utc};
 use devops::SourceCodeLocation;
 use failure::Fail;
 use oysterpack_uid::Uid;
 use std::{collections::HashSet, fmt, sync::Arc};
+#[macro_use]
+use newtype;
 
 #[macro_use]
 mod macros;
@@ -57,7 +58,7 @@ impl Fail for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ErrorId({})({}): {}", self.id, self.loc, self.failure())
+        write!(f, "ErrorId({})({}): {}", *self.id, self.loc, self.failure())
     }
 }
 
@@ -127,9 +128,10 @@ impl Error {
     }
 }
 
-op_const_id! {
+op_newtype! {
     /// Unique Error ID
-    ErrorId
+    #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+    pub ErrorId(pub u128)
 }
 
 /// Represents an Error instance

@@ -39,3 +39,47 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
     let _ = *INIT_FERN;
     test()
 }
+
+pub struct Id(pub u128);
+
+impl Id {
+    /// returns the id
+    pub fn id(&self) -> u128 {
+        self.0
+    }
+}
+
+impl ::std::fmt::Display for Id {
+    /// Displays the id in lower hex format
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
+
+impl ::std::ops::Deref for Id {
+    type Target = u128;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<u128> for Id {
+    fn from(value: u128) -> Id {
+        Id(value)
+    }
+}
+
+#[test]
+fn id_test() {
+    run_test(|| {
+        let id = Id(1);
+        let id: u128 = *id;
+        match id {
+            1 => info!("id_test(): MATCHED"),
+            _ => panic!("id_test() did not match"),
+        }
+
+        let id: Id = 1.into();
+    });
+}
