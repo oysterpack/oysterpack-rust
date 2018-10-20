@@ -21,10 +21,6 @@
 /// [oysterpack_built](https://crates.io/crates/oysterpack_built) as a build dependency to collect
 /// application metadata at build-time.
 ///
-/// **NOTE:** This macro depends on the following dependencies in order to compile:
-/// - [semver](https://crates.io/crates/semver)
-/// - [chrono](https://crates.io/crates/chrono)
-///
 /// The macro can be invoked in 3 different ways:
 /// - `op_build_mod!()`
 ///
@@ -201,7 +197,7 @@ macro_rules! op_build_mod {
                                 let tokens: Vec<&str> = line.split("=").collect();
                                 $crate::metadata::PackageId::new(
                                     tokens.get(0).unwrap().to_string(),
-                                    ::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
+                                    $crate::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
                                 )
                             }).collect();
                     dependencies.sort();
@@ -210,8 +206,8 @@ macro_rules! op_build_mod {
 
                 let mut builder = $crate::metadata::BuildBuilder::new();
                 builder.timestamp(
-                    ::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
-                        .map(|ts| ts.with_timezone(&::chrono::Utc))
+                    $crate::chrono::DateTime::parse_from_rfc2822(BUILT_TIME_UTC)
+                        .map(|ts| ts.with_timezone(&$crate::chrono::Utc))
                         .unwrap(),
                 );
                 builder.target(
@@ -243,7 +239,7 @@ macro_rules! op_build_mod {
                         .map(|author| author.to_string())
                         .collect(),
                     PKG_DESCRIPTION.to_string(),
-                    ::semver::Version::parse(PKG_VERSION).unwrap(),
+                    $crate::semver::Version::parse(PKG_VERSION).unwrap(),
                     PKG_HOMEPAGE.to_string(),
                     package_dependencies(),
                 );

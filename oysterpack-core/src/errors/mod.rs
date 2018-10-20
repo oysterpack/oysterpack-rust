@@ -28,12 +28,11 @@ use devops::SourceCodeLocation;
 use failure::Fail;
 use oysterpack_uid::Uid;
 use std::{collections::HashSet, fmt, sync::Arc};
-#[macro_use]
-use newtype;
 
 #[macro_use]
 mod macros;
 
+#[allow(warnings)]
 #[cfg(test)]
 mod tests;
 

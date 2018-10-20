@@ -138,32 +138,36 @@ macro_rules! op_newtype {
     };
 }
 
+#[allow(warnings)]
 #[cfg(test)]
 mod tests {
-
     use serde_json;
     use tests;
 
-    pub mod foo {
-        op_newtype!{
-            /// A is private
-            A(u128)
-        }
-
-        op_newtype!{
-            /// B is public
-            pub B(u128)
-        }
-
-        op_newtype!{
-            /// C and the underlying value are public
-            #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
-            pub C(pub u128)
-        }
-    }
-
     #[test]
     fn newtype_private() {
+        pub mod foo {
+            op_newtype!{
+                /// A is private
+                A(u128)
+            }
+
+            op_newtype!{
+                /// B is public
+                pub B(u128)
+            }
+
+            op_newtype!{
+                /// C and the underlying value are public
+                #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
+                pub C(pub u128)
+            }
+
+            op_newtype!{
+                pub Name(String)
+            }
+        }
+
         tests::run_test(|| {
             // will not compile because foo::A is private
             // let _ = foo::A::new(1);
@@ -182,6 +186,8 @@ mod tests {
             info!("C_1 as json: {}", serde_json::to_string(&C_1).unwrap());
             let c: foo::C = serde_json::from_str(&serde_json::to_string(&C_1).unwrap()).unwrap();
             assert_eq!(foo::C(1), c);
+
+            let _ = foo::Name::new("Alfio Zappala".to_string());
         });
     }
 

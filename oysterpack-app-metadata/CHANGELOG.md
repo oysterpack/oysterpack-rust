@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.2.0\] 2018-10-20
+- re-exported the `semver` and `chrono` crates because the `op_build_mod!()`
+  macro depends on them. This makes the macro self-contained within this crate.
+
 ## \[0.1.2\] 2018-10-13
 - Fixing build issue issue on crates.io
 

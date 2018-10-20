@@ -8,6 +8,9 @@ Because I am confident that Rust is the future ...
 [Rust](https://www.rust-lang.org) is simply the best systems programming language that we can **TRUST** for building production grade reactive systems.
 Rust's focus on **safety**, **speed**, and **concurrency** delivers the performance and control of a low-level language, but with the powerful abstractions of a high-level language.
 
+## [OysterPack Blog](https://oysterpack.blogspot.com/)
+To keep upto date, you can also follow the [blog](https://oysterpack.blogspot.com/).
+
 ## License
 
 Licensed under either of

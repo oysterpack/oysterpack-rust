@@ -12,18 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This package provides support to build [Reactive Systems|https://www.reactivemanifesto.org],
-//! i.e., systems that are:
-//!
-//! 1. Responsive
-//! 2. Resilient
-//! 3. Elastic
-//! 4. Message Driven
-//!
-//!
+//! Gathers build time information for the crate - see https://crates.io/crates/built
 
-#[allow(warnings)]
-#[cfg(test)]
-mod tests;
+extern crate oysterpack_built;
 
-pub mod command;
+fn main() {
+    oysterpack_built::run();
+}

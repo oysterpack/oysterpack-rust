@@ -6,11 +6,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! # OysterPack Rust Platform
+//! This crate defines the public framework API for the OysterPack platform.
+//! This crate curates the OysterPack modules into a single package.
+//!
+//! # Features
+//!
 
-#![deny(missing_docs, missing_debug_implementations, warnings)]
+#![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack/0.1.1")]
 
-extern crate oysterpack_id;
+pub extern crate oysterpack_app_metadata;
+extern crate oysterpack_uid;
 
-pub use oysterpack_id::Id;
+pub use oysterpack_uid::uid as ulid;
+pub use oysterpack_app_metadata::{
+    semver,
+    chrono
+};
+
+

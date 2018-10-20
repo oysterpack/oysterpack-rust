@@ -12,7 +12,7 @@ build = "build.rs"
 publish = false
 
 [dependencies]
-oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version="0.1"}
+oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version="0.2"}
 
 semver = {version = "0.9"}
 chrono = { version = "0.4"}

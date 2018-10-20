@@ -23,13 +23,14 @@
 //! ![uml](ml.svg)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.1.3")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.2.0")]
 
-extern crate semver;
+pub extern crate chrono;
+pub extern crate semver;
+
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate chrono;
 
 #[cfg(test)]
 #[macro_use]
