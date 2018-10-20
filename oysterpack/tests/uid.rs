@@ -12,20 +12,20 @@ extern crate log;
 extern crate simple_logging;
 
 use log::LevelFilter;
-use oysterpack::ulid;
+use oysterpack::uid;
 
 struct User;
-type UserId = ulid::Uid<User>;
+type UserId = uid::Uid<User>;
 
 #[test]
 fn test() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
-    let uid = UserId::new();
-    info!("new: UserId({}) with datetime: {}",uid, uid.datetime());
+    let user_id = UserId::new();
+    info!("new: UserId({}) with datetime: {}",user_id, user_id.datetime());
 
-    let uid = uid.increment().unwrap();
-    info!("incremented: UserId({}) with datetime: {}",uid, uid.datetime());
+    let user_id = user_id.increment().unwrap();
+    info!("incremented: UserId({}) with datetime: {}",user_id, user_id.datetime());
 
-    assert!(uid.clone().increment().unwrap() > uid);
+    assert!(user_id.clone().increment().unwrap() > user_id);
 }

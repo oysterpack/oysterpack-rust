@@ -6,10 +6,6 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
-## \[0.3.0\] 2018-10-20
-- re-exported metadata::PackageId
-- `op_build_mod!()` has been extracted out into its own crate : [oysterpack_app_metadata_macros](https://crates.io/crates/oysterpack_app_metadata_macros)
-
 ## \[0.2.0\] 2018-10-20
 - re-exported the `semver` and `chrono` crates because the `op_build_mod!()`
   macro depends on them. This makes the macro self-contained within this crate.

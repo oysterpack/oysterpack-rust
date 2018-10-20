@@ -21,19 +21,18 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_template/0.1.0")]
 
 #[macro_use]
-extern crate oysterpack_app_metadata;
+extern crate oysterpack;
 #[macro_use]
 extern crate log;
 extern crate fern;
-
-extern crate chrono;
-extern crate semver;
 
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
 #[cfg(test)]
 extern crate serde_json;
+
+use oysterpack::chrono;
 
 op_build_mod!();
 

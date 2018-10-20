@@ -7,9 +7,8 @@
 // except according to those terms.
 
 
-extern crate oysterpack;
 #[macro_use]
-extern crate oysterpack_app_metadata;
+extern crate oysterpack;
 #[macro_use]
 extern crate log;
 extern crate simple_logging;

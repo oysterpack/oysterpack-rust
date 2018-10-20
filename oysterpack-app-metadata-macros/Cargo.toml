@@ -1,31 +1,26 @@
 [package]
-name = "oysterpack_app_metadata"
-version = "0.3.0"
+name = "oysterpack_app_metadata_macros"
+version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Application Metadata"
+description = "OysterPack Application Metadata Macros"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-app-metadata"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-app-metadata-macros"
 documentation = "https://docs.rs/oysterpack_app_metadata"
 readme = "README.md"
-build = "build.rs"
 keywords = ["metadata"]
 
 [dependencies]
+oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
 semver = {version = "0.9", features = ["serde"]}
 chrono = { version = "0.4", features = ["serde", "time"] }
-serde = "1"
-serde_derive = "1"
 
 [dev-dependencies]
 version-sync = "0.5"
 log = "0.4"
 fern = "0.5"
 lazy_static = "1"
-
-[build-dependencies]
-oysterpack_built = {path = "../oysterpack-built", version="0.3"}
-mml = "0.1.41"
+serde_json = "1"
 
 [badges]
 maintenance = {status = "actively-developed"}

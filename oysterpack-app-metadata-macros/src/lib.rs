@@ -23,14 +23,11 @@
 //! ![uml](ml.svg)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.3.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata_macros/0.1.0")]
 
-extern crate chrono;
-extern crate semver;
-
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
+pub extern crate chrono;
+pub extern crate oysterpack_app_metadata;
+pub extern crate semver;
 
 #[cfg(test)]
 #[macro_use]
@@ -40,28 +37,11 @@ extern crate fern;
 #[macro_use]
 #[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
+extern crate serde_json;
 
 #[macro_use]
 mod macros;
-
-pub mod metadata;
-
-pub use metadata::Build;
-pub use metadata::BuildProfile;
-pub use metadata::Compilation;
-pub use metadata::CompileOptLevel;
-pub use metadata::ContinuousIntegrationPlatform;
-pub use metadata::Endian;
-pub use metadata::GitVersion;
-pub use metadata::Package;
-pub use metadata::PackageId;
-pub use metadata::PointerWidth;
-pub use metadata::RustcVersion;
-pub use metadata::Target;
-pub use metadata::TargetArchitecture;
-pub use metadata::TargetEnv;
-pub use metadata::TargetOperatingSystem;
-pub use metadata::TargetTriple;
 
 #[cfg(test)]
 mod tests;
