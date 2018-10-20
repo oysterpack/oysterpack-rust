@@ -27,9 +27,6 @@ pub extern crate serde;
 #[macro_use]
 pub extern crate serde_derive;
 
-pub extern crate log;
-
 /// re-exports the macros
 pub use oysterpack_app_metadata_macros::*;
-pub use log::*;
 pub use serde_derive::*;

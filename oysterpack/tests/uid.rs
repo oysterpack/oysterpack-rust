@@ -8,9 +8,11 @@
 
 #[macro_use]
 extern crate oysterpack;
+#[macro_use]
+extern crate log;
 extern crate simple_logging;
 
-use oysterpack::log::LevelFilter;
+use log::LevelFilter;
 use oysterpack::uid;
 
 struct User;
