@@ -12,7 +12,7 @@ build = "build.rs"
 publish = false
 
 [dependencies]
-oysterpack = {path = "../oysterpack", version="0.1"}
+oysterpack = {path = "../oysterpack", version="0.2"}
 log = "0.4.5"
 fern = "0.5"
 

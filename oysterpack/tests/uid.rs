@@ -6,16 +6,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-extern crate oysterpack;
 #[macro_use]
-extern crate log;
+extern crate oysterpack;
 extern crate simple_logging;
 
-use log::LevelFilter;
+use oysterpack::log::LevelFilter;
 use oysterpack::uid;
 
 struct User;
 type UserId = uid::Uid<User>;
+
+#[derive(Serialize,Deserialize)]
+struct Foo(u128);
 
 #[test]
 fn test() {

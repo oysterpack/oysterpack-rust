@@ -13,7 +13,7 @@
 //!
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/oysterpack/0.2.0")]
 
 pub extern crate oysterpack_app_metadata_macros;
 pub extern crate oysterpack_app_metadata as app_metadata;
@@ -22,5 +22,14 @@ pub extern crate oysterpack_uid as uid;
 pub extern crate semver;
 pub extern crate chrono;
 
+pub extern crate serde;
+#[allow(unused_imports)]
+#[macro_use]
+pub extern crate serde_derive;
+
+pub extern crate log;
+
 /// re-exports the macros
 pub use oysterpack_app_metadata_macros::*;
+pub use log::*;
+pub use serde_derive::*;
