@@ -6,11 +6,9 @@ description = "OysterPack Macros"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-macros"
-documentation = "https://docs.rs/oysterpack_macros"
+documentation = "https://docs.rs/crate/oysterpack_macros"
 readme = "README.md"
 keywords = ["macros"]
-
-[dependencies]
 
 [dev-dependencies]
 version-sync = "0.5"

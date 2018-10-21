@@ -6,6 +6,7 @@ description = "OysterPack Rust Platform"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
+documentation = "https://docs.rs/crate/oysterpack"
 readme = "README.md"
 
 [dependencies]
