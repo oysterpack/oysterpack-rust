@@ -27,7 +27,7 @@
 /// ```rust
 ///
 /// #[macro_use]
-/// extern crate oysterpack_core;
+/// extern crate oysterpack_macros;
 /// extern crate serde;
 /// #[macro_use]
 /// extern crate serde_derive;
@@ -74,7 +74,7 @@
 /// # }
 ///
 /// ```
-///  
+///
 #[macro_export]
 macro_rules! op_newtype {
     (

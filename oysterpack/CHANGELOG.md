@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[0.2.1\] 2018-10-21
 
+### Added
+- [oysterpack_macros](https://crates.io/crates/oysterpack_macros)
+  - macros are re-exported
+
 ## Removed
 - [log](https://crates.io/crates/log) as a dependency
   - moved to dev-dependencies for now. Once the Rust 2018 edition becomes available,
@@ -15,7 +19,7 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[0.2.0\] 2018-10-20
 
-### Removed
+### Added
 - integrated the following crates :
   - [oysterpack_app_metadata](https://crates.io/crates/oysterpack_app_metadata)
   - [oysterpack_app_metadata_macros](https://crates.io/crates/oysterpack_app_metadata_macros)

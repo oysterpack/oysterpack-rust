@@ -19,9 +19,10 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack/0.2.1")]
 
-pub extern crate oysterpack_app_metadata_macros;
 pub extern crate oysterpack_app_metadata as app_metadata;
+pub extern crate oysterpack_app_metadata_macros;
 pub extern crate oysterpack_uid as uid;
+pub extern crate oysterpack_macros;
 
 pub extern crate semver;
 pub extern crate chrono;
@@ -31,6 +32,7 @@ pub extern crate serde;
 #[macro_use]
 pub extern crate serde_derive;
 
-/// re-exports the macros
+/// re-exports macros
 pub use oysterpack_app_metadata_macros::*;
+pub use oysterpack_macros::*;
 pub use serde_derive::*;

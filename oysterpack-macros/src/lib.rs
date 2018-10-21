@@ -12,46 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack Core
+//! Provides a one stop shop for OysterPack macros.
+//!
+//! ## New Type Pattern
+//! - [op_newtype](macro.op_newtype.html)
+//!
+//! ## Macro Building Blocks
+//!
+//! ### [AST Coercion](https://danielkeep.github.io/tlborm/book/blk-ast-coercion.html)
+//! - [op_tt_as_expr](macro.op_tt_as_expr.html)
+//! - [op_tt_as_item](macro.op_tt_as_item.html)
+//! - [op_tt_as_pat](macro.op_tt_as_pat.html)
+//! - [op_tt_as_stmt](macro.op_tt_as_stmt.html)
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
+#![deny(missing_docs, missing_debug_implementations)]
+#![doc(html_root_url = "https://docs.rs/oysterpack_macros/0.1.0")]
 
-extern crate oysterpack_uid;
-#[macro_use]
-extern crate oysterpack_macros;
+#[cfg(test)]
 #[macro_use]
 extern crate log;
 #[cfg(test)]
 extern crate fern;
 #[macro_use]
+#[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
 extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
-#[macro_use]
-extern crate crossbeam_channel;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+#[cfg(test)]
+extern crate serde;
+#[cfg(test)]
 #[macro_use]
 extern crate serde_derive;
-extern crate semver;
-extern crate serde;
+#[cfg(test)]
 extern crate serde_json;
-
-// The module declaration order matters because of macro dependencies.
-// The errors module depends on the macros defined within devops and uid modules.
-// Thus, the devops and uid modules need to be brought into scope before the errors module.
-#[macro_use]
-pub mod devops;
-#[macro_use]
-pub mod errors;
-
-pub mod reactive;
-pub mod time;
 
 #[cfg(test)]
 mod tests;
+
+#[macro_use]
+mod ast_coercsion;
+#[macro_use]
+mod newtype;

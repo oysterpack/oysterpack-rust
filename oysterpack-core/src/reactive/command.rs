@@ -59,8 +59,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tokio::prelude::*;
-#[macro_use]
-use newtype;
 
 /// Command is a Future that executes the underlying Future.
 ///

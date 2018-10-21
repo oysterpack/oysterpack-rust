@@ -9,16 +9,16 @@ homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
 
 [dependencies]
+oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
+oysterpack_app_metadata_macros = {path = "../oysterpack-app-metadata-macros", version="0.1"}
+oysterpack_uid = {path = "../oysterpack-uid", version = "0.1"}
+oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
 
 serde = "1"
 serde_derive = "1"
 
 semver = {version = "0.9", features = ["serde"]}
 chrono = { version = "0.4", features = ["serde"] }
-
-oysterpack_uid = {path = "../oysterpack-uid", version = "0.1"}
-oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
-oysterpack_app_metadata_macros = {path = "../oysterpack-app-metadata-macros", version="0.1"}
 
 [dev-dependencies]
 version-sync = "0.5"
