@@ -1,6 +1,6 @@
 Provides a one stop shop for OysterPack macros.
 
-## New Type Pattern
+## Newtype Pattern
 - [op_newtype](https://docs.rs/oysterpack_macros/latest/oysterpack_macros/macro.op_newtype.html)
 
 ## Macro Building Blocks

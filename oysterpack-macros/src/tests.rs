@@ -44,7 +44,5 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
 
 #[test]
 fn compiles() {
-    run_test(|| {
-        info!("it compiles :)")
-    });
+    run_test(|| info!("it compiles :)"));
 }
