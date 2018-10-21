@@ -13,6 +13,9 @@ use fern;
 use log;
 use std::io;
 
+// TODO: update module name
+pub const MODULE_NAME: &str = "oysterpack_lib_template";
+
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -24,7 +27,7 @@ fn init_logging() -> Result<(), fern::InitError> {
                 message
             ))
         }).level(log::LevelFilter::Warn)
-        .level_for("oysterpack_core", log::LevelFilter::Debug)
+        .level_for(MODULE_NAME, log::LevelFilter::Debug)
         .chain(io::stdout())
         .apply()?;
 
@@ -40,46 +43,9 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
     test()
 }
 
-pub struct Id(pub u128);
-
-impl Id {
-    /// returns the id
-    pub fn id(&self) -> u128 {
-        self.0
-    }
-}
-
-impl ::std::fmt::Display for Id {
-    /// Displays the id in lower hex format
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{:x}", self.0)
-    }
-}
-
-impl ::std::ops::Deref for Id {
-    type Target = u128;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<u128> for Id {
-    fn from(value: u128) -> Id {
-        Id(value)
-    }
-}
-
 #[test]
-fn id_test() {
+fn compiles() {
     run_test(|| {
-        let id = Id(1);
-        let id: u128 = *id;
-        match id {
-            1 => info!("id_test(): MATCHED"),
-            _ => panic!("id_test() did not match"),
-        }
-
-        let id: Id = 1.into();
+        info!("it compiles :)")
     });
 }

@@ -20,15 +20,15 @@ fn macro_src_loc() {
     tests::run_test(|| {
         let src_loc: SourceCodeLocation = op_src_loc!();
         debug!("src_loc = '{:?}'", src_loc);
-        assert_eq!(src_loc.module_path(), "oysterpack_core::devops::tests");
-        assert_eq!(src_loc.crate_name(), "oysterpack_core");
+        assert_eq!(src_loc.module_path(), "oysterpack_sandbox::devops::tests");
+        assert_eq!(src_loc.crate_name(), "oysterpack_sandbox");
         assert_eq!(src_loc.line(), 21);
 
         let src_loc = foo::src_loc();
         debug!("src_loc = '{:?}'", src_loc);
         info!("src_loc = '{}'", src_loc);
-        assert_eq!(src_loc.module_path(), "oysterpack_core::devops::tests::foo");
-        assert_eq!(src_loc.crate_name(), "oysterpack_core");
+        assert_eq!(src_loc.module_path(), "oysterpack_sandbox::devops::tests::foo");
+        assert_eq!(src_loc.crate_name(), "oysterpack_sandbox");
         assert_eq!(src_loc.line(), 40);
     });
 }

@@ -16,7 +16,7 @@
 //!
 //! ## App
 //! - Apps are owned by a single domain.
-//! - Apps can be transferred bewteen Domains.
+//! - Apps can be transferred between Domains.
 //! - Apps are composed of services
 //!
 //! ## Service

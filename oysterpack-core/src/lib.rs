@@ -12,46 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # OysterPack Core
+//! This crate represents the OysterPack core. It follows an expansion / contraction approach.
+//! New features will be introduced into the core as new packages, i.e., core expansion. Once features
+//! have stabilized, then they will be extracted out into their separate crates, i.e., core contraction.
+//!
+//!
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
+#![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
-extern crate oysterpack_uid;
-#[macro_use]
-extern crate oysterpack_macros;
 #[macro_use]
 extern crate log;
+
 #[cfg(test)]
 extern crate fern;
 #[macro_use]
+#[cfg(test)]
 extern crate lazy_static;
+#[cfg(test)]
 extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate tokio;
-#[macro_use]
-extern crate crossbeam_channel;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-#[macro_use]
-extern crate serde_derive;
-extern crate semver;
-extern crate serde;
-extern crate serde_json;
-
-// The module declaration order matters because of macro dependencies.
-// The errors module depends on the macros defined within devops and uid modules.
-// Thus, the devops and uid modules need to be brought into scope before the errors module.
-#[macro_use]
-pub mod devops;
-#[macro_use]
-pub mod errors;
-
-pub mod reactive;
-pub mod time;
 
 #[cfg(test)]
 mod tests;

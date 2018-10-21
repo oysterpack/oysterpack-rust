@@ -10,29 +10,13 @@ documentation = "https://docs.rs/oysterpack_core"
 readme = "README.md"
 
 [dependencies]
-oysterpack_uid = {path = "../oysterpack-uid"}
-oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
 log = "0.4"
-chrono = { version = "0.4", features = ["serde", "time"] }
-lazy_static = "1"
-
-crossbeam-channel = "0.2"
-rayon = "1"
-tokio = "0.1"
-
-rusty_ulid = "0.5"
-failure = "0.1.2"
-failure_derive = "0.1.2"
-semver = "0.9"
-
-serde = "1"
-serde_derive = "1"
-erased-serde = "0.3"
-serde_json = "1"
 
 [dev-dependencies]
 version-sync = "0.5"
 fern = "0.5"
+chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1"
 
 [badges]
-maintenance = { status = "actively-developed" }
+maintenance = {status = "actively-developed"}
