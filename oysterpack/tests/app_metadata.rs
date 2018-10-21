@@ -12,6 +12,7 @@ extern crate oysterpack;
 #[macro_use]
 extern crate log;
 extern crate simple_logging;
+extern crate serde_json;
 
 use oysterpack::semver;
 
@@ -25,4 +26,11 @@ fn test() {
     let app_build = build::get();
     let version : &semver::Version = app_build.package().version();
     info!("{}-{}", build::PKG_NAME, version);
+
+    let build_info_json = serde_json::to_string_pretty(&app_build).unwrap();
+    info!("build_info_json: {}", build_info_json);
+    info!(
+        "Graphviz dependency graph: {}",
+        build::DEPENDENCIES_GRAPHVIZ_DOT
+    );
 }

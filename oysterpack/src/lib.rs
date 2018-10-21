@@ -9,11 +9,15 @@
 //! This crate defines the public framework API for the OysterPack platform.
 //! This crate curates the OysterPack modules in a central location.
 //!
-//! # Features
-//!
+//! ## Logging
+//! The [log](https://crates.io/crates/log) crate is used as the logging framework. This crate is not
+//! curated because re-exporting the log macros requires re-exporting the whole crate - which pollutes
+//! the OysterPack public API. When the rust [2018 edition](https://rust-lang-nursery.github.io/edition-guide/rust-2018/index.html)
+//! becomes available, then we will be able to curate the log crate and export the log macros in a
+//! clean manner - see [macro changes](https://rust-lang-nursery.github.io/edition-guide/rust-2018/macros/macro-changes.html).
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack/0.2.1")]
 
 pub extern crate oysterpack_app_metadata_macros;
 pub extern crate oysterpack_app_metadata as app_metadata;

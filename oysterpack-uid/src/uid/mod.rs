@@ -31,12 +31,12 @@ use std::{
 #[cfg(test)]
 mod tests;
 
-/// Returns a new ULID
+/// Returns a new ULID encoded as a String.
 pub fn ulid() -> String {
     rusty_ulid::new_ulid_string()
 }
 
-/// Returns a new ULID
+/// Returns a new ULID encoded as u128
 pub fn ulid_u128() -> u128 {
     rusty_ulid::Ulid::new().into()
 }

@@ -6,6 +6,13 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.2.1\] 2018-10-21
+
+## Removed
+- [log](https://crates.io/crates/log) as a dependency
+  - moved to dev-dependencies for now. Once the Rust 2018 edition becomes available,
+    then the log crate will be curated to re-export the log macros.
+
 ## \[0.2.0\] 2018-10-20
 
 ### Removed

@@ -129,3 +129,61 @@ fn ulid_functions() {
         assert!(ulid_str_into_u128("INVALID").is_err());
     });
 }
+
+
+
+//[2018-10-21][07:45:29.086804][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): Uid::new() : 954.32511ms
+//[2018-10-21][07:45:30.039817][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): ulid_u128() : 952.878334ms
+//[2018-10-21][07:45:31.076784][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): id.increment().unwrap() : 1.036877973s
+//[2018-10-21][07:45:33.248935][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): ulid() : 2.172073322s
+//[2018-10-21][07:45:34.255594][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): uuid::Uuid::new_v4() : 1.006581624s
+//[2018-10-21][07:45:40.488674][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : 6.232997392s
+#[test]
+#[ignore]
+fn benchmark_new_ulid() {
+    use std::time::Instant;
+
+    run_test(|| {
+        struct Foo;
+        type FooId = Uid<Foo>;;
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = FooId::new();
+        }
+        info!("benchmark_new_ulid(): Uid::new() : {:?}", now.elapsed());
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = ulid_u128();
+        }
+        info!("benchmark_new_ulid(): ulid_u128() : {:?}", now.elapsed());
+
+        let id = FooId::new();
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = id.increment().unwrap();
+        }
+        info!("benchmark_new_ulid(): id.increment().unwrap() : {:?}", now.elapsed());
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = ulid();
+        }
+        info!("benchmark_new_ulid(): ulid() : {:?}", now.elapsed());
+
+        use uuid;
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = uuid::Uuid::new_v4();
+        }
+        info!("benchmark_new_ulid(): uuid::Uuid::new_v4() : {:?}", now.elapsed());
+
+        info!("UUID: {}",uuid::Uuid::new_v4());
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _  = uuid::Uuid::new_v4().to_string();
+        }
+        info!("benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : {:?}", now.elapsed());
+    })
+
+}

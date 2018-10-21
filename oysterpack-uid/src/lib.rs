@@ -56,6 +56,23 @@
 //! ```
 //! By default, Uid<T> is serializable via serde. If serialization is not needed then you can opt out by
 //! including the dependency with default features disabled : `default-features = false`.
+//!
+//! ### ULID vs [UUID](https://crates.io/crates/uuid) Performance
+//! - below are the times to generate 1 million ULIDs are on my machine (Intel(R) Core(TM) i7-3770K CPU @ 3.50GHz):
+//!
+//! |Description|Test|Duration (ms)|
+//! |-----------|----|-------------|
+//! |new ULID encoded as u128|[ulid_128()](uid/fn.ulid_u128.html)|954|
+//! |new ULID as Uid|[Uid::new()](struct.Uid.html#method.new)|953|
+//! |new ULID encoded as String|[ulid()](uid/fn.ulid.html)|2172|
+//! |new V4 UUID|`uuid::Uuid::new_v4()`|1007|
+//! |new V4 UUID encoded as String|`uuid::Uuid::new_v4().to_string()`|6233|
+//!
+//! #### Performance Test Summary
+//! - in terms of raw performance, ULID is slightly faster than UUID, but on par
+//! - ULID is the clear winner in terms of encoding the identifier as a String
+//!   - encoding ULIDs as a string is roughly 2.28x slower
+//!   - encoding UUIDs as a string is roughly 6.19x slower
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.1")]
@@ -75,6 +92,8 @@ extern crate fern;
 extern crate lazy_static;
 #[cfg(test)]
 extern crate serde_json;
+#[cfg(test)]
+extern crate uuid;
 
 pub mod uid;
 
