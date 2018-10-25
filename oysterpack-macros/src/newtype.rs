@@ -114,6 +114,7 @@ macro_rules! op_newtype {
 
         op_tt_as_item! {
             impl $Name {
+                /// Constructor
                 pub fn new(value: $T) -> Self {
                     $Name(value)
                 }

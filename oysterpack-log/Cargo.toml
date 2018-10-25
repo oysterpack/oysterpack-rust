@@ -11,10 +11,14 @@ readme = "README.md"
 keywords = ["log"]
 
 [dependencies]
-log = "0.4"
+oysterpack_macros = {version = "0.1.0", path = "../oysterpack-macros"}
+
+log = {version = "0.4", features = ["serde"]}
 
 fern = {version = "0.5"}
 chrono = { version = "0.4", features = ["serde"]}
+serde = "1"
+serde_derive = "1"
 
 [dev-dependencies]
 version-sync = "0.5"

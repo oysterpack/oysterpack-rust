@@ -20,7 +20,15 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
 
 #[macro_use]
+extern crate oysterpack_macros;
+
+extern crate fern;
 extern crate log;
 
 extern crate chrono;
-extern crate fern;
+
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+
+pub mod config;
