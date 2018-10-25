@@ -8,7 +8,6 @@
 
 //! provides support for initializing logging for testing purposes
 
-// TODO: add support to configure logger levels
 /// Generates a module named `tests`, which provides test support functionality.
 /// - `run_test` function ensures logging is configured for the [log crate](https://crates.io/crates/log)
 ///   - the root log level will be set to Warn
@@ -31,9 +30,31 @@
 /// }
 ///
 /// ```
+///
+/// ## Example - configuring target log levels
+/// ```rust
+///
+/// #[cfg(test)]
+/// #[macro_use]
+/// extern crate oysterpack_testing;
+///
+/// #[cfg(test)]
+/// op_tests_mod! {
+///     "foo" => Info,
+///     "bar" => Error
+/// }
+///
+/// #[test]
+/// fn test() {
+///     tests::run_test("foo", || info!(target: "info", "SUCCESS"));
+/// }
+///
+/// ```
+/// - in the above example, the `foo` target log level is set to `Info` and the `bar` target log level
+///   is set to Error
 #[macro_export]
 macro_rules! op_tests_mod {
-    () => {
+    ( $($target:expr => $level:ident),* ) => {
         #[cfg(test)]
         pub(crate) mod tests {
 
@@ -67,6 +88,9 @@ macro_rules! op_tests_mod {
                                 }).level($crate::log::LevelFilter::Warn)
                                 .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
                                 .chain(::std::io::stdout())
+                                $(
+                                .level_for($target,$crate::log::LevelFilter::$level)
+                                )*
                                 .apply()
                                 .unwrap();
                             _FERN_INITIALIZED = LogInitState::Initialized;
@@ -139,14 +163,19 @@ macro_rules! op_test {
     };
 }
 
-#[cfg(all(test, feature = "tests"))]
+#[cfg(test)]
 mod tests {
 
     use tests::run_test;
 
     #[test]
     fn tests_op_test() {
-        run_test("tests_op_test", || info!("tests_op_test passed !!!"));
+        run_test("tests_op_test", || {
+            info!("tests_op_test passed !!!");
+            info!(target: "foo", "foo info");
+            info!(target: "bar", "*** bar info should not be logged ***");
+            error!(target: "bar", "bar error");
+        });
     }
 
     #[test]

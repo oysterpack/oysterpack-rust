@@ -38,6 +38,36 @@
 //!      info!("SUCCESS");
 //!    });
 //! }
+//! ```
+//!
+//! ## Example - configuring target log levels
+//! ```rust
+//!
+//! #[cfg(test)]
+//! #[macro_use]
+//! extern crate oysterpack_testing;
+//!
+//! #[cfg(test)]
+//! op_tests_mod! {
+//!     "foo" => Info,
+//!     "bar" => Error
+//! }
+//!
+//! #[cfg(test)]
+//! mod foo_test {
+//!    op_test!(foo, {
+//!         info!("tests_op_test passed !!!");
+//!         info!(target: "foo", "foo info");
+//!         info!(target: "bar", "*** bar info should not be logged ***");
+//!         error!(target: "bar", "bar error");
+//!    });
+//! }
+//!
+//! ```
+//!
+//! ## Notes
+//! - the log, fern, and chrono crates are re-exported because they are used by the macros. Re-exporting
+//!   them makes the macros self-contained.
 
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_testing/0.1.0")]
@@ -55,4 +85,7 @@ pub use log::*;
 #[macro_use]
 mod macros;
 
-op_tests_mod!();
+op_tests_mod! {
+    "foo" => Info,
+    "bar" => Error
+}
