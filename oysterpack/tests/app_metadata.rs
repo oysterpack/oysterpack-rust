@@ -6,13 +6,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-
 #[macro_use]
 extern crate oysterpack;
 #[macro_use]
 extern crate log;
-extern crate simple_logging;
 extern crate serde_json;
+extern crate simple_logging;
 
 use oysterpack::semver;
 
@@ -24,7 +23,7 @@ op_build_mod!();
 fn test() {
     simple_logging::log_to_stderr(LevelFilter::Info);
     let app_build = build::get();
-    let version : &semver::Version = app_build.package().version();
+    let version: &semver::Version = app_build.package().version();
     info!("{}-{}", build::PKG_NAME, version);
 
     let build_info_json = serde_json::to_string_pretty(&app_build).unwrap();

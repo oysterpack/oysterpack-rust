@@ -9,9 +9,9 @@
 //! unit test support
 
 use build;
-use oysterpack::chrono;
 use fern;
 use log;
+use oysterpack::chrono;
 use serde_json;
 use std::io;
 

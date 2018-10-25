@@ -13,7 +13,8 @@ extern crate futures;
 extern crate polymap;
 
 use std::{
-    collections::{hash_map::Entry, HashMap}, marker::PhantomData,
+    collections::{hash_map::Entry, HashMap},
+    marker::PhantomData,
 };
 
 use self::actix::{msgs::StartActor, prelude::*};
@@ -131,8 +132,7 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                 arbiter
                     .send(msg.start_actor)
                     .map_err(|err| ActorRegistrationError::start_actor_message_delivery_failed(err))
-            })
-            .then(move |result| {
+            }).then(move |result| {
                 // update the registry entry
                 match result {
                     // update the registry with the actor's address
@@ -147,8 +147,7 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                                     arbiter_id,
                                     actor_instance_id: actor_instance_id,
                                     addr: addr.clone(),
-                                })
-                                .map_err(|err| map_mailbox_err(err)),
+                                }).map_err(|err| map_mailbox_err(err)),
                         )
                             as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>
                     }
@@ -164,8 +163,7 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                                     arbiter_id,
                                     actor_instance_id: actor_instance_id,
                                     _type: PhantomData,
-                                })
-                                .map_err(|err| map_mailbox_err(err)),
+                                }).map_err(|err| map_mailbox_err(err)),
                         )
                             as Box<Future<Item = Result<(), ()>, Error = ActorRegistrationError>>
                     }
@@ -185,7 +183,8 @@ impl<A: Actor<Context = Context<A>>> Handler<RegisterActor<A>> for Registry {
                 self.actors_by_id.insert(actor_instance_id, entry);
             }
             None => {
-                let actors = self.actors_by_type
+                let actors = self
+                    .actors_by_type
                     .entry(arbiter_id)
                     .or_insert_with(|| TypeMap::new());
                 actors.insert(entry);

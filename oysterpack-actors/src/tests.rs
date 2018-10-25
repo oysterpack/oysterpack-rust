@@ -37,12 +37,10 @@ fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!("[{}] {}", record.target(), message))
-        })
-        .chain(syslog::unix_custom(
+        }).chain(syslog::unix_custom(
             syslog::Facility::LOG_USER,
             "/run/systemd/journal/syslog",
-        )?)
-        .level(log::LevelFilter::Warn)
+        )?).level(log::LevelFilter::Warn)
         .level_for("oysterpack_actors", log::LevelFilter::Debug)
         .apply()?;
 

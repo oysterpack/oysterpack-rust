@@ -27,12 +27,7 @@ pub extern crate semver;
 
 #[cfg(test)]
 #[macro_use]
-extern crate log;
-#[cfg(test)]
-extern crate fern;
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
+extern crate oysterpack_testing;
 #[cfg(test)]
 extern crate serde_json;
 
@@ -40,4 +35,4 @@ extern crate serde_json;
 mod macros;
 
 #[cfg(test)]
-mod tests;
+op_tests_mod!();

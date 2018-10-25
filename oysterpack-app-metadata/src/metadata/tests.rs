@@ -11,7 +11,7 @@
 use semver;
 
 use super::PackageId;
-use tests::*;
+use tests::run_test;
 
 #[test]
 fn parsing_dependencies_graphviz_dot_into_package_ids() {
@@ -73,7 +73,7 @@ fn parsing_dependencies_graphviz_dot_into_package_ids() {
     1 -> 20
 }"#;
 
-    run_test(|| {
+    run_test("parsing_dependencies_graphviz_dot_into_package_ids", || {
         let mut package_ids: Vec<PackageId> = dot
             .lines()
             .filter(|line| !line.contains("->") && line.contains("["))

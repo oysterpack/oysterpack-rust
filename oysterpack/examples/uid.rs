@@ -21,10 +21,18 @@ fn main() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
     let user_id = UserId::new();
-    info!("new: UserId({}) with datetime: {}",user_id, user_id.datetime());
+    info!(
+        "new: UserId({}) with datetime: {}",
+        user_id,
+        user_id.datetime()
+    );
 
     let user_id = user_id.increment().unwrap();
-    info!("incremented: UserId({}) with datetime: {}",user_id, user_id.datetime());
+    info!(
+        "incremented: UserId({}) with datetime: {}",
+        user_id,
+        user_id.datetime()
+    );
 
     assert!(user_id.clone().increment().unwrap() > user_id);
 }

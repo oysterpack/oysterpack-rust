@@ -186,20 +186,21 @@ macro_rules! op_build_mod {
             /// Collects the build-time info to construct a new Build instance
             pub fn get() -> $crate::oysterpack_app_metadata::Build {
                 fn package_dependencies() -> Vec<$crate::oysterpack_app_metadata::PackageId> {
-                    let mut dependencies: Vec<$crate::oysterpack_app_metadata::PackageId> =
-                        DEPENDENCIES_GRAPHVIZ_DOT
-                            .lines()
-                            .filter(|line| !line.contains("->") && line.contains("["))
-                            .skip(1)
-                            .map(|line| {
-                                let line = &line[line.find('"').unwrap() + 1..];
-                                let line = &line[..line.find('"').unwrap()];
-                                let tokens: Vec<&str> = line.split("=").collect();
-                                $crate::oysterpack_app_metadata::PackageId::new(
-                                    tokens.get(0).unwrap().to_string(),
-                                    $crate::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
-                                )
-                            }).collect();
+                    let mut dependencies: Vec<
+                        $crate::oysterpack_app_metadata::PackageId,
+                    > = DEPENDENCIES_GRAPHVIZ_DOT
+                        .lines()
+                        .filter(|line| !line.contains("->") && line.contains("["))
+                        .skip(1)
+                        .map(|line| {
+                            let line = &line[line.find('"').unwrap() + 1..];
+                            let line = &line[..line.find('"').unwrap()];
+                            let tokens: Vec<&str> = line.split("=").collect();
+                            $crate::oysterpack_app_metadata::PackageId::new(
+                                tokens.get(0).unwrap().to_string(),
+                                $crate::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
+                            )
+                        }).collect();
                     dependencies.sort();
                     dependencies
                 }
@@ -213,21 +214,32 @@ macro_rules! op_build_mod {
                 builder.target(
                     $crate::oysterpack_app_metadata::TargetTriple::new(TARGET),
                     $crate::oysterpack_app_metadata::TargetEnv::new(CFG_ENV),
-                    $crate::oysterpack_app_metadata::TargetOperatingSystem::new(CFG_FAMILY.to_string(), CFG_OS.to_string()),
+                    $crate::oysterpack_app_metadata::TargetOperatingSystem::new(
+                        CFG_FAMILY.to_string(),
+                        CFG_OS.to_string(),
+                    ),
                     $crate::oysterpack_app_metadata::TargetArchitecture::new(CFG_TARGET_ARCH),
                     $crate::oysterpack_app_metadata::Endian::new(CFG_ENDIAN),
-                    $crate::oysterpack_app_metadata::PointerWidth::new(CFG_POINTER_WIDTH.parse().unwrap()),
+                    $crate::oysterpack_app_metadata::PointerWidth::new(
+                        CFG_POINTER_WIDTH.parse().unwrap(),
+                    ),
                 );
                 if let Some(ci) = CI_PLATFORM {
-                    builder.ci_platform($crate::oysterpack_app_metadata::ContinuousIntegrationPlatform::new(ci));
+                    builder.ci_platform(
+                        $crate::oysterpack_app_metadata::ContinuousIntegrationPlatform::new(ci),
+                    );
                 }
                 if let Some(git_version) = GIT_VERSION {
-                    builder.git_version($crate::oysterpack_app_metadata::GitVersion::new(git_version));
+                    builder.git_version($crate::oysterpack_app_metadata::GitVersion::new(
+                        git_version,
+                    ));
                 }
                 builder.compilation(
                     DEBUG,
                     FEATURES.iter().map(|feature| feature.to_string()).collect(),
-                    $crate::oysterpack_app_metadata::CompileOptLevel::new(OPT_LEVEL.parse().unwrap()),
+                    $crate::oysterpack_app_metadata::CompileOptLevel::new(
+                        OPT_LEVEL.parse().unwrap(),
+                    ),
                     $crate::oysterpack_app_metadata::RustcVersion::new(RUSTC_VERSION),
                     $crate::oysterpack_app_metadata::TargetTriple::new(HOST),
                     $crate::oysterpack_app_metadata::BuildProfile::new(PROFILE),

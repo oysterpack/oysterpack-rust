@@ -168,7 +168,7 @@ mod tests {
             }
         }
 
-        tests::run_test(|| {
+        tests::run_test("newtype_private", || {
             // will not compile because foo::A is private
             // let _ = foo::A::new(1);
 

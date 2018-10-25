@@ -1,0 +1,23 @@
+[package]
+name = "oysterpack_testing"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
+description = "Standardizes logging for the OysterPack platform"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/oysterpack/oysterpack"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-testing"
+documentation = "https://docs.rs/oysterpack_testing"
+readme = "README.md"
+keywords = ["log"]
+
+[dependencies]
+log = "0.4"
+
+fern = {version = "0.5"}
+chrono = { version = "0.4", features = ["serde"]}
+
+[dev-dependencies]
+version-sync = "0.5"
+
+[badges]
+maintenance = {status = "actively-developed"}

@@ -11,14 +11,14 @@
 #![allow(warnings)]
 
 use oysterpack_app_metadata::{Build, ContinuousIntegrationPlatform, PackageId};
-use tests::*;
-use serde_json;
 use semver;
+use serde_json;
+use tests::run_test;
 
 #[test]
 fn build_on_ci_platform() {
     op_build_mod!(build, "build_on_ci_platform.rs");
-    run_test(|| {
+    run_test("build_on_ci_platform", || {
         let build_md: Build = build::get();
         assert_eq!(
             build_md.ci_platform(),
@@ -38,7 +38,7 @@ fn build_on_ci_platform() {
 #[test]
 fn build_no_ci_platform() {
     op_build_mod!(build, "build_no_ci_platform.rs");
-    run_test(|| {
+    run_test("build_no_ci_platform", || {
         let build_md: Build = build::get();
         assert_eq!(build_md.ci_platform(), None);
     });
@@ -47,7 +47,7 @@ fn build_no_ci_platform() {
 #[test]
 fn build_multi_authors() {
     op_build_mod!(build, "build_multi_authors.rs");
-    run_test(|| {
+    run_test("build_multi_authors", || {
         let build_md: Build = build::get();
         let authors = build_md.package().authors();
         assert_eq!(authors.len(), 2);
@@ -62,7 +62,7 @@ fn build_multi_authors() {
 #[test]
 fn build_mod() {
     op_build_mod!(build, "build_no_ci_platform.rs");
-    run_test(|| {
+    run_test("build_mod", || {
         info!(
             "RUSTC({}),RUSTDOC({}),RUSTDOC_VERSION({}),NUM_JOBS({}),FEATURES_STR({})",
             build::RUSTC,

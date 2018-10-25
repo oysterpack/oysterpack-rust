@@ -30,14 +30,7 @@
 
 #[cfg(test)]
 #[macro_use]
-extern crate log;
-#[cfg(test)]
-extern crate fern;
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
-#[cfg(test)]
-extern crate chrono;
+extern crate oysterpack_testing;
 #[cfg(test)]
 extern crate serde;
 #[cfg(test)]
@@ -47,7 +40,7 @@ extern crate serde_derive;
 extern crate serde_json;
 
 #[cfg(test)]
-mod tests;
+op_tests_mod!();
 
 #[macro_use]
 mod ast_coercsion;

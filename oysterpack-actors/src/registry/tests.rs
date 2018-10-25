@@ -85,8 +85,7 @@ fn arbiter() {
                     assert!(arbiter.connected());
                     ok(arbiter)
                 })
-            })
-            .flatten();
+            }).flatten();
 
         let result = sys.run_until_complete(test);
         match result {
@@ -121,16 +120,14 @@ fn stopped_arbiter_is_unregistered_on_demand() {
                         // Then arbiter is no longer registered - count drops back to 0
                         assert_eq!(count, 0);
                         count
-                    })
-                    .and_then(|_| {
+                    }).and_then(|_| {
                         // Then new arbiter will be created on demand.
                         super::arbiter(*ARBITER_ID_1).and_then(|arbiter| {
                             assert!(arbiter.connected());
                             ok(arbiter)
                         })
                     })
-            })
-            .flatten();
+            }).flatten();
 
         let result = sys.run_until_complete(test);
         match result {
@@ -165,8 +162,7 @@ fn stopped_arbiter_is_replaced_on_demand() {
                     assert!(arbiter.connected());
                     ok(arbiter)
                 })
-            })
-            .flatten();
+            }).flatten();
 
         let result = sys.run_until_complete(test);
         match result {
@@ -186,8 +182,7 @@ fn arbiter_count() {
                 info!("arbiter count = {:?}", count);
                 assert_eq!(count, 0);
                 count
-            })
-            .and_then(|_| {
+            }).and_then(|_| {
                 super::arbiter(*ARBITER_ID_1).and_then(|_| {
                     info!("arbiter registered");
                     super::arbiter_count().map(|count| {
@@ -215,8 +210,7 @@ fn arbiter_ids() {
                 info!("arbiter_ids = {:?}", arbiter_ids);
                 assert_eq!(arbiter_ids.len(), 0);
                 arbiter_ids
-            })
-            .and_then(|_| {
+            }).and_then(|_| {
                 super::arbiter(*ARBITER_ID_1).and_then(|_| {
                     info!("arbiter registered");
                     super::arbiter_ids().map(|arbiter_ids| {
@@ -247,8 +241,7 @@ fn contains_arbiter() {
                 // Then no Arbiter should be found
                 assert_eq!(contains_arbiter, false);
                 contains_arbiter
-            })
-            .and_then(|_| {
+            }).and_then(|_| {
                 // After the Arbiter is created and registered
                 super::arbiter(arbiter_id).and_then(|_| {
                     info!("arbiter registered");
@@ -334,13 +327,13 @@ fn register_actor_by_id() {
             super::register_actor_by_id(arbiter_id, actor_instance_id, |_| Foo).and_then(|foo| {
                 foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                     Ok("SUCCESS !!!".to_string())
-                })).map_err(
-                    |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                })).map_err(|err| {
+                    errors::ActorRegistrationError::MessageDeliveryFailed {
                         mailbox_error: err,
                         message_type: errors::MessageType("actix::msgs::Execute".to_string()),
                         actor_destination: errors::ActorDestination("Foo".to_string()),
-                    },
-                )
+                    }
+                })
             });
         let result = sys.run_until_complete(test);
         match result {
@@ -381,13 +374,13 @@ fn register_multiple_actors_by_type() {
                 super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
                     foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                         Ok("SUCCESS !!!".to_string())
-                    })).map_err(
-                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                    })).map_err(|err| {
+                        errors::ActorRegistrationError::MessageDeliveryFailed {
                             mailbox_error: err,
                             message_type: errors::MessageType("actix::msgs::Execute".to_string()),
                             actor_destination: errors::ActorDestination("Foo".to_string()),
-                        },
-                    )
+                        }
+                    })
                 }),
             )
         }
@@ -435,13 +428,13 @@ fn register_multiple_actors_by_type_on_different_arbiters() {
                 super::register_actor_by_type(arbiter_id, |_| Foo).and_then(|foo| {
                     foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                         Ok("SUCCESS !!!".to_string())
-                    })).map_err(
-                        |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                    })).map_err(|err| {
+                        errors::ActorRegistrationError::MessageDeliveryFailed {
                             mailbox_error: err,
                             message_type: errors::MessageType("actix::msgs::Execute".to_string()),
                             actor_destination: errors::ActorDestination("Foo".to_string()),
-                        },
-                    )
+                        }
+                    })
                 }),
             )
         }
@@ -489,15 +482,15 @@ fn register_multiple_actors_by_id_with_same_id() {
                     |foo| {
                         foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                             Ok("SUCCESS !!!".to_string())
-                        })).map_err(
-                            |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                        })).map_err(|err| {
+                            errors::ActorRegistrationError::MessageDeliveryFailed {
                                 mailbox_error: err,
                                 message_type: errors::MessageType(
                                     "actix::msgs::Execute".to_string(),
                                 ),
                                 actor_destination: errors::ActorDestination("Foo".to_string()),
-                            },
-                        )
+                            }
+                        })
                     },
                 ),
             )
@@ -551,15 +544,15 @@ fn register_multiple_actors_by_id_with_unique_id() {
                     |foo| {
                         foo.send(actix::msgs::Execute::new(|| -> Result<String, String> {
                             Ok("SUCCESS !!!".to_string())
-                        })).map_err(
-                            |err| errors::ActorRegistrationError::MessageDeliveryFailed {
+                        })).map_err(|err| {
+                            errors::ActorRegistrationError::MessageDeliveryFailed {
                                 mailbox_error: err,
                                 message_type: errors::MessageType(
                                     "actix::msgs::Execute".to_string(),
                                 ),
                                 actor_destination: errors::ActorDestination("Foo".to_string()),
-                            },
-                        )
+                            }
+                        })
                     },
                 ),
             )
@@ -767,8 +760,7 @@ fn register_actors_on_separate_arbiters() {
                 let request = arbiter.send(StartActor::new(|_| FooActor::default()));
                 info!("Starting Foo actor");
                 request
-            })
-            .and_then(|foo| {
+            }).and_then(|foo| {
                 info!("Foo actor has been started");
                 info!("Registering Bar Arbiter ...");
                 super::arbiter(ArbiterId::new())
@@ -780,8 +772,7 @@ fn register_actors_on_separate_arbiters() {
                         }));
                         info!("Starting Boo actor");
                         request
-                    })
-                    .and_then(|bar| {
+                    }).and_then(|bar| {
                         info!("Bar actor has been started");
                         let request = bar.send(Run);
                         info!("Sent Run message to Bar");

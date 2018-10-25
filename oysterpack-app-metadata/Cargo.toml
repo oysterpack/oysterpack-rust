@@ -18,10 +18,8 @@ serde = "1"
 serde_derive = "1"
 
 [dev-dependencies]
+oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 version-sync = "0.5"
-log = "0.4"
-fern = "0.5"
-lazy_static = "1"
 
 [build-dependencies]
 mml = "0.1.41"

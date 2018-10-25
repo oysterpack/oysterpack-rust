@@ -41,7 +41,12 @@ mod tests;
 
 fn main() {
     configure_logging();
-    info!("{}-{}", build::PKG_NAME, build::PKG_VERSION);
+    info!(
+        "{}-{} : {}",
+        build::PKG_NAME,
+        build::PKG_VERSION,
+        build::DEPENDENCIES_GRAPHVIZ_DOT
+    );
 }
 
 fn configure_logging() {

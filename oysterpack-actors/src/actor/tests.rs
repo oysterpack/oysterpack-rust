@@ -72,8 +72,7 @@ fn stateless_actor_service() {
         let task = service
             .send(Echo {
                 msg: "Hello".to_string(),
-            })
-            .and_then(|msg| {
+            }).and_then(|msg| {
                 info!("Received echo back : {}", msg);
                 Arbiter::system().send(actix::msgs::SystemExit(0))
             });
@@ -125,13 +124,11 @@ fn stateless_actor_service_running_on_arbiter() {
                     let builder = ServiceActorBuilder::<Foo, Nil, Nil, Nil>::new(foo_service);
                     builder.build()
                 }))
-            })
-            .and_then(|actor| {
+            }).and_then(|actor| {
                 actor.send(Echo {
                     msg: "Hello".to_string(),
                 })
-            })
-            .and_then(|msg| {
+            }).and_then(|msg| {
                 info!(
                     "stateless_actor_service_running_on_arbiter(): Received echo back : {}",
                     msg
@@ -196,28 +193,26 @@ fn register_service_actor_by_type() {
         let task = register_actor_by_type(foo_arbiter_id, |_| {
             ServiceActorBuilder::<Foo, Nil, Nil, Nil>::new(foo_service).build()
         }).map_err(|err| FooError::RegistrationError(err))
-            .and_then(|actor| {
-                actor
-                    .send(Echo {
-                        msg: "Hello".to_string(),
-                    })
-                    .map_err(|err| FooError::MessageDeliveryFailed {
-                        err,
-                        msg: "Foo ! Echo".to_string(),
-                    })
-            })
-            .and_then(|msg| {
-                info!(target:"register_service_actor_by_type",
+        .and_then(|actor| {
+            actor
+                .send(Echo {
+                    msg: "Hello".to_string(),
+                }).map_err(|err| FooError::MessageDeliveryFailed {
+                    err,
+                    msg: "Foo ! Echo".to_string(),
+                })
+        }).and_then(|msg| {
+            info!(target:"register_service_actor_by_type",
                     "Received echo back : {}",
                     msg
                 );
-                Arbiter::system()
-                    .send(actix::msgs::SystemExit(0))
-                    .map_err(|err| FooError::MessageDeliveryFailed {
-                        err,
-                        msg: "System ! actix::msgs::SystemExit(0)".to_string(),
-                    })
-            });
+            Arbiter::system()
+                .send(actix::msgs::SystemExit(0))
+                .map_err(|err| FooError::MessageDeliveryFailed {
+                    err,
+                    msg: "System ! actix::msgs::SystemExit(0)".to_string(),
+                })
+        });
 
         Arbiter::handle().spawn(task.map(|_| ()).map_err(|_| ()));
         sys.run();

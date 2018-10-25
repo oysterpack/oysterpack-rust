@@ -391,7 +391,11 @@ impl ServiceInstance {
 #[derive(Fail, Debug)]
 pub enum NameError {
     /// Name min length is 3
-    #[fail(display = "Name min length is 3 : [{}] length = {}", name, len)]
+    #[fail(
+        display = "Name min length is 3 : [{}] length = {}",
+        name,
+        len
+    )]
     TooShort {
         /// name
         name: String,
@@ -399,7 +403,11 @@ pub enum NameError {
         len: usize,
     },
     /// Name max length is 64
-    #[fail(display = "Name max length is 64 : [{}] length = {}", name, len)]
+    #[fail(
+        display = "Name max length is 64 : [{}] length = {}",
+        name,
+        len
+    )]
     TooLong {
         /// name
         name: String,

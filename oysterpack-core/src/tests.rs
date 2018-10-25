@@ -13,8 +13,7 @@ use fern;
 use log;
 use std::io;
 
-// TODO: update module name
-pub const MODULE_NAME: &str = "oysterpack_lib_template";
+pub const MODULE_NAME: &str = "oysterpack_core";
 
 fn init_logging() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
@@ -45,7 +44,5 @@ pub fn run_test<F: FnOnce() -> ()>(test: F) {
 
 #[test]
 fn compiles() {
-    run_test(|| {
-        info!("it compiles :)")
-    });
+    run_test(|| info!("it compiles :)"));
 }

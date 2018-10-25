@@ -10,8 +10,8 @@
 extern crate oysterpack;
 #[macro_use]
 extern crate log;
-extern crate simple_logging;
 extern crate serde_json;
+extern crate simple_logging;
 
 use log::LevelFilter;
 use oysterpack::uid;
@@ -19,7 +19,7 @@ use oysterpack::uid;
 struct User;
 type UserId = uid::Uid<User>;
 
-#[derive(Serialize,Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Foo(u128);
 
 op_newtype! {
@@ -32,13 +32,24 @@ fn test() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
     let user_id = UserId::new();
-    info!("new: UserId({}) with datetime: {}",user_id, user_id.datetime());
+    info!(
+        "new: UserId({}) with datetime: {}",
+        user_id,
+        user_id.datetime()
+    );
 
     let user_id = user_id.increment().unwrap();
-    info!("incremented: UserId({}) with datetime: {}",user_id, user_id.datetime());
+    info!(
+        "incremented: UserId({}) with datetime: {}",
+        user_id,
+        user_id.datetime()
+    );
 
     assert!(user_id.clone().increment().unwrap() > user_id);
 
     let event_id = EventId::new(uid::ulid_u128());
-    info!("event_id as json: {}", serde_json::to_string(&event_id).unwrap());
+    info!(
+        "event_id as json: {}",
+        serde_json::to_string(&event_id).unwrap()
+    );
 }

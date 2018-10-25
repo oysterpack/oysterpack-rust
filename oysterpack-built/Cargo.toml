@@ -25,8 +25,7 @@ petgraph = {version =  "0.4", features = ["serde-1"]}
 
 [dev-dependencies]
 version-sync = "0.5"
-fern = "0.5"
-lazy_static = "1"
+oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 serde_json = "1.0"
 
 [badges]

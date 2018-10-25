@@ -12,30 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This crate represents the OysterPack core. It follows an expansion / contraction approach.
-//! New features will be introduced into the core as new packages, i.e., core expansion. Once features
-//! have stabilized, then they will be extracted out into their separate crates, i.e., core contraction.
-//!
+//! Standardizes logging for the OysterPack platform.
 //!
 
+// #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
-
-#[macro_use]
-extern crate oysterpack_macros;
-extern crate oysterpack_app_metadata;
-extern crate oysterpack_uid;
+#![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
 
 #[macro_use]
 extern crate log;
 
-#[cfg(test)]
-extern crate fern;
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
-#[cfg(test)]
 extern crate chrono;
-
-#[cfg(test)]
-mod tests;
+extern crate fern;

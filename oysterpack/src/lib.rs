@@ -21,11 +21,11 @@
 
 pub extern crate oysterpack_app_metadata as app_metadata;
 pub extern crate oysterpack_app_metadata_macros;
-pub extern crate oysterpack_uid as uid;
 pub extern crate oysterpack_macros;
+pub extern crate oysterpack_uid as uid;
 
-pub extern crate semver;
 pub extern crate chrono;
+pub extern crate semver;
 
 pub extern crate serde;
 #[allow(unused_imports)]

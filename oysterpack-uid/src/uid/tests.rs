@@ -28,24 +28,26 @@ trait Foo {}
 
 type FooId = Uid<dyn Foo + Send + Sync>;
 
-// New Ids should be unique
-#[test]
-fn uid_hash_uniqueness() {
-    run_test(|| {
-        use std::collections::HashSet;
-        let count = 100000;
-        info!("id_hash_uniqueness: {}", count);
+op_test!(uid_hash_uniqueness {
+    test_uid_hash_uniqueness();
+});
 
-        let mut hashes = HashSet::new();
-        for _ in 0..count {
-            assert!(hashes.insert(Oid::new()))
-        }
-    });
+// New Ids should be unique
+
+fn test_uid_hash_uniqueness() {
+    use std::collections::HashSet;
+    let count = 100000;
+    info!("id_hash_uniqueness: {}", count);
+
+    let mut hashes = HashSet::new();
+    for _ in 0..count {
+        assert!(hashes.insert(Oid::new()))
+    }
 }
 
 #[test]
 fn uid_str() {
-    run_test(|| {
+    run_test("uid_str", || {
         let id = FooId::new();
         let id_str = id.to_string();
         info!("uid_str: {}", id_str);
@@ -100,7 +102,7 @@ fn uid_is_thread_safe() {
 fn uid_serde() {
     pub struct Foo;
 
-    run_test(|| {
+    run_test("uid_serde", || {
         let id = Uid::<Foo>::new();
         let id_json = serde_json::to_string(&id).unwrap();
         info!("uid_serde(): id json: {}", id_json);
@@ -111,7 +113,7 @@ fn uid_serde() {
 
 #[test]
 fn ulid_functions() {
-    run_test(|| {
+    run_test("ulid_functions", || {
         use std::collections::HashSet;
         let count = 100000;
 
@@ -130,8 +132,6 @@ fn ulid_functions() {
     });
 }
 
-
-
 //[2018-10-21][07:45:29.086804][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): Uid::new() : 954.32511ms
 //[2018-10-21][07:45:30.039817][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): ulid_u128() : 952.878334ms
 //[2018-10-21][07:45:31.076784][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): id.increment().unwrap() : 1.036877973s
@@ -143,7 +143,7 @@ fn ulid_functions() {
 fn benchmark_new_ulid() {
     use std::time::Instant;
 
-    run_test(|| {
+    run_test("benchmark_new_ulid", || {
         struct Foo;
         type FooId = Uid<Foo>;;
         let now = Instant::now();
@@ -163,7 +163,10 @@ fn benchmark_new_ulid() {
         for _ in 0..1000000 {
             let _ = id.increment().unwrap();
         }
-        info!("benchmark_new_ulid(): id.increment().unwrap() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): id.increment().unwrap() : {:?}",
+            now.elapsed()
+        );
 
         let now = Instant::now();
         for _ in 0..1000000 {
@@ -176,14 +179,19 @@ fn benchmark_new_ulid() {
         for _ in 0..1000000 {
             let _ = uuid::Uuid::new_v4();
         }
-        info!("benchmark_new_ulid(): uuid::Uuid::new_v4() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): uuid::Uuid::new_v4() : {:?}",
+            now.elapsed()
+        );
 
-        info!("UUID: {}",uuid::Uuid::new_v4());
+        info!("UUID: {}", uuid::Uuid::new_v4());
         let now = Instant::now();
         for _ in 0..1000000 {
-            let _  = uuid::Uuid::new_v4().to_string();
+            let _ = uuid::Uuid::new_v4().to_string();
         }
-        info!("benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : {:?}",
+            now.elapsed()
+        );
     })
-
 }

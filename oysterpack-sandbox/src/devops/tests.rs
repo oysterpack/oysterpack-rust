@@ -27,9 +27,12 @@ fn macro_src_loc() {
         let src_loc = foo::src_loc();
         debug!("src_loc = '{:?}'", src_loc);
         info!("src_loc = '{}'", src_loc);
-        assert_eq!(src_loc.module_path(), "oysterpack_sandbox::devops::tests::foo");
+        assert_eq!(
+            src_loc.module_path(),
+            "oysterpack_sandbox::devops::tests::foo"
+        );
         assert_eq!(src_loc.crate_name(), "oysterpack_sandbox");
-        assert_eq!(src_loc.line(), 40);
+        assert_eq!(src_loc.line(), 43);
     });
 }
 

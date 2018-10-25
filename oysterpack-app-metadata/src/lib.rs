@@ -34,12 +34,7 @@ extern crate serde_derive;
 
 #[cfg(test)]
 #[macro_use]
-extern crate log;
-#[cfg(test)]
-extern crate fern;
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
+extern crate oysterpack_testing;
 
 #[macro_use]
 mod macros;
@@ -64,4 +59,4 @@ pub use metadata::TargetOperatingSystem;
 pub use metadata::TargetTriple;
 
 #[cfg(test)]
-mod tests;
+op_tests_mod!();

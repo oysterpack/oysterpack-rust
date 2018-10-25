@@ -69,7 +69,8 @@ impl Handler<GetArbiter> for Registry {
 
     fn handle(&mut self, msg: GetArbiter, _: &mut Self::Context) -> Self::Result {
         let arbiter_id = msg.0;
-        let arbiter = self.arbiters
+        let arbiter = self
+            .arbiters
             .entry(arbiter_id)
             .or_insert_with(|| Arbiter::new(arbiter_id.to_string()));
         if !arbiter.connected() {
