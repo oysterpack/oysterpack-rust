@@ -12,34 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Standardizes logging for the OysterPack platform.
-//!
+//! Log management
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
+use ::LogConfig;
+use log::SetLoggerError;
 
-#[macro_use]
-extern crate oysterpack_macros;
+pub struct LogManager {
+    config: LogConfig,
+}
 
-extern crate fern;
-extern crate log;
+impl LogManager {
 
-extern crate chrono;
+    pub fn configure(config: LogConfig) -> Result<Self,SetLoggerError> {
 
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[cfg(test)]
-extern crate serde_json;
-#[cfg(test)]
-#[macro_use]
-extern crate oysterpack_testing;
+    }
 
-#[cfg(test)]
-op_tests_mod!();
+    fn configure_logging(config: LogConfig) {
 
-pub mod config;
-pub mod manager;
-
-pub use config::LogConfig;
+    }
+}

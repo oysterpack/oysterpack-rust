@@ -117,6 +117,12 @@ impl Target {
     }
 }
 
+impl<'a> From<&'a str> for Target {
+    fn from(target: &'a str) -> Self {
+        Target(target.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -140,6 +146,29 @@ mod tests {
             assert_eq!(config.root_level(),Level::Warn);
             assert!(config.crate_level().is_none());
             assert!(config.target_levels().is_none());
+        });
+    }
+
+    #[test]
+    fn log_config_with_all_fields_configured() {
+        ::run_test("default_log_config", || {
+            let config = LogConfigBuilder::new(Level::Info)
+                .crate_level(Level::Info)
+                .target_level(Target::from("a"), Level::Info)
+                .target_level(Target::from("a"), Level::Warn)
+                .target_level(Target::from("b"), Level::Error)
+                .target_level(Target::from("c"), Level::Debug)
+                .build();
+            info!("{}", serde_json::to_string_pretty(&config).unwrap());
+            assert_eq!(config.root_level(),Level::Info);
+            assert_eq!(config.crate_level().unwrap(), Level::Info);
+            assert_eq!(*config.target_levels().unwrap(), {
+                let mut map = BTreeMap::new();
+                map.insert(Target::from("a"),Level::Warn);
+                map.insert(Target::from("b"),Level::Error);
+                map.insert(Target::from("c"),Level::Debug);
+                map
+            });
         });
     }
 
