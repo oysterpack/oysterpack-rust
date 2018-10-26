@@ -17,14 +17,17 @@
 use ::LogConfig;
 use log::SetLoggerError;
 
+/// Manages application logging
+#[derive(Debug)]
 pub struct LogManager {
     config: LogConfig,
 }
 
 impl LogManager {
 
-    pub fn configure(config: LogConfig) -> Result<Self,SetLoggerError> {
-
+    /// Initialize the LogManager with the specified LogConfig
+    pub fn init(config: LogConfig) -> Result<Self,SetLoggerError> {
+        unimplemented!()
     }
 
     fn configure_logging(config: LogConfig) {

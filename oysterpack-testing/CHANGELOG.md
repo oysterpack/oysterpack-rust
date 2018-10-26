@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.1.2\] 2018-10-25
+
+### Changed
+- refactored op_tests_mod macro to ensure log initialization is threadsafe
+
 ## \[0.1.1\] 2018-10-25
 
 ### Added

@@ -63,50 +63,42 @@ macro_rules! op_tests_mod {
     ( $($target:expr => $level:ident),* ) => {
         #[cfg(test)]
         pub(crate) mod tests {
+            const LOG_NOT_LOG_INITIALIZED : usize = 0;
+            const LOG_INITIALIZING : usize = 1;
+            const LOG_INITIALIZED : usize = 2;
 
-            /// Used to track logging initialization
-            #[derive(Eq, PartialEq)]
-            pub enum LogInitState {
-                NotInitialized,
-                Initializing,
-                Initialized,
-            }
+            use ::std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
-            pub static mut _FERN_INITIALIZED: LogInitState = LogInitState::NotInitialized;
+            static FERN_STATE: AtomicUsize = ATOMIC_USIZE_INIT;
 
             fn init_log() {
-                unsafe {
-                    if _FERN_INITIALIZED == LogInitState::NotInitialized {
-                        _FERN_INITIALIZED = LogInitState::Initializing;
-                        if _FERN_INITIALIZED == LogInitState::Initializing {
-                            const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
-                            let _ = $crate::fern::Dispatch::new()
-                                .format(|out, message, record| {
-                                    out.finish(format_args!(
-                                        "{}[{}][{}][{}:{}] {}",
-                                        $crate::chrono::Local::now().format("[%H:%M:%S%.3f]"),
-                                        record.level(),
-                                        record.target(),
-                                        record.file().unwrap(),
-                                        record.line().unwrap(),
-                                        message
-                                    ))
-                                }).level($crate::log::LevelFilter::Warn)
-                                .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
-                                .chain(::std::io::stdout())
-                                $(
-                                .level_for($target,$crate::log::LevelFilter::$level)
-                                )*
-                                .apply();
-                            _FERN_INITIALIZED = LogInitState::Initialized;
-                            info!("logging has been initialized for {}", CARGO_PKG_NAME);
-                        }
-                    }
-                    // There may be a race condition because tests may run in parallel.
-                    // Thus, wait until logging has been initialized before running the test.
-                    while _FERN_INITIALIZED != LogInitState::Initialized {
-                        ::std::thread::yield_now();
-                    }
+                if FERN_STATE.compare_and_swap(LOG_NOT_LOG_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) == LOG_NOT_LOG_INITIALIZED {
+                    const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
+                    let _ = $crate::fern::Dispatch::new()
+                        .format(|out, message, record| {
+                            out.finish(format_args!(
+                                "{}[{}][{}][{}:{}] {}",
+                                $crate::chrono::Local::now().format("[%H:%M:%S%.3f]"),
+                                record.level(),
+                                record.target(),
+                                record.file().unwrap(),
+                                record.line().unwrap(),
+                                message
+                            ))
+                        }).level($crate::log::LevelFilter::Warn)
+                        .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
+                        .chain(::std::io::stdout())
+                        $(
+                        .level_for($target,$crate::log::LevelFilter::$level)
+                        )*
+                        .apply()
+                        .unwrap();
+                    FERN_STATE.swap(LOG_INITIALIZED, Ordering::SeqCst);
+                    info!("logging has been initialized for {}", CARGO_PKG_NAME);
+                }
+
+                while FERN_STATE.load(Ordering::SeqCst) != LOG_INITIALIZED {
+                    ::std::thread::yield_now();
                 }
             }
 
