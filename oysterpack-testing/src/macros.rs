@@ -13,6 +13,8 @@
 ///   - the root log level will be set to Warn
 ///   - the crate's log level will be set to Debug
 /// - `run_test` function will log the test execution time
+/// - `run_test` will be bound to the crate's root path, i.e., it can be invoked as `::run_test("test_name",|| { ... })`,
+///    but annotated with `#[cfg(test)]`. Thus, it will only be available when running tests.
 ///
 /// ## Example
 /// ```rust
@@ -25,9 +27,11 @@
 /// op_tests_mod!();
 ///
 /// #[test]
-/// fn test() {
-///     tests::run_test("foo", || info!("SUCCESS"));
+/// fn foo_test() {
+///     ::run_test("foo_test", || info!("SUCCESS"));
 /// }
+///
+/// # fn main(){}
 ///
 /// ```
 ///
@@ -45,9 +49,11 @@
 /// }
 ///
 /// #[test]
-/// fn test() {
-///     tests::run_test("foo", || info!(target: "info", "SUCCESS"));
+/// fn foo_test() {
+///     ::run_test("foo_test", || info!(target: "foo", "SUCCESS"));
 /// }
+///
+/// # fn main(){}
 ///
 /// ```
 /// - in the above example, the `foo` target log level is set to `Info` and the `bar` target log level
@@ -74,7 +80,7 @@ macro_rules! op_tests_mod {
                         _FERN_INITIALIZED = LogInitState::Initializing;
                         if _FERN_INITIALIZED == LogInitState::Initializing {
                             const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
-                            $crate::fern::Dispatch::new()
+                            let _ = $crate::fern::Dispatch::new()
                                 .format(|out, message, record| {
                                     out.finish(format_args!(
                                         "{}[{}][{}][{}:{}] {}",
@@ -91,8 +97,7 @@ macro_rules! op_tests_mod {
                                 $(
                                 .level_for($target,$crate::log::LevelFilter::$level)
                                 )*
-                                .apply()
-                                .unwrap();
+                                .apply();
                             _FERN_INITIALIZED = LogInitState::Initialized;
                             info!("logging has been initialized for {}", CARGO_PKG_NAME);
                         }
@@ -124,6 +129,9 @@ macro_rules! op_tests_mod {
                 run_test("compiles", || info!("it compiles :)"));
             }
         }
+
+        #[cfg(test)]
+        pub use tests::run_test;
     };
 }
 

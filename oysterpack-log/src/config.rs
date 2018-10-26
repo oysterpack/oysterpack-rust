@@ -21,8 +21,28 @@ use std::collections::BTreeMap;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogConfig {
     root_level: Level,
+    #[serde(skip_serializing_if = "Option::is_none")]
     crate_level: Option<Level>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     target_levels: Option<BTreeMap<Target, Level>>,
+}
+
+impl LogConfig {
+
+    /// Returns the root log level.
+    pub fn root_level(&self) -> Level {
+        self.root_level
+    }
+
+    /// Returns the configured crate log level
+    pub fn crate_level(&self) -> Option<Level> {
+        self.crate_level
+    }
+
+    /// Returns the configured target log levels
+    pub fn target_levels(&self) -> Option<&BTreeMap<Target, Level>> {
+        self.target_levels.as_ref()
+    }
 }
 
 impl Default for LogConfig {
@@ -95,4 +115,32 @@ impl Target {
     pub fn append(&self, target: Target) -> Target {
         Target::new(format!("{}::{}", self.0, target.0))
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn root_log_level_configured() {
+        ::run_test("root_log_level_configured", || {
+            let config = LogConfigBuilder::new(Level::Info).build();
+            info!("{}", serde_json::to_string(&config).unwrap());
+            assert_eq!(config.root_level(),Level::Info);
+        });
+    }
+
+    #[test]
+    fn default_log_config() {
+        ::run_test("default_log_config", || {
+            let config : LogConfig = Default::default();
+            info!("{}", serde_json::to_string(&config).unwrap());
+            assert_eq!(config.root_level(),Level::Warn);
+            assert!(config.crate_level().is_none());
+            assert!(config.target_levels().is_none());
+        });
+    }
+
 }

@@ -30,5 +30,15 @@ extern crate chrono;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[cfg(test)]
+extern crate serde_json;
+#[cfg(test)]
+#[macro_use]
+extern crate oysterpack_testing;
+
+#[cfg(test)]
+op_tests_mod!();
 
 pub mod config;
+
+pub use config::LogConfig;

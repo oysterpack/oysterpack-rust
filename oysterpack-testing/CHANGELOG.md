@@ -7,4 +7,17 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 ## Unreleased
 
 ## \[0.1.1\] 2018-10-25
+
+### Added
+- tests::run_test is bound to the crate's root path:
+```rust
+#[cfg(test)]
+pub use tests::run_test;
+```
+
+### Fixed
+- initializing the logger may fail because of a potential race condition when tests are run in parallel
+  - the fix is to ignore the error instead of panicking  
+
+## \[0.1.0\] 2018-10-25
 - initial release

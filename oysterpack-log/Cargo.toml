@@ -14,19 +14,16 @@ keywords = ["log"]
 oysterpack_macros = {version = "0.1.0", path = "../oysterpack-macros"}
 
 log = {version = "0.4", features = ["serde"]}
-
 fern = {version = "0.5"}
 chrono = { version = "0.4", features = ["serde"]}
+
 serde = "1"
 serde_derive = "1"
 
 [dev-dependencies]
+oysterpack_testing = {version = "0.1.0", path = "../oysterpack-testing" }
 version-sync = "0.5"
+serde_json = "1"
 
 [badges]
 maintenance = {status = "actively-developed"}
-
-[features]
-default = []
-# pulls in test support macros
-tests = []
