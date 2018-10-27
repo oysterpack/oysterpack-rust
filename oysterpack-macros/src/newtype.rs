@@ -122,7 +122,7 @@ macro_rules! op_newtype {
         }
 
         op_tt_as_item! {
-            impl ::std::ops::Deref for $Name {
+            impl std::ops::Deref for $Name {
                 type Target = $T;
 
                 fn deref(&self) -> &Self::Target {

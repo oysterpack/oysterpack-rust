@@ -28,7 +28,7 @@
 ///
 /// #[test]
 /// fn foo_test() {
-///     ::run_test("foo_test", || info!("SUCCESS"));
+///     run_test("foo_test", || info!("SUCCESS"));
 /// }
 ///
 /// # fn main(){}
@@ -50,7 +50,7 @@
 ///
 /// #[test]
 /// fn foo_test() {
-///     ::run_test("foo_test", || info!(target: "foo", "SUCCESS"));
+///     run_test("foo_test", || info!(target: "foo", "SUCCESS"));
 /// }
 ///
 /// # fn main(){}
@@ -67,7 +67,7 @@ macro_rules! op_tests_mod {
             const LOG_INITIALIZING : usize = 1;
             const LOG_INITIALIZED : usize = 2;
 
-            use ::std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+            use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
             static FERN_STATE: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -98,7 +98,7 @@ macro_rules! op_tests_mod {
                 }
 
                 while FERN_STATE.load(Ordering::SeqCst) != LOG_INITIALIZED {
-                    ::std::thread::yield_now();
+                    std::thread::yield_now();
                 }
             }
 
@@ -106,9 +106,9 @@ macro_rules! op_tests_mod {
             /// - collects test execution time and logs it
             pub fn run_test<F: FnOnce() -> ()>(name: &str, test: F) {
                 init_log();
-                let before = ::std::time::Instant::now();
+                let before = std::time::Instant::now();
                 test();
-                let after = ::std::time::Instant::now();
+                let after = std::time::Instant::now();
                 info!(
                     "{}: test run time: {:?}",
                     name,

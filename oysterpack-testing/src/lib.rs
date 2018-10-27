@@ -97,7 +97,15 @@ pub extern crate chrono;
 pub extern crate fern;
 
 /// re-export the log macros
-pub use log::*;
+pub use log::{
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+    log,
+    log_enabled
+};
 
 #[macro_use]
 mod macros;

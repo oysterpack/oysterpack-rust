@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+### Changed
+- explicity export macros
+
 ## \[0.2.1\] 2018-10-21
 
 ### Added

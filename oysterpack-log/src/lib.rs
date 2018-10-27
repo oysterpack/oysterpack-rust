@@ -22,9 +22,8 @@
 #[macro_use]
 extern crate oysterpack_macros;
 
-extern crate fern;
 extern crate log;
-
+extern crate fern;
 extern crate chrono;
 
 extern crate serde;
