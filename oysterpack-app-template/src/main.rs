@@ -22,50 +22,36 @@
 
 #[macro_use]
 extern crate oysterpack;
-#[macro_use]
-extern crate log;
-extern crate fern;
-
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
-#[cfg(test)]
 extern crate serde_json;
 
-use oysterpack::chrono;
+#[cfg(test)]
+#[macro_use]
+extern crate oysterpack_testing;
+
+use oysterpack::app_metadata;
+use oysterpack::log;
 
 op_build_mod!();
 
 #[cfg(test)]
-mod tests;
+op_tests_mod!();
 
 fn main() {
-    configure_logging();
+    let app_build = build::get();
+    configure_logging(&app_build);
+
+    info!("{}", concat!(env!("OUT_DIR"), "/built.rs"));
     info!(
-        "{}-{} : {}",
-        build::PKG_NAME,
-        build::PKG_VERSION,
-        build::DEPENDENCIES_GRAPHVIZ_DOT
+        "{}",
+        std::fs::read_to_string(concat!(env!("OUT_DIR"), "/built.rs")).unwrap()
     );
+    info!("{}", serde_json::to_string_pretty(&app_build).unwrap(),);
 }
 
-fn configure_logging() {
-    // TODO
-
-    use std::io;
-
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S%.6f]"),
-                record.level(),
-                record.target(),
-                message
-            ))
-        }).level(log::LevelFilter::Warn)
-        .level_for(build::PKG_NAME, log::LevelFilter::Info)
-        .chain(io::stdout())
-        .apply()
-        .expect("Failed to configure logging");
+fn configure_logging(build: &app_metadata::Build) {
+    // TODO - for now it simply logs to stdout - long term, we want to be able to centrally log
+    let log_config = oysterpack::log::config::LogConfigBuilder::new(log::Level::Warn)
+        .crate_level(log::Level::Info)
+        .build();
+    oysterpack::log::init(log_config, build);
 }

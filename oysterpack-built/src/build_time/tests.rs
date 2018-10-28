@@ -23,7 +23,7 @@ use tests::run_test;
 #[test]
 fn test_build_dependency_graph() {
     run_test("test_build_dependency_graph", || {
-        let dependencies = build_dependency_graph(None);
+        let (dependencies, _features) = build_dependency_graph();
 
         let dependencies_json = serde_json::to_string(&dependencies).unwrap();
         info!("dependency graph : {}", dependencies_json);

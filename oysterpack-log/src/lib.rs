@@ -21,24 +21,60 @@
 
 #[macro_use]
 extern crate oysterpack_macros;
+extern crate oysterpack_app_metadata;
 
-extern crate log;
-extern crate fern;
 extern crate chrono;
+extern crate fern;
+#[macro_use]
+pub extern crate log;
 
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-#[cfg(test)]
 extern crate serde_json;
-#[cfg(test)]
-#[macro_use]
-extern crate oysterpack_testing;
 
 #[cfg(test)]
-op_tests_mod!();
+#[macro_use]
+extern crate oysterpack_app_metadata_macros;
 
 pub mod config;
 pub mod manager;
 
 pub use config::LogConfig;
+
+/// re-export the log macros
+pub use log::*;
+
+pub use manager::*;
+
+#[cfg(test)]
+op_build_mod!();
+
+#[cfg(test)]
+mod tests {
+
+    /// - ensures logging is configured and initialized
+    /// - collects test execution time and logs it
+    pub fn run_test<F: FnOnce() -> ()>(name: &str, test: F) {
+        let log_config = ::config::LogConfigBuilder::new(log::Level::Warn)
+            .crate_level(log::Level::Debug)
+            .build();
+        ::manager::init(log_config, &::build::get());
+        let before = std::time::Instant::now();
+        test();
+        let after = std::time::Instant::now();
+        info!(
+            "{}: test run time: {:?}",
+            name,
+            after.duration_since(before)
+        );
+    }
+
+    #[test]
+    fn compiles() {
+        run_test("compiles", || info!("it compiles :)"));
+    }
+}
+
+#[cfg(test)]
+pub use tests::run_test;

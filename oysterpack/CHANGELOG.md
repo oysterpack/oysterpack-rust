@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+### Added
+- integrated oysterpack_log
+
 ### Changed
 - explicity export macros
 

@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.3.2\] 2018-10-28
+
+### Fixes
+- [building with features is causing oysterpack_built to panic](https://github.com/oysterpack/oysterpack/issues/6) 
+
 ## \[0.3.1\] 2018-10-13
 There were no code changes made. This purpose of this release was to augment the crate metadata.
 

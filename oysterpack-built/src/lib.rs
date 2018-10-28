@@ -113,7 +113,7 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.1")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.2")]
 
 #[allow(unused_imports)]
 #[macro_use]

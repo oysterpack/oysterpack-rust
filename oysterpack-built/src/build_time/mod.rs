@@ -34,7 +34,7 @@ use petgraph::{
 use std::{
     collections::{hash_map::Entry, HashMap},
     env,
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::prelude::*,
     path,
     str::{self, FromStr},
@@ -116,14 +116,7 @@ pub fn run() {
         .expect("Failed to acquire build-time information");
 
     let write_dependencies = || {
-        let env = build_env::get_environment();
-        let features = build_env::features(&env);
-        let features = if features.is_empty() {
-            None
-        } else {
-            Some(features)
-        };
-        let dependency_graph = build_dependency_graph(features);
+        let (dependency_graph, features) = build_dependency_graph();
 
         let graphviz_dependency_graph = dot::Dot::with_config(
             &dependency_graph.map(
@@ -138,6 +131,8 @@ pub fn run() {
             .open(&dst)
             .expect("Failed to open file in append mode");
 
+        replace_features_with_actual_names(&dst, features);
+
         writeln!(
             built_file,
             "/// graphviz .dot format for the dependency graph\npub const DEPENDENCIES_GRAPHVIZ_DOT: &str = r#\"{}\"#;",
@@ -148,19 +143,69 @@ pub fn run() {
     write_dependencies();
 }
 
+/// The `built` crate extracts features from the `CARGO_FEATURE_<name>` environment variables.
+/// The problem with that approach is that the feature names are not the actual feature names.
+///
+/// This replaces the features with the actual feature names.
+///
+/// see: https://github.com/oysterpack/oysterpack/issues/6
+fn replace_features_with_actual_names(dst: &path::PathBuf, compile_features: Vec<String>) {
+    let file_contents = fs::read_to_string(dst).unwrap();
+    let features: &str = "features";
+    let features_uppercased = features.to_uppercase();
+    let lines = file_contents
+        .lines()
+        .filter(|line| {
+            !(line.contains(features)
+                || line.contains(features_uppercased.as_str())
+                || line.starts_with("// EVERYTHING ABOVE THIS POINT"))
+        }).collect::<Vec<&str>>();
+
+    let file_contents = format!(
+        r#"
+{}
+/// The features that were enabled during compilation."
+{}
+/// The features as a comma-separated string."
+{}
+"#,
+        lines.join("\n"),
+        format!(
+            "pub const FEATURES: [&str; {}] = {:?};",
+            compile_features.len(),
+            compile_features
+        ),
+        format!(
+            r#"pub const FEATURES_STR: &str = {:?};"#,
+            compile_features.join(",")
+        )
+    );
+
+    let mut file = fs::File::create(dst).unwrap();
+    writeln!(file, "{}", file_contents);
+}
+
 /// resolves dependencies and constructs a dependency graph for the current crate
 ///
 /// # Panics
 /// If dependency graph failed to be built.
-fn build_dependency_graph(
-    features: Option<Vec<String>>,
-) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
+fn build_dependency_graph() -> (
+    Graph<metadata::PackageId, metadata::dependency::Kind>,
+    Vec<String>, /* features */
+) {
     let cargo_config = Config::default().unwrap();
     let workspace = workspace(&cargo_config).unwrap();
     let package = workspace.current().unwrap();
+    let features = build_env::features(package);
+
     let mut registry = registry(&cargo_config, &package).unwrap();
-    let features = features.map(|features| features.join(" "));
-    let (packages, resolve) = resolve(&mut registry, &workspace, features).unwrap();
+    let features_option = if features.is_empty() {
+        None
+    } else {
+        Some(features.join(" "))
+    };
+
+    let (packages, resolve) = resolve(&mut registry, &workspace, features_option).unwrap();
 
     let ids = packages.package_ids().cloned().collect::<Vec<_>>();
     let packages = registry.get(&ids);
@@ -174,8 +219,7 @@ fn build_dependency_graph(
         target,
         cfgs.as_ref().map(|r| &**r),
     ).unwrap();
-
-    filter_dependencies(graph.graph)
+    (filter_dependencies(graph.graph), features)
 }
 
 fn filter_dependencies(
@@ -403,12 +447,13 @@ mod dependencies {
 }
 
 mod build_env {
+    use cargo::core::Package;
     use std::collections;
     use std::env;
 
     type EnvironmentMap = collections::HashMap<String, String>;
 
-    pub fn get_environment() -> EnvironmentMap {
+    fn get_environment() -> EnvironmentMap {
         let mut envmap = EnvironmentMap::new();
         for (k, v) in env::vars_os() {
             let k = k.into_string();
@@ -420,15 +465,56 @@ mod build_env {
         envmap
     }
 
-    pub fn features(envmap: &EnvironmentMap) -> Vec<String> {
+    /// CARGO_FEATURE_<name> - For each activated feature of the package being built, this environment
+    /// variable will be present where <name> is the name of the feature uppercased and having - translated to _
+    ///
+    /// Since features
+    fn features_from_cargo_env() -> Vec<String> {
         let prefix = "CARGO_FEATURE_";
         let mut features = Vec::new();
-        for name in envmap.keys() {
+        for name in get_environment().keys() {
             if name.starts_with(&prefix) {
-                features.push(name[prefix.len()..].to_owned());
+                let feature = name[prefix.len()..].to_owned();
+                features.push(feature);
             }
         }
         features.sort();
+        features
+    }
+
+    pub fn features(package: &Package) -> Vec<String> {
+        use std::collections::HashMap;
+        let mut available_features = HashMap::new();
+        for (name, _) in package.summary().features() {
+            available_features.insert(
+                name.to_string().to_uppercase().replace("-", "_"),
+                name.to_string(),
+            );
+        }
+        for dependency in package.dependencies().iter().filter(|d| d.is_optional()) {
+            available_features.insert(
+                dependency
+                    .package_name()
+                    .to_string()
+                    .to_uppercase()
+                    .replace("-", "_"),
+                dependency.package_name().to_string(),
+            );
+        }
+
+        let features: Vec<String> = features_from_cargo_env()
+            .iter()
+            .filter(|feature| available_features.contains_key(*feature))
+            .map(|feature| available_features.get(feature).unwrap().clone())
+            .collect();
+
+        if !features.is_empty() {
+            println!("*** available features = {:?}", available_features);
+        }
+        if !features.is_empty() {
+            println!("*** built with features = {:?}", features);
+        }
+
         features
     }
 }
