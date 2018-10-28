@@ -98,7 +98,8 @@ impl LogConfigBuilder {
 }
 
 op_newtype! {
-    #[doc = "Represents a log target"]
+    #[allow(missing_docs)]
+    /// Represents a log target
     #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
     pub Target(String)
 }
@@ -150,7 +151,8 @@ pub enum LogOutput {
 }
 
 op_newtype! {
-   #[doc="Represents a line separator"]
+    #[allow(missing_docs)]
+   /// Represents a line separator
    #[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
    pub LineSeparator(String)
 }

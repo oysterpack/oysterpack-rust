@@ -43,7 +43,7 @@
 //! fn run() {}
 //! ```
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
+/// Publishing fails comp
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
 
