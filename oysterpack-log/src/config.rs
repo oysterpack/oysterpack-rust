@@ -151,7 +151,7 @@ pub enum LogOutput {
 }
 
 op_newtype! {
-    #[allow(missing_docs)]
+   #[allow(missing_docs)]
    /// Represents a line separator
    #[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
    pub LineSeparator(String)
