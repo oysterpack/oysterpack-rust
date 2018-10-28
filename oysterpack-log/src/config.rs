@@ -140,7 +140,8 @@ impl AsRef<str> for Target {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-/// Used to configure log output
+/// Used to configure log output.
+/// The idea is that the config schema for each kind of LogOutput is defined by the enum variant.
 pub enum LogOutput {
     /// Indicates to log output to stdout
     Stdout(LineSeparator),

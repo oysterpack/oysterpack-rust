@@ -29,7 +29,11 @@ static LOG_STATE: AtomicUsize = ATOMIC_USIZE_INIT;
 static mut LOG_CONFIG: Option<LogConfig> = None;
 
 /// Initializes the logging system
-/// - if the logging system is already initialized (or initializing), then
+/// - if the logging system is already initialized (or initializing), then a warning log message is logged.
+/// - the build is provided to get the crate's package name. This is used to configure the crate log level.
+///   - Build is used instead of the more specific PackageId because using Build ensures that the crate's
+///     package name was obtained during build time. Otherwise, it's too easy to "hardcode" the crate package
+///     name
 pub fn init(config: LogConfig, build: &Build) {
     match LOG_STATE.compare_and_swap(LOG_NOT_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) {
         LOG_NOT_INITIALIZED => {
@@ -96,7 +100,8 @@ fn configure_console_format(dispatch: Dispatch) -> Dispatch {
 /// This should be called on application shutdown.
 pub fn shutdown() {}
 
-/// Returns the LogConfig used to initialize the log system.
+/// Returns the LogConfig that was used to initialize the log system.
+/// If the logging system is not yet initialized, then None is returned.
 pub fn config() -> Option<&'static LogConfig> {
     unsafe {
         LOG_CONFIG.as_ref()

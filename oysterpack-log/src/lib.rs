@@ -12,8 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Standardizes logging for the OysterPack platform.
+//! Standardizes logging for the OysterPack platform on top of [log](https://crates.io/crates/log).
+//! Given a LogConfig, this crate will know how to initialize the logging system and how to shut it down.
 //!
+//! ```rust
+//! #[macro_use]
+//! extern crate oysterpack_app_metadata_macros;
+//!
+//! op_build_mod!();
+//!
+//! fn main() {
+//!     let app_build = build::get();
+//!     oysterpack_log::init(log_config(),&app_build);
+//!     // The LogConfig used to initialize the log system can be retrieved.
+//!     // This enables the LogConfig to be inspected.
+//!     let log_config = oysterpack_log::config().unwrap();
+//!
+//!     run();
+//!
+//!     oysterpack_log::shutdown();
+//! }
+//!
+//! /// This should be loaded from the app's configuration.
+//! /// For this simple example, we are simply using the default LogConfig.
+//! /// The default LogConfig sets the root log level to Warn and logs to stdout.
+//! fn log_config() -> oysterpack_log::LogConfig {
+//!     Default::default()
+//! }
+//!
+//! fn run() {}
+//! ```
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
@@ -42,10 +70,26 @@ pub mod manager;
 
 pub use config::LogConfig;
 
-/// re-export the log macros
-pub use log::*;
 
-pub use manager::*;
+pub use log::{
+    // re-export the log macros
+    debug,
+    error,
+    info,
+    log,
+    log_enabled,
+    trace,
+    warn,
+    // re-export some other common log members
+    Level,
+    LevelFilter
+};
+
+pub use manager::{
+    config,
+    init,
+    shutdown
+};
 
 #[cfg(test)]
 op_build_mod!();
