@@ -64,6 +64,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate oysterpack_app_metadata_macros;
 
+#[allow(missing_docs)]
 pub mod config;
 pub mod manager;
 
