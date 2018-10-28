@@ -9,7 +9,7 @@ Because I am confident that Rust is the future ...
 Rust's focus on **safety**, **speed**, and **concurrency** delivers the performance and control of a low-level language, but with the powerful abstractions of a high-level language.
 
 ## [OysterPack Blog](https://oysterpack.blogspot.com/)
-To keep upto date, you can also follow the [blog](https://oysterpack.blogspot.com/).
+To keep up to date, you can also follow the [blog](https://oysterpack.blogspot.com/).
 
 ## License
 

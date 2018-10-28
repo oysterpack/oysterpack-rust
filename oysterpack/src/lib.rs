@@ -9,12 +9,46 @@
 //! This crate defines the public framework API for the OysterPack platform.
 //! This crate curates the OysterPack modules in a central location.
 //!
-//! ## Logging
-//! The [log](https://crates.io/crates/log) crate is used as the logging framework. This crate is not
-//! curated because re-exporting the log macros requires re-exporting the whole crate - which pollutes
-//! the OysterPack public API. When the rust [2018 edition](https://rust-lang-nursery.github.io/edition-guide/rust-2018/index.html)
-//! becomes available, then we will be able to curate the log crate and export the log macros in a
-//! clean manner - see [macro changes](https://rust-lang-nursery.github.io/edition-guide/rust-2018/macros/macro-changes.html).
+//! ## Getting started
+//!
+//! ```rust
+//! #[macro_use]
+//! extern crate oysterpack;
+//!
+//! use oysterpack::log;
+//!
+//! // gathers build time info for this crate
+//! op_build_mod!();
+//!
+//! fn main() {
+//!     // get the app's build info that was gathered during compilation
+//!     let app_build = build::get();
+//!
+//!     // initialize the log system
+//!     log::init(log_config(),&app_build);
+//!
+//!     // The LogConfig used to initialize the log system can be retrieved.
+//!     // This enables the LogConfig to be inspected.
+//!     let log_config = log::config().unwrap();
+//!
+//!     run();
+//!
+//!     // shutdown the logging system
+//!     log::shutdown();
+//! }
+//!
+//! /// This should be loaded from the app's configuration.
+//! /// For this simple example, we are simply using the default LogConfig.
+//! /// The default LogConfig sets the root log level to Warn and logs to stdout.
+//! fn log_config() -> log::LogConfig {
+//!     Default::default()
+//! }
+//!
+//! fn run() {
+//!     // the log macros were re-exported by oysterpack
+//!     info!("running ...");
+//! }
+//! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack/0.2.2")]
