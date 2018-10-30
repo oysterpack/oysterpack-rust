@@ -1,11 +1,11 @@
 [package]
-name = "oysterpack_core"
+name = "oysterpack_events"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Core"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-core"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-events"
 documentation = "https://docs.rs/oysterpack_core"
 readme = "README.md"
 
@@ -17,6 +17,7 @@ oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 
 serde = "1"
 serde_derive = "1"
+serde_json = "1"
 
 chrono = {version = "0.4", features=["serde"]}
 

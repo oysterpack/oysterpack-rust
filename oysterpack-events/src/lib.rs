@@ -12,14 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This crate represents the OysterPack core. It follows an expansion / contraction approach.
-//! New features will be introduced into the core as new packages, i.e., core expansion. Once features
-//! have stabilized, then they will be extracted out into their separate crates, i.e., core contraction.
-//!
+//! This crate models application events.
 //!
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_events/0.1.0")]
 
 #[macro_use]
 extern crate oysterpack_macros;
@@ -31,6 +28,8 @@ extern crate oysterpack_log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 extern crate chrono;
 
 pub mod event;

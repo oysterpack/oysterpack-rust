@@ -87,6 +87,7 @@ macro_rules! op_tests_mod {
                             ))
                         }).level($crate::log::LevelFilter::Warn)
                         .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
+                        .level_for("oysterpack_events", $crate::log::LevelFilter::Debug)
                         .chain(::std::io::stdout())
                         $(
                         .level_for($target,$crate::log::LevelFilter::$level)
