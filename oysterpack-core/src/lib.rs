@@ -25,17 +25,19 @@
 extern crate oysterpack_macros;
 extern crate oysterpack_app_metadata;
 extern crate oysterpack_uid;
-
 #[macro_use]
-extern crate log;
+extern crate oysterpack_log;
 
-#[cfg(test)]
-extern crate fern;
+extern crate serde;
 #[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
-#[cfg(test)]
+extern crate serde_derive;
 extern crate chrono;
 
+pub mod event;
+
 #[cfg(test)]
-mod tests;
+#[macro_use]
+extern crate oysterpack_testing;
+
+#[cfg(test)]
+op_tests_mod!();

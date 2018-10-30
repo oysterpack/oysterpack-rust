@@ -13,14 +13,17 @@ readme = "README.md"
 oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.1"}
 oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
+oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 
-log = "0.4"
+serde = "1"
+serde_derive = "1"
+
+chrono = {version = "0.4", features=["serde"]}
 
 [dev-dependencies]
 version-sync = "0.5"
-fern = "0.5"
-chrono = { version = "0.4", features = ["serde"] }
-lazy_static = "1"
+oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
+serde_json = "1"
 
 [badges]
 maintenance = {status = "actively-developed"}
