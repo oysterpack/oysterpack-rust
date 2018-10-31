@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
+## 0.1.2
+
+### Added
+- new CLI for generating ULIDs
+
 ## 0.1.1
 
 No code changes - just fixing documentation.

@@ -79,38 +79,11 @@
 macro_rules! op_newtype {
     (
         $(#[$outer:meta])*
-        $Name:ident($T:ty)
-    ) => {
-        op_newtype!{
-            $(#[$outer])*
-            () $Name(() $T)
-        }
-    };
-    (
-        $(#[$outer:meta])*
-        pub $Name:ident($T:ty)
-    ) => {
-        op_newtype!{
-            $(#[$outer])*
-            (pub) $Name(() $T)
-        }
-    };
-    (
-        $(#[$outer:meta])*
-        pub $Name:ident(pub $T:ty)
-    ) => {
-        op_newtype!{
-            $(#[$outer])*
-            (pub) $Name((pub) $T)
-        }
-    };
-    (
-        $(#[$outer:meta])*
-        ($($struct_vis:tt)*) $Name:ident(($($field_vis:tt)*) $T:ty)
+        $struct_vis:vis $Name:ident($field_vis:vis $T:ty)
     ) => {
         $(#[$outer])*
         #[derive(Debug)]
-        $($struct_vis)* struct $Name($($field_vis)* $T);
+        $struct_vis struct $Name($field_vis $T);
 
         op_tt_as_item! {
             impl $Name {

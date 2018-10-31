@@ -75,7 +75,7 @@
 //!   - encoding UUIDs as a string is roughly 6.19x slower
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.2")]
 
 extern crate chrono;
 extern crate rusty_ulid;

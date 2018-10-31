@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.1.2\] 2018-10-31
+
+### Changed
+- refactored `op_newtype!` macro to take advantage of new `vis` keyword to match, which simplifies the macro
+
 ## \[0.1.1\] 2018-10-25
 
 ### Added

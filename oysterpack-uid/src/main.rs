@@ -19,8 +19,14 @@ use oysterpack_uid::Uid;
 struct T;
 
 fn main() {
-    let ulid : Uid<T> = Uid::new();
-    println!("{}", ulid);
-    println!("{}", ulid.id());
-    println!("{}", ulid.datetime());
+    let ulid: Uid<T> = Uid::new();
+    let mut json = String::with_capacity(128);
+    json.push_str(r#"{"ulid":""#);
+    json.push_str(ulid.to_string().as_str());
+    json.push_str(r#"", "datetime":""#);
+    json.push_str(ulid.datetime().to_string().as_str());
+    json.push_str(r#"", "id":"#);
+    json.push_str(ulid.id().to_string().as_str());
+    json.push_str("}");
+    println!("{}",json);
 }

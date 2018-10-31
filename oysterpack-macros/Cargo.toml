@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_macros"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Macros"
 license = "MIT/Apache-2.0"
