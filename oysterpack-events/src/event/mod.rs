@@ -15,10 +15,10 @@
 //! Event domain model.
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::Uid;
-use std::fmt::Debug;
 use oysterpack_log;
+use oysterpack_uid::Uid;
 use serde::Serialize;
+use std::fmt::Debug;
 
 #[cfg(test)]
 mod tests;
@@ -26,14 +26,14 @@ mod tests;
 /// Is applied to some eventful data.
 pub trait Eventful: Debug + Send + Sync + Clone + Serialize {
     /// Event Id
-    fn event_id() -> Id;
+    const EVENT_ID: Id;
 
     /// Event severity level
-    fn event_severity_level() -> SeverityLevel;
+    const EVENT_SEVERITY_LEVEL: SeverityLevel;
 
     /// Event constructor
     fn new_event(data: Self) -> Event<Self> {
-        Event::new(Self::event_id(), data)
+        Event::new(data)
     }
 }
 
@@ -50,7 +50,7 @@ op_newtype!{
 
 impl Id {
     /// converts itself into a Uid
-    pub fn into_uid(&self) -> Uid<Self> {
+    pub fn as_uid(&self) -> Uid<Self> {
         Uid::from(self.0)
     }
 }
@@ -66,9 +66,8 @@ pub type InstanceId = Uid<Instance>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Event<Data>
 where
-    Data: Debug + Send + Sync + Clone + Eventful + Serialize,
+    Data: Debug + Send + Sync + Clone + Eventful,
 {
-    id: Id,
     timestamp: DateTime<Utc>,
     instance_id: InstanceId,
     data: Data,
@@ -76,7 +75,7 @@ where
 
 impl<Data> Event<Data>
 where
-    Data: Debug + Send + Sync + Clone + Eventful + Serialize,
+    Data: Debug + Send + Sync + Clone + Eventful,
 {
     const EVENT_TARGET_BASE: &'static str = "oysterpack_events";
 
@@ -84,26 +83,38 @@ where
     /// The log target will take the form: `oysterpack_events::<event-id>`, where `<event-id>` is
     /// formatted as a ULID, e.g.
     /// - `oysterpack_event::01CV38FM3Z4M2A8G50QRTGJHP4`
-    pub fn new(id: Id, data: Data) -> Event<Data> {
+    pub fn new(data: Data) -> Event<Data> {
         let event = Event {
-            id,
             timestamp: Utc::now(),
             instance_id: InstanceId::new(),
             data,
         };
-        // TODO: log event
-        let target = format!("{}::{}",Event::<Data>::EVENT_TARGET_BASE,id.into_uid());
-        let level = Data::event_severity_level().log_level();
-        log!(target: &target, level, "{}", json!({
+        let target = format!(
+            "{}::{}",
+            Event::<Data>::EVENT_TARGET_BASE,
+            Data::EVENT_ID.as_uid()
+        );
+        let level = Data::EVENT_SEVERITY_LEVEL.log_level();
+        log!(
+            target: &target,
+            level,
+            "{}",
+            json!({
         "instance_id":event.instance_id.to_string(),
         "data":event.data
-        }));
+        })
+        );
         event
     }
 
     /// Returns the Event Id
     pub fn id(&self) -> Id {
-        self.id
+        Data::EVENT_ID
+    }
+
+    /// Returns the Event SeverityLevel
+    pub fn severity_level(&self) -> SeverityLevel {
+        Data::EVENT_SEVERITY_LEVEL
     }
 
     /// Returns the event timestamp, i.e., when it occurred.
@@ -158,7 +169,6 @@ pub enum SeverityLevel {
 }
 
 impl SeverityLevel {
-
     /// Maps SeverityLevel to oysterpack_log::Level
     /// - Debug =&gt; Debug
     /// - Info =&gt; Info
@@ -169,7 +179,7 @@ impl SeverityLevel {
             SeverityLevel::Debug => oysterpack_log::Level::Debug,
             SeverityLevel::Info => oysterpack_log::Level::Info,
             SeverityLevel::Notice | SeverityLevel::Warning => oysterpack_log::Level::Warn,
-            _ => oysterpack_log::Level::Error
+            _ => oysterpack_log::Level::Error,
         }
     }
 }
