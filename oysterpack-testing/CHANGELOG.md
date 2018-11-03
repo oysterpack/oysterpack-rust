@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.1.3\] 2018-11-03
+
+### Changed
+- the module path is logged instead of the source file path
+
 ## \[0.1.2\] 2018-10-25
 
 ### Changed

@@ -12,31 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This crate models application events.
-//!
+//! Event related macros
 
-#![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_events/0.1.0")]
-
-#[macro_use]
-extern crate oysterpack_macros;
-extern crate oysterpack_app_metadata;
-extern crate oysterpack_uid;
-#[macro_use]
-extern crate oysterpack_log;
-
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate serde;
-extern crate serde_json;
-extern crate chrono;
-
-pub mod event;
-
-#[cfg(test)]
-#[macro_use]
-extern crate oysterpack_testing;
-
-#[cfg(test)]
-op_tests_mod!();
+/// Returns event::ModuleSource
+#[macro_export]
+macro_rules! op_module_source {
+    () => {{
+        $crate::event::ModuleSource::new(module_path!(), line!())
+    }};
+}

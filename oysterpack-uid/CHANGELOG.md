@@ -6,15 +6,24 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
-## 0.1.2
+## \[0.1.3\] 2018-11-03
+
+### Added
+- GenericUid
+
+### Changed
+- serialization has been changed from a number to a ULID string format
+  - ULIDs are 128 bit, which would fail to parse as JSON
+
+## \[0.1.2\]
 
 ### Added
 - new CLI for generating ULIDs
 
-## 0.1.1
+## \[0.1.1\]
 
 No code changes - just fixing documentation.
 
-## 0.1.0
+## \[0.1.0\]
 
 Initial release

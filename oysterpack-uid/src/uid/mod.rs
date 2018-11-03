@@ -28,9 +28,6 @@ use std::{
     str::FromStr,
 };
 
-#[cfg(test)]
-mod tests;
-
 /// Returns a new ULID encoded as a String.
 pub fn ulid() -> String {
     rusty_ulid::new_ulid_string()
@@ -76,7 +73,7 @@ pub fn ulid_u128_into_string(ulid: u128) -> String {
 /// type FooId = Uid<dyn Foo + Send + Sync>;
 /// let id = FooId::new();
 /// ```
-pub struct Uid<T: ?Sized> {
+pub struct Uid<T: 'static + ?Sized> {
     id: u128,
     _type: PhantomData<T>,
 }
@@ -87,7 +84,7 @@ impl<T: 'static> Serialize for Uid<T> {
     where
         S: Serializer,
     {
-        serializer.serialize_u128(self.id)
+        serializer.serialize_str(self.to_string().as_str())
     }
 }
 
@@ -103,7 +100,7 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
             type Value = Uid<T>;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("u128")
+                formatter.write_str("ULID")
             }
 
             #[inline]
@@ -137,9 +134,18 @@ impl<'de, T: 'static> Deserialize<'de> for Uid<T> {
             {
                 Ok(Uid::from(value))
             }
+
+            #[inline]
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Uid::from_str(value)
+                    .map_err(|_| de::Error::invalid_type(de::Unexpected::Str(value), &"a ULID"))
+            }
         }
 
-        deserializer.deserialize_u128(UidVisitor(PhantomData))
+        deserializer.deserialize_str(UidVisitor(PhantomData))
     }
 }
 
@@ -309,3 +315,92 @@ impl From<rusty_ulid::crockford::DecodingError> for DecodingError {
         }
     }
 }
+
+/// Represents a generic form of Uid&lt;T&gt;
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GenericUid {
+    r#type: String,
+    id: Uid<u128>,
+}
+
+impl GenericUid {
+    /// Constructs a new ULID as GenericUid
+    pub fn new(r#type: Type) -> GenericUid {
+        GenericUid {
+            r#type: r#type.to_string(),
+            id: Uid::new(),
+        }
+    }
+
+    /// Constructs a new GenericUid from an existing Uid
+    pub fn from_uid<T>(r#type: Type, id: &Uid<T>) -> GenericUid {
+        GenericUid {
+            r#type: r#type.to_string(),
+            id: id.id.into(),
+        }
+    }
+
+    /// Constructs a new GenericUid from u128
+    pub fn from_u128(r#type: Type, id: u128) -> GenericUid {
+        GenericUid {
+            r#type: r#type.to_string(),
+            id: id.into(),
+        }
+    }
+
+    /// Getter for Uid type
+    pub fn r#type(&self) -> &str {
+        &self.r#type
+    }
+
+    /// Getter for Uid
+    pub fn id(&self) -> Uid<u128> {
+        self.id
+    }
+
+    /// Returns the id formatted as a [ULID](https://github.com/ulid/spec), e.g., 01CAT3X5Y5G9A62FH1FA6T9GVR
+    pub fn ulid(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+impl fmt::Display for GenericUid {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}/{}", self.r#type, self.id)
+    }
+}
+
+/// Provides a conversion to GenericUid.
+///
+///
+pub trait IntoGenericUid {
+    /// GenericUid Type is defined as const
+    const TYPE: Type;
+
+    /// Returns the Uid as u128
+    fn id(&self) -> u128;
+
+    /// Returns a GenericUid representation of self.
+    ///
+    /// ## Panics
+    /// If type name is blank, i.e., const TYPE is defined as a blank string
+    fn generic_uid(&self) -> GenericUid {
+        GenericUid {
+            r#type: Self::TYPE.to_string(),
+            id: self.id().into(),
+        }
+    }
+}
+
+/// Represents a type name.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Type(pub &'static str);
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests;

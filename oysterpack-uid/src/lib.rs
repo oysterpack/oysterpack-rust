@@ -75,11 +75,12 @@
 //!   - encoding UUIDs as a string is roughly 6.19x slower
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.2")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.3")]
 
 extern crate chrono;
 extern crate rusty_ulid;
 #[cfg(any(test, feature = "serde"))]
+#[macro_use]
 extern crate serde;
 
 #[cfg(test)]
@@ -92,8 +93,7 @@ extern crate uuid;
 
 pub mod uid;
 
-pub use uid::Uid;
-pub use uid::{ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string};
+pub use uid::{ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, GenericUid, Uid, IntoGenericUid, Type};
 
 #[cfg(test)]
 op_tests_mod!();

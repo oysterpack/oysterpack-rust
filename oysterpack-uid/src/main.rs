@@ -28,5 +28,5 @@ fn main() {
     json.push_str(r#"", "id":"#);
     json.push_str(ulid.id().to_string().as_str());
     json.push_str("}");
-    println!("{}",json);
+    println!("{}", json);
 }

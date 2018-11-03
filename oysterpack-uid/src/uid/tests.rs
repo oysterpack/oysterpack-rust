@@ -15,11 +15,15 @@
 //! unit tests
 #![allow(warnings)]
 
-use super::{ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, Uid};
+use super::{
+    ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, GenericUid, IntoGenericUid, Type,
+    Uid,
+};
 use serde_json;
 use std::{cmp::Ordering, str::FromStr};
 use tests::run_test;
 
+#[derive(Debug)]
 struct O;
 
 type Oid = Uid<O>;
@@ -27,6 +31,20 @@ type Oid = Uid<O>;
 trait Foo {}
 
 type FooId = Uid<dyn Foo + Send + Sync>;
+
+impl Into<GenericUid> for Oid {
+    fn into(self) -> GenericUid {
+        GenericUid::from_uid(Type("0"), &self)
+    }
+}
+
+impl IntoGenericUid for Oid {
+    const TYPE: Type = Type("0");
+
+    fn id(&self) -> u128 {
+        self.id
+    }
+}
 
 op_test!(uid_hash_uniqueness {
     test_uid_hash_uniqueness();
@@ -193,5 +211,16 @@ fn benchmark_new_ulid() {
             "benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : {:?}",
             now.elapsed()
         );
+    })
+}
+
+#[test]
+fn generic_uid() {
+    run_test("generic_uid", || {
+        let id: GenericUid = Oid::new().into();
+        info!("GenericUid: {}", serde_json::to_string_pretty(&id).unwrap());
+        info!("{:?} => {}", id, id);
+        let id: GenericUid = Oid::new().generic_uid();
+        info!("GenericUid: {}", serde_json::to_string_pretty(&id).unwrap());
     })
 }

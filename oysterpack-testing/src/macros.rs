@@ -81,13 +81,13 @@ macro_rules! op_tests_mod {
                                 $crate::chrono::Local::now().format("[%H:%M:%S%.3f]"),
                                 record.level(),
                                 record.target(),
-                                record.file().unwrap(),
+                                record.module_path().unwrap(),
                                 record.line().unwrap(),
                                 message
                             ))
                         }).level($crate::log::LevelFilter::Warn)
                         .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
-                        .level_for("oysterpack_events", $crate::log::LevelFilter::Debug)
+                        .level_for("op_event", $crate::log::LevelFilter::Debug)
                         .chain(::std::io::stdout())
                         $(
                         .level_for($target,$crate::log::LevelFilter::$level)

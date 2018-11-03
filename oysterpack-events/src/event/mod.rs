@@ -15,25 +15,35 @@
 //! Event domain model.
 
 use chrono::{DateTime, Utc};
-use oysterpack_log;
-use oysterpack_uid::Uid;
+use oysterpack_uid::{
+    Uid, GenericUid, IntoGenericUid
+};
 use serde::Serialize;
-use std::fmt::Debug;
+use std::{
+    collections::HashSet,
+    fmt::{
+        Debug, Display
+    }
+};
+use serde_json;
+
+#[macro_use]
+mod macros;
 
 #[cfg(test)]
 mod tests;
 
 /// Is applied to some eventful data.
-pub trait Eventful: Debug + Send + Sync + Clone + Serialize {
+pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     /// Event Id
     const EVENT_ID: Id;
 
     /// Event severity level
-    const EVENT_SEVERITY_LEVEL: SeverityLevel;
+    const EVENT_LEVEL: Level;
 
     /// Event constructor
-    fn new_event(data: Self) -> Event<Self> {
-        Event::new(data)
+    fn new_event(data: Self, mod_src: ModuleSource) -> Event<Self> {
+        Event::new(Self::EVENT_ID, data, mod_src)
     }
 }
 
@@ -62,49 +72,82 @@ pub struct Instance;
 /// Event instance IDs are generated for each new Event instance that is created.
 pub type InstanceId = Uid<Instance>;
 
-/// Represents an event. An event type is identified by its EventId.
+/// Event features:
+/// - the event class is uniquely identified by an Id
+///   - the event Id is defined by the Eventful, which must be implemented by the event's data type
+/// - each event instance is assigned a new unique InstanceId
+/// - the event data is typed
+/// - the source code module and line are captured, which enables events to be easily tracked down where
+///   in the code they are being generated from
+/// - events are threadsafe
+/// - events can be cloned
+/// - events are serializable via serde, enabling events to be sent over the network
+/// - events can be tagged in order to enable events to be linked to other entities. For example, events
+///   can be associated with a service, application, transaction, etc. - as long as the related entity
+///   can be identified via a GenericUid.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Event<Data>
 where
-    Data: Debug + Send + Sync + Clone + Eventful,
+    Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    timestamp: DateTime<Utc>,
+    id: Uid<Id>,
     instance_id: InstanceId,
     data: Data,
+    mod_src: ModuleSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tag_ids: Option<HashSet<GenericUid>>
 }
 
 impl<Data> Event<Data>
 where
-    Data: Debug + Send + Sync + Clone + Eventful,
+    Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    const EVENT_TARGET_BASE: &'static str = "oysterpack_events";
+    const EVENT_TARGET_BASE: &'static str = "op_event";
 
     /// Constructs the new event and logs it.
-    /// The log target will take the form: `oysterpack_events::<event-id>`, where `<event-id>` is
-    /// formatted as a ULID, e.g.
-    /// - `oysterpack_event::01CV38FM3Z4M2A8G50QRTGJHP4`
-    pub fn new(data: Data) -> Event<Data> {
-        let event = Event {
-            timestamp: Utc::now(),
+    pub fn new(id: Id, data: Data,mod_src: ModuleSource) -> Event<Data> {
+        Event {
+            id: id.as_uid(),
             instance_id: InstanceId::new(),
             data,
-        };
+            mod_src,
+            tag_ids: None
+        }
+    }
+
+    /// Tags the event
+    pub fn with_tag_id<T>(mut self, tag_id: &T) -> Event<Data>
+    where T: IntoGenericUid
+    {
+        if  self.tag_ids.is_none() {
+            self.tag_ids = Some(HashSet::new())
+        }
+
+        for mut tag_ids in self.tag_ids.iter_mut() {
+            tag_ids.insert(tag_id.generic_uid());
+        }
+
+        self
+    }
+
+    /// Logs the event. The log target will take the form: `op_event::<event-id>`,
+    /// where `<event-id>` is formatted as a ULID, e.g.
+    /// - `op_event::01CV38FM3Z4M2A8G50QRTGJHP4`
+    ///
+    /// The message format is pretty JSON, i.e., the event is serialized to pretty JSON.
+    /// This will make it easier to read.
+    pub fn log(&self) {
         let target = format!(
             "{}::{}",
             Event::<Data>::EVENT_TARGET_BASE,
             Data::EVENT_ID.as_uid()
         );
-        let level = Data::EVENT_SEVERITY_LEVEL.log_level();
         log!(
             target: &target,
-            level,
+            Data::EVENT_LEVEL.into(),
             "{}",
-            json!({
-        "instance_id":event.instance_id.to_string(),
-        "data":event.data
-        })
+            serde_json::to_string_pretty(self).unwrap()
         );
-        event
     }
 
     /// Returns the Event Id
@@ -113,13 +156,13 @@ where
     }
 
     /// Returns the Event SeverityLevel
-    pub fn severity_level(&self) -> SeverityLevel {
-        Data::EVENT_SEVERITY_LEVEL
+    pub fn severity_level(&self) -> Level {
+        Data::EVENT_LEVEL
     }
 
     /// Returns the event timestamp, i.e., when it occurred.
-    pub fn timestamp(&self) -> &DateTime<Utc> {
-        &self.timestamp
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.instance_id.datetime()
     }
 
     /// Each event instance is assigned a unique id for tracking purposes.
@@ -131,21 +174,74 @@ where
     pub fn data(&self) -> &Data {
         &self.data
     }
+
+    /// Returns tags
+    pub fn tag_ids(&self) -> Option<&HashSet<GenericUid>> {
+        self.tag_ids.as_ref()
+    }
+}
+
+impl<Data> std::fmt::Display for Event<Data>
+    where
+        Data: Debug + Display + Send + Sync + Clone + Eventful,{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match serde_json::to_string_pretty(self) {
+            Ok(json) =>  f.write_str(&json),
+            Err(_) => Err(std::fmt::Error)
+        }
+    }
+}
+
+/// Refers to a module source code location.
+/// This can be used to include information regarding where an event occurs in the code to provide
+/// traceability.
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct ModuleSource {
+    module_path: String,
+    line: u32,
+}
+
+impl ModuleSource {
+    /// constructor - use the module_path!() and line!() macros provided by rust.
+    pub fn new(module_path: &str, line: u32) -> ModuleSource {
+        ModuleSource { module_path: module_path.to_string(), line }
+    }
+
+    /// refers source code line number
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// refers to the source code module path
+    pub fn module_path(&self) -> &str {
+        &self.module_path
+    }
+
+    /// returns the crate name, which is extracted from the module path
+    pub fn crate_name(&self) -> &str {
+        self.module_path.split("::").next().unwrap()
+    }
+}
+
+impl std::fmt::Display for ModuleSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{}", self.module_path, self.line)
+    }
 }
 
 /// Class is used to define the event class.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Class {
     id: Id,
-    severity: SeverityLevel,
+    level: Level,
     name: Name,
     description: Description,
-    category: CategoryId,
+    category_ids: HashSet<GenericUid>,
 }
 
 /// Event severity level
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum SeverityLevel {
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum Level {
     /// System is unusable.
     /// A panic condition.
     Emergency,
@@ -168,20 +264,56 @@ pub enum SeverityLevel {
     Debug,
 }
 
-impl SeverityLevel {
-    /// Maps SeverityLevel to oysterpack_log::Level
-    /// - Debug =&gt; Debug
-    /// - Info =&gt; Info
-    /// - Notice | Warning =&gt; Warn
-    /// - _ =&gt; Error
-    pub fn log_level(&self) -> oysterpack_log::Level {
+impl Level {
+    /// Returns true of the level indicates the event is error related
+    pub fn is_error(&self) -> bool {
+        return match self {
+            Level::Error | Level::Critical | Level::Alert | Level::Emergency => true,
+            _ => false,
+        };
+    }
+}
+
+impl From<ErrorLevel> for Level {
+    fn from(error_level: ErrorLevel) -> Level {
+        match error_level {
+            ErrorLevel::Emergency => Level::Emergency,
+            ErrorLevel::Alert => Level::Alert,
+            ErrorLevel::Critical => Level::Critical,
+            ErrorLevel::Error => Level::Error,
+        }
+    }
+}
+
+/// Maps SeverityLevel to oysterpack_log::Level
+/// - Debug =&gt; Debug
+/// - Info =&gt; Info
+/// - Notice | Warning =&gt; Warn
+/// - _ =&gt; Error
+impl Into<oysterpack_log::Level> for Level {
+    fn into(self) -> oysterpack_log::Level {
         match self {
-            SeverityLevel::Debug => oysterpack_log::Level::Debug,
-            SeverityLevel::Info => oysterpack_log::Level::Info,
-            SeverityLevel::Notice | SeverityLevel::Warning => oysterpack_log::Level::Warn,
+            Level::Debug => oysterpack_log::Level::Debug,
+            Level::Info => oysterpack_log::Level::Info,
+            Level::Notice | Level::Warning => oysterpack_log::Level::Warn,
             _ => oysterpack_log::Level::Error,
         }
     }
+}
+
+/// Event error levels level
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum ErrorLevel {
+    /// System is unusable.
+    /// A panic condition.
+    Emergency,
+    /// Action must be taken immediately.
+    /// A condition that should be corrected immediately.
+    Alert,
+    /// Critical conditions
+    Critical,
+    /// Error conditions
+    Error,
 }
 
 op_newtype! {
@@ -194,20 +326,4 @@ op_newtype! {
     /// Description
     #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
     pub Description(String)
-}
-
-op_newtype! {
-    /// Event category
-    #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
-    pub CategoryId(pub u128)
-}
-
-/// Events are grouped into categories.
-/// Categories can be hierarchical.
-#[derive(Debug)]
-pub struct Category {
-    id: CategoryId,
-    name: Name,
-    description: Description,
-    parent_id: Option<CategoryId>,
 }
