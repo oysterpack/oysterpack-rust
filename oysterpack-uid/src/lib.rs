@@ -14,72 +14,70 @@
 
 //! Provides support for universally unique identifiers that confirm to the [ULID spec](https://github.com/ulid/spec).
 //!
-//! You can generate ULIDs as String or u128.
-//! You can convert ULIDs between String and u128.
+//! ## Features
+//! - ULID generation via [ULID](ulid/struct.ULID.html)
+//! - ULIDs can be associated with a domain. Example domains are user ids, request ids, application ids, service ids, etc.
+//!   - [TypedULID&lt;T&gt;](ulid/struct.TypedULID.html)
+//!     - the domain is defined by the type system
+//!     - business logic should be working with this strongly typed domain ULID
+//!   - [DomainULID&lt;T&gt;](ulid/struct.DomainULID.html)
+//!     - the domain is defined explicitly on the struct
+//!     - meant to be used when multiple types of ULIDs need to be handled in a generic fashion, e.g.,
+//!      event tagging, storing to a database, etc
+//! - ULIDs are serializable via [serde](https://crates.io/crates/serde)
 //!
-//! ```
-//! use oysterpack_uid::{
-//!     ulid,
-//!     ulid_u128,
-//!     ulid_u128_into_string,
-//!     ulid_str_into_u128
-//! };
-//!
-//! // generates a new ULID as a string
-//! let id_str = ulid();
-//! // generates a new ULID as u128
-//! let id_u128 = ulid_u128();
-//!
-//! // conversions between string and u128 ULIDs
-//! let ulid_str = ulid_u128_into_string(id_u128);
-//! assert_eq!(ulid_str_into_u128(&ulid_str).unwrap(), id_u128);
-//! ```
-//!
-//! You can define type safe ULID based unique identifiers ([Uid](uid/struct.Uid.html)):
-//!
-//! ### Uid for structs
+//! ### Generating ULIDs
 //! ```rust
-//! use oysterpack_uid::Uid;
+//! # use oysterpack_uid::*;
+//! let id = ULID::generate();
+//! ```
+//!
+//! ### Generating TypedULID&lt;T&gt; where T is a struct
+//! ```rust
+//! use oysterpack_uid::TypedULID;
 //! struct User;
-//! type UserId = Uid<User>;
-//! let id = UserId::new();
+//! type UserId = TypedULID<User>;
+//! let id = UserId::generate();
 //! ```
 //!
-//! ### Uid for traits
+//! ### TypedULID&lt;T&gt; where T is a trait
 //! ```rust
-//! use oysterpack_uid::Uid;
+//! use oysterpack_uid::TypedULID;
 //! trait Foo{}
-//! // Send + Sync are added to the type def in order to satisfy Uid type constraints for thread safety,
-//! // i.e., in order to be able to send the Uid across threads.
-//! type FooId = Uid<dyn Foo + Send + Sync>;
-//! let id = FooId::new();
+//! // Send + Sync are added to the type def in order to satisfy TypedULID type constraints for thread safety,
+//! // i.e., in order to be able to send the TypedULID across threads.
+//! type FooId = TypedULID<dyn Foo + Send + Sync>;
+//! let id = FooId::generate();
 //! ```
-//! By default, Uid<T> is serializable via serde. If serialization is not needed then you can opt out by
-//! including the dependency with default features disabled : `default-features = false`.
+//!
+//! ### Generating DomainULIDs
+//! ```rust
+//! # use oysterpack_uid::*;
+//! const DOMAIN: Domain = Domain("Foo");
+//! let id = DomainULID::generate(&DOMAIN);
+//! ```
 //!
 //! ### ULID vs [UUID](https://crates.io/crates/uuid) Performance
 //! - below are the times to generate 1 million ULIDs are on my machine (Intel(R) Core(TM) i7-3770K CPU @ 3.50GHz):
 //!
 //! |Description|Test|Duration (ms)|
 //! |-----------|----|-------------|
-//! |new ULID encoded as u128|[ulid_128()](uid/fn.ulid_u128.html)|954|
-//! |new ULID as Uid|[Uid::new()](struct.Uid.html#method.new)|953|
-//! |new ULID encoded as String|[ulid()](uid/fn.ulid.html)|2172|
-//! |new V4 UUID|`uuid::Uuid::new_v4()`|1007|
-//! |new V4 UUID encoded as String|`uuid::Uuid::new_v4().to_string()`|6233|
+//! |TypedULID generation|[TypedULID::generate()](struct.TypedULID.html#method.new)|995|
+//! |ULID generation|[ulid_str()](ulid/fn.ulid_str.html)|980|
+//! |V4 UUID generation|`uuid::Uuid::new_v4()`|966|
+//! |TypedULID encoded as String|`TypedULID::generate().to_string()`|4113|
+//! |ULID encoded as String|`ULID::generate().to_string()`|3271|
+//! |V4 UUID encoded as String|`uuid::Uuid::new_v4().to_string()`|6051|
 //!
 //! #### Performance Test Summary
-//! - in terms of raw performance, ULID is slightly faster than UUID, but on par
+//! - in terms of raw id generation performance, it's a draw between ULID and UUID
 //! - ULID is the clear winner in terms of encoding the identifier as a String
-//!   - encoding ULIDs as a string is roughly 2.28x slower
-//!   - encoding UUIDs as a string is roughly 6.19x slower
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.1.3")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.0")]
 
 extern crate chrono;
 extern crate rusty_ulid;
-#[cfg(any(test, feature = "serde"))]
 #[macro_use]
 extern crate serde;
 
@@ -91,9 +89,9 @@ extern crate serde_json;
 #[cfg(test)]
 extern crate uuid;
 
-pub mod uid;
+pub mod ulid;
 
-pub use uid::{ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, GenericUid, Uid, IntoGenericUid, Type};
+pub use ulid::{Domain, DomainULID, HasDomain, TypedULID, ULID};
 
 #[cfg(test)]
 op_tests_mod!();

@@ -15,7 +15,7 @@ use oysterpack::log::log::LevelFilter;
 use oysterpack::uid;
 
 struct User;
-type UserId = uid::Uid<User>;
+type UserId = uid::TypedULID<User>;
 
 #[derive(Serialize, Deserialize)]
 struct Foo(u128);
@@ -29,7 +29,7 @@ op_newtype! {
 fn test() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
-    let user_id = UserId::new();
+    let user_id = UserId::generate();
     info!(
         "new: UserId({}) with datetime: {}",
         user_id,

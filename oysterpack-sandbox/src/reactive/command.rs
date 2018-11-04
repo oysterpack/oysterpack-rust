@@ -53,7 +53,7 @@
 use crossbeam_channel as channel;
 use errors;
 use failure::Fail;
-use oysterpack_uid::Uid;
+use oysterpack_uid::TypedULID;
 use std::{
     fmt::{self, Debug},
     time::{Duration, Instant, SystemTime},
@@ -321,7 +321,7 @@ impl Progress {
     fn new(id: CommandId) -> Progress {
         Progress {
             id,
-            instance_id: InstanceId::new(),
+            instance_id: InstanceId::generate(),
             status: Status::CREATED,
             poll_counter: 0,
             created: SystemTime::now(),
@@ -390,7 +390,7 @@ op_newtype! {
 pub struct Instance;
 
 /// Command instance ULID
-pub type InstanceId = Uid<Instance>;
+pub type InstanceId = TypedULID<Instance>;
 
 /// CommandFailure provides the context for command failures
 #[derive(Debug, Clone)]

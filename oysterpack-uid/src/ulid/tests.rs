@@ -15,36 +15,23 @@
 //! unit tests
 #![allow(warnings)]
 
-use super::{
-    ulid, ulid_str_into_u128, ulid_u128, ulid_u128_into_string, GenericUid, IntoGenericUid, Type,
-    Uid,
-};
+use super::*;
 use serde_json;
 use std::{cmp::Ordering, str::FromStr};
 use tests::run_test;
 
 #[derive(Debug)]
-struct O;
+struct User;
 
-type Oid = Uid<O>;
+impl HasDomain for User {
+    const DOMAIN: Domain = Domain("User");
+}
+
+type UserId = TypedULID<User>;
 
 trait Foo {}
 
-type FooId = Uid<dyn Foo + Send + Sync>;
-
-impl Into<GenericUid> for Oid {
-    fn into(self) -> GenericUid {
-        GenericUid::from_uid(Type("0"), &self)
-    }
-}
-
-impl IntoGenericUid for Oid {
-    const TYPE: Type = Type("0");
-
-    fn id(&self) -> u128 {
-        self.id
-    }
-}
+type FooId = TypedULID<dyn Foo + Send + Sync>;
 
 op_test!(uid_hash_uniqueness {
     test_uid_hash_uniqueness();
@@ -59,14 +46,14 @@ fn test_uid_hash_uniqueness() {
 
     let mut hashes = HashSet::new();
     for _ in 0..count {
-        assert!(hashes.insert(Oid::new()))
+        assert!(hashes.insert(UserId::generate()))
     }
 }
 
 #[test]
 fn uid_str() {
     run_test("uid_str", || {
-        let id = FooId::new();
+        let id = FooId::generate();
         let id_str = id.to_string();
         info!("uid_str: {}", id_str);
         let id2 = FooId::from_str(&id_str).unwrap();
@@ -76,18 +63,18 @@ fn uid_str() {
 
 #[test]
 fn uid_eq() {
-    let id = FooId::new();
+    let id = FooId::generate();
     let id_u128: u128 = id.into();
-    assert_eq!(id, Uid::from(id_u128));
+    assert_eq!(id, TypedULID::from(id_u128));
 }
 
 #[test]
 fn uid_ordered() {
     use std::thread;
-    let mut id = FooId::new();
+    let mut id = FooId::generate();
     for _ in 0..10 {
         thread::sleep_ms(1);
-        let temp = FooId::new();
+        let temp = FooId::generate();
         assert!(temp > id);
         id = temp;
     }
@@ -95,7 +82,7 @@ fn uid_ordered() {
 
 #[test]
 fn uid_next() {
-    let mut id = FooId::new();
+    let mut id = FooId::generate();
     for _ in 0..1000 {
         let temp = id.clone().increment().unwrap();
         assert!(temp > id);
@@ -107,11 +94,11 @@ fn uid_next() {
 fn uid_is_thread_safe() {
     use std::thread;
 
-    let id = FooId::new();
+    let id = FooId::generate();
     let t = thread::spawn(move || id);
     assert!(t.join().unwrap() == id);
 
-    let id = Oid::new();
+    let id = UserId::generate();
     let t = thread::spawn(move || id);
     assert!(t.join().unwrap() == id);
 }
@@ -121,7 +108,7 @@ fn uid_serde() {
     pub struct Foo;
 
     run_test("uid_serde", || {
-        let id = Uid::<Foo>::new();
+        let id = TypedULID::<Foo>::generate();
         let id_json = serde_json::to_string(&id).unwrap();
         info!("uid_serde(): id json: {}", id_json);
         let id2 = serde_json::from_str(&id_json).unwrap();
@@ -137,7 +124,7 @@ fn ulid_functions() {
 
         let mut hashes = HashSet::new();
         for _ in 0..count {
-            assert!(hashes.insert(ulid()))
+            assert!(hashes.insert(ulid_str()))
         }
 
         for uid in hashes {
@@ -150,12 +137,12 @@ fn ulid_functions() {
     });
 }
 
-//[2018-10-21][07:45:29.086804][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): Uid::new() : 954.32511ms
-//[2018-10-21][07:45:30.039817][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): ulid_u128() : 952.878334ms
-//[2018-10-21][07:45:31.076784][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): id.increment().unwrap() : 1.036877973s
-//[2018-10-21][07:45:33.248935][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): ulid() : 2.172073322s
-//[2018-10-21][07:45:34.255594][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): uuid::Uuid::new_v4() : 1.006581624s
-//[2018-10-21][07:45:40.488674][INFO][oysterpack_uid::uid::tests] benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : 6.232997392s
+//[12:13:25.222][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:158] benchmark_new_ulid(): TypedULID::new() : 1.012130242s
+//[12:13:26.232][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:167] benchmark_new_ulid(): ulid_u128() : 1.009717453s
+//[12:13:27.293][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:174] benchmark_new_ulid(): id.increment().unwrap() : 1.06046932s
+//[12:13:29.548][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:183] benchmark_new_ulid(): ulid_str() : 2.254963995s
+//[12:13:30.510][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:190] benchmark_new_ulid(): uuid::Uuid::new_v4() : 962.218743ms
+//[12:13:36.603][INFO][oysterpack_uid::ulid::tests][oysterpack_uid::ulid::tests:200] benchmark_new_ulid(): uuid::Uuid::new_v4().to_string() : 6.093115497s
 #[test]
 #[ignore]
 fn benchmark_new_ulid() {
@@ -163,34 +150,55 @@ fn benchmark_new_ulid() {
 
     run_test("benchmark_new_ulid", || {
         struct Foo;
-        type FooId = Uid<Foo>;;
+        type FooId = TypedULID<Foo>;;
         let now = Instant::now();
         for _ in 0..1000000 {
-            let _ = FooId::new();
+            let _ = FooId::generate();
         }
-        info!("benchmark_new_ulid(): Uid::new() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): TypedULID::generate() : {:?}",
+            now.elapsed()
+        );
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = ULID::generate();
+        }
+        info!("benchmark_new_ulid(): ULID::generate() : {:?}", now.elapsed());
+
+        let id = FooId::generate();
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = id.increment().unwrap();
+        }
+        info!(
+            "benchmark_new_ulid(): TypedULID.increment().unwrap() : {:?}",
+            now.elapsed()
+        );
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = ULID::generate().to_string();
+        }
+        info!("benchmark_new_ulid(): ULID::generate().to_string() : {:?}", now.elapsed());
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = FooId::generate().to_string();
+        }
+        info!("benchmark_new_ulid(): TypedULID::generate().to_string() : {:?}", now.elapsed());
+
+        let now = Instant::now();
+        for _ in 0..1000000 {
+            let _ = ulid_str();
+        }
+        info!("benchmark_new_ulid(): ulid_str() : {:?}", now.elapsed());
 
         let now = Instant::now();
         for _ in 0..1000000 {
             let _ = ulid_u128();
         }
         info!("benchmark_new_ulid(): ulid_u128() : {:?}", now.elapsed());
-
-        let id = FooId::new();
-        let now = Instant::now();
-        for _ in 0..1000000 {
-            let _ = id.increment().unwrap();
-        }
-        info!(
-            "benchmark_new_ulid(): id.increment().unwrap() : {:?}",
-            now.elapsed()
-        );
-
-        let now = Instant::now();
-        for _ in 0..1000000 {
-            let _ = ulid();
-        }
-        info!("benchmark_new_ulid(): ulid() : {:?}", now.elapsed());
 
         use uuid;
         let now = Instant::now();
@@ -215,12 +223,34 @@ fn benchmark_new_ulid() {
 }
 
 #[test]
-fn generic_uid() {
-    run_test("generic_uid", || {
-        let id: GenericUid = Oid::new().into();
-        info!("GenericUid: {}", serde_json::to_string_pretty(&id).unwrap());
+fn domain_uid() {
+    run_test("domain_uid", || {
+        let id: DomainULID = UserId::generate().into();
+        assert_eq!(id.domain(), User::DOMAIN.name());
+        info!("DomainULID: {}", serde_json::to_string_pretty(&id).unwrap());
         info!("{:?} => {}", id, id);
-        let id: GenericUid = Oid::new().generic_uid();
-        info!("GenericUid: {}", serde_json::to_string_pretty(&id).unwrap());
+        const DOMAIN_FOO: Domain = Domain("Foo");
+        let id = FooId::generate();
+        let id: DomainULID = DomainULID::from_ulid(&DOMAIN_FOO, id.ulid());
+        info!("DomainULID: {}", serde_json::to_string_pretty(&id).unwrap());
+        let id = DomainULID::from_ulid(&User::DOMAIN, ULID::generate());
     })
+}
+
+#[test]
+fn ulid_default() {
+    run_test("ULID", || {
+        let id_1: ULID = ULID::generate();
+        let id_2: ULID = ULID::generate();
+        assert!(id_1 != id_2);
+
+        let id_json = serde_json::to_string_pretty(&id_2).unwrap();
+        info!("ULID as json: {}", id_json);
+        let id_3: ULID = serde_json::from_str(&id_json).unwrap();
+        assert_eq!(id_3, id_2);
+
+        let foo_id = FooId::generate();
+        let foo_ulid: ULID = foo_id.into();
+        assert_eq!(foo_id.ulid(), foo_ulid);
+    });
 }

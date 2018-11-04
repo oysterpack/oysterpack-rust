@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_uid"
-version = "0.1.3"
+version = "0.2.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack UID is used to generate unique identifiers"
 license = "MIT/Apache-2.0"
@@ -11,9 +11,9 @@ readme = "README.md"
 keywords = ["ulid"]
 
 [dependencies]
-rusty_ulid = "0.5"
+rusty_ulid = "0.6"
 chrono = "0.4.6"
-serde = {version = "1", features = ["derive"], optional = true}
+serde = {version = "1", features = ["derive"]}
 
 [dev-dependencies]
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
@@ -23,7 +23,3 @@ uuid = { version = "0.6", features = ["v4","serde"] }
 
 [badges]
 maintenance = {status = "actively-developed"}
-
-[features]
-default = ["serde"]
-serialization = ["serde"]

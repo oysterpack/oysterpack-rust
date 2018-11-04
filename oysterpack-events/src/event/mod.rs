@@ -15,20 +15,18 @@
 //! Event domain model.
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{
-    Uid, GenericUid, IntoGenericUid
-};
+use oysterpack_uid::{DomainULID, TypedULID};
 use serde::Serialize;
+use serde_json;
 use std::{
     collections::HashSet,
-    fmt::{
-        Debug, Display
-    }
+    fmt::{Debug, Display},
 };
-use serde_json;
 
 #[macro_use]
 mod macros;
+
+pub mod error;
 
 #[cfg(test)]
 mod tests;
@@ -52,16 +50,16 @@ op_newtype!{
     /// event.
     ///
     /// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
-    /// We are not using ousterpack_uid::Uid explicitly here because we want the ability to define
+    /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
     /// event Id(s) as constants.
     #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
     pub Id(pub u128)
 }
 
 impl Id {
-    /// converts itself into a Uid
-    pub fn as_uid(&self) -> Uid<Self> {
-        Uid::from(self.0)
+    /// converts itself into a TypedULID
+    pub fn as_uid(&self) -> TypedULID<Self> {
+        TypedULID::from(self.0)
     }
 }
 
@@ -70,7 +68,7 @@ impl Id {
 pub struct Instance;
 
 /// Event instance IDs are generated for each new Event instance that is created.
-pub type InstanceId = Uid<Instance>;
+pub type InstanceId = TypedULID<Instance>;
 
 /// Event features:
 /// - the event class is uniquely identified by an Id
@@ -84,18 +82,18 @@ pub type InstanceId = Uid<Instance>;
 /// - events are serializable via serde, enabling events to be sent over the network
 /// - events can be tagged in order to enable events to be linked to other entities. For example, events
 ///   can be associated with a service, application, transaction, etc. - as long as the related entity
-///   can be identified via a GenericUid.
+///   can be identified via a DomainULID.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Event<Data>
 where
     Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    id: Uid<Id>,
+    id: TypedULID<Id>,
     instance_id: InstanceId,
     data: Data,
     mod_src: ModuleSource,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tag_ids: Option<HashSet<GenericUid>>
+    tag_ids: Option<HashSet<DomainULID>>,
 }
 
 impl<Data> Event<Data>
@@ -105,26 +103,24 @@ where
     const EVENT_TARGET_BASE: &'static str = "op_event";
 
     /// Constructs the new event and logs it.
-    pub fn new(id: Id, data: Data,mod_src: ModuleSource) -> Event<Data> {
+    pub fn new(id: Id, data: Data, mod_src: ModuleSource) -> Event<Data> {
         Event {
             id: id.as_uid(),
-            instance_id: InstanceId::new(),
+            instance_id: InstanceId::generate(),
             data,
             mod_src,
-            tag_ids: None
+            tag_ids: None,
         }
     }
 
     /// Tags the event
-    pub fn with_tag_id<T>(mut self, tag_id: &T) -> Event<Data>
-    where T: IntoGenericUid
-    {
-        if  self.tag_ids.is_none() {
+    pub fn with_tag_id(mut self, tag_id: &DomainULID) -> Event<Data> {
+        if self.tag_ids.is_none() {
             self.tag_ids = Some(HashSet::new())
         }
 
         for mut tag_ids in self.tag_ids.iter_mut() {
-            tag_ids.insert(tag_id.generic_uid());
+            tag_ids.insert(tag_id.clone());
         }
 
         self
@@ -162,7 +158,7 @@ where
 
     /// Returns the event timestamp, i.e., when it occurred.
     pub fn timestamp(&self) -> DateTime<Utc> {
-        self.instance_id.datetime()
+        self.instance_id.ulid().datetime()
     }
 
     /// Each event instance is assigned a unique id for tracking purposes.
@@ -176,18 +172,19 @@ where
     }
 
     /// Returns tags
-    pub fn tag_ids(&self) -> Option<&HashSet<GenericUid>> {
+    pub fn tag_ids(&self) -> Option<&HashSet<DomainULID>> {
         self.tag_ids.as_ref()
     }
 }
 
 impl<Data> std::fmt::Display for Event<Data>
-    where
-        Data: Debug + Display + Send + Sync + Clone + Eventful,{
+where
+    Data: Debug + Display + Send + Sync + Clone + Eventful,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match serde_json::to_string_pretty(self) {
-            Ok(json) =>  f.write_str(&json),
-            Err(_) => Err(std::fmt::Error)
+            Ok(json) => f.write_str(&json),
+            Err(_) => Err(std::fmt::Error),
         }
     }
 }
@@ -204,7 +201,10 @@ pub struct ModuleSource {
 impl ModuleSource {
     /// constructor - use the module_path!() and line!() macros provided by rust.
     pub fn new(module_path: &str, line: u32) -> ModuleSource {
-        ModuleSource { module_path: module_path.to_string(), line }
+        ModuleSource {
+            module_path: module_path.to_string(),
+            line,
+        }
     }
 
     /// refers source code line number
@@ -236,7 +236,7 @@ pub struct Class {
     level: Level,
     name: Name,
     description: Description,
-    category_ids: HashSet<GenericUid>,
+    category_ids: HashSet<DomainULID>,
 }
 
 /// Event severity level
@@ -266,21 +266,21 @@ pub enum Level {
 
 impl Level {
     /// Returns true of the level indicates the event is error related
-    pub fn is_error(&self) -> bool {
-        return match self {
+    pub fn is_error(self) -> bool {
+        match self {
             Level::Error | Level::Critical | Level::Alert | Level::Emergency => true,
             _ => false,
-        };
+        }
     }
 }
 
-impl From<ErrorLevel> for Level {
-    fn from(error_level: ErrorLevel) -> Level {
+impl From<error::Level> for Level {
+    fn from(error_level: error::Level) -> Level {
         match error_level {
-            ErrorLevel::Emergency => Level::Emergency,
-            ErrorLevel::Alert => Level::Alert,
-            ErrorLevel::Critical => Level::Critical,
-            ErrorLevel::Error => Level::Error,
+            error::Level::Emergency => Level::Emergency,
+            error::Level::Alert => Level::Alert,
+            error::Level::Critical => Level::Critical,
+            error::Level::Error => Level::Error,
         }
     }
 }
@@ -299,21 +299,6 @@ impl Into<oysterpack_log::Level> for Level {
             _ => oysterpack_log::Level::Error,
         }
     }
-}
-
-/// Event error levels level
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum ErrorLevel {
-    /// System is unusable.
-    /// A panic condition.
-    Emergency,
-    /// Action must be taken immediately.
-    /// A condition that should be corrected immediately.
-    Alert,
-    /// Critical conditions
-    Critical,
-    /// Error conditions
-    Error,
 }
 
 op_newtype! {

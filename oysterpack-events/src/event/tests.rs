@@ -13,13 +13,9 @@
 // limitations under the License.
 
 use super::{Event, Eventful, Id, Level, ModuleSource};
+use oysterpack_uid::{Domain, DomainULID, HasDomain, ULID};
+use std::fmt::{self, Display, Formatter};
 use tests::run_test;
-use std::fmt::{
-    self, Display, Formatter
-};
-use oysterpack_uid::{
-    IntoGenericUid, Type
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 struct Foo(String);
@@ -38,11 +34,13 @@ op_newtype! {
     pub AppId(pub u128)
 }
 
-impl IntoGenericUid for AppId {
-    const TYPE: Type = Type("App");
+impl HasDomain for AppId {
+    const DOMAIN: Domain = Domain("App");
+}
 
-    fn id(&self) -> u128 {
-        self.0
+impl Into<DomainULID> for AppId {
+    fn into(self) -> DomainULID {
+        DomainULID::from_ulid(&AppId::DOMAIN, ULID::from(self.0))
     }
 }
 
@@ -52,11 +50,13 @@ op_newtype! {
     pub ServiceId(pub u128)
 }
 
-impl IntoGenericUid for ServiceId {
-    const TYPE: Type = Type("Service");
+impl HasDomain for ServiceId {
+    const DOMAIN: Domain = Domain("Service");
+}
 
-    fn id(&self) -> u128 {
-        self.0
+impl Into<DomainULID> for ServiceId {
+    fn into(self) -> DomainULID {
+        DomainULID::from_ulid(&ServiceId::DOMAIN, ULID::from(self.0))
     }
 }
 
@@ -78,8 +78,9 @@ fn foo_event() {
         );
         info!("{}", foo_event.data());
         foo_event.log();
-        let foo_event2: Event<Foo> = serde_json::from_str(&serde_json::to_string_pretty(&foo_event).unwrap()).unwrap();
-        assert_eq!(foo_event2.id(),foo_event.id());
+        let foo_event2: Event<Foo> =
+            serde_json::from_str(&serde_json::to_string_pretty(&foo_event).unwrap()).unwrap();
+        assert_eq!(foo_event2.id(), foo_event.id());
         assert_eq!(foo_event.id(), Foo::EVENT_ID);
         assert_eq!(*foo_event.data(), Foo("foo data".into()));
     });
@@ -90,22 +91,19 @@ fn source_code_location_serde() {
     let loc = op_module_source!();
     let loc_json = serde_json::to_string(&loc).unwrap();
     let loc2: ModuleSource = serde_json::from_str(&loc_json).unwrap();
-    assert_eq!(loc,loc2);
+    assert_eq!(loc, loc2);
     let (module, line) = (module_path!(), line!() - 4);
     assert_eq!(module, loc.module_path());
     assert_eq!(line, loc.line());
 }
 
-use std::{
-    thread,
-    sync::mpsc
-};
+use std::{sync::mpsc, thread};
 
 #[test]
 fn event_threadsafety() {
-    run_test("event_threadsafety",||{
+    run_test("event_threadsafety", || {
         let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!());
-        let (tx,rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             tx.send(foo_event).unwrap();
         });
@@ -121,15 +119,15 @@ fn event_tags() {
         let app_id = AppId(1863291903828500526079298022856535457);
         let service_id = ServiceId(1863291948359469739082252902144828404);
         let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!())
-            .with_tag_id(&app_id)
-            .with_tag_id(&app_id)
-            .with_tag_id(&service_id)
-            .with_tag_id(&service_id);
+            .with_tag_id(&app_id.into())
+            .with_tag_id(&app_id.into())
+            .with_tag_id(&service_id.into())
+            .with_tag_id(&service_id.into());
 
         foo_event.log();
         let tags = foo_event.tag_ids().unwrap();
         assert_eq!(tags.len(), 2);
-        assert!(tags.contains(&app_id.generic_uid()));
-        assert!(tags.contains(&service_id.generic_uid()));
+        assert!(tags.contains(&app_id.into()));
+        assert!(tags.contains(&service_id.into()));
     });
 }

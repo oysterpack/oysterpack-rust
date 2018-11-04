@@ -41,8 +41,8 @@ extern crate serde_json;
 extern crate juniper;
 
 // The module declaration order matters because of macro dependencies.
-// The errors module depends on the macros defined within devops and uid modules.
-// Thus, the devops and uid modules need to be brought into scope before the errors module.
+// The errors module depends on the macros defined within devops and ulid modules.
+// Thus, the devops and ulid modules need to be brought into scope before the errors module.
 #[macro_use]
 pub mod devops;
 #[macro_use]

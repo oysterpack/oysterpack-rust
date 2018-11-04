@@ -63,7 +63,7 @@ impl Build {
 }
 
 /// Used to build new Build instances.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct BuildBuilder {
     timestamp: Option<DateTime<Utc>>,
     target: Option<Target>,

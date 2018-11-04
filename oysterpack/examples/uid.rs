@@ -15,12 +15,12 @@ use log::LevelFilter;
 use oysterpack::uid;
 
 struct User;
-type UserId = uid::Uid<User>;
+type UserId = uid::TypedULID<User>;
 
 fn main() {
     simple_logging::log_to_stderr(LevelFilter::Info);
 
-    let user_id = UserId::new();
+    let user_id = UserId::generate();
     info!(
         "new: UserId({}) with datetime: {}",
         user_id,

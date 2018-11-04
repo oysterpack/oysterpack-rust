@@ -6,18 +6,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// uid integration tests
+// ulid integration tests
 
 extern crate oysterpack_uid;
 extern crate serde_json;
 
-use oysterpack_uid::Uid;
+use oysterpack_uid::TypedULID;
 
 pub struct Foo;
 
 #[test]
 fn uid_json() {
-    let id = Uid::<Foo>::new();
+    let id = TypedULID::<Foo>::generate();
     let id_json = serde_json::to_string(&id).unwrap();
     let id2 = serde_json::from_str(&id_json).unwrap();
     assert_eq!(id, id2);

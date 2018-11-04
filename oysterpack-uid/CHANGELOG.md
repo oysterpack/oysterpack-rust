@@ -6,14 +6,20 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
-## \[0.1.3\] 2018-11-03
+## \[0.2.0\] 2018-11-04
 
 ### Added
-- GenericUid
+- ULID
+- DomainULID
 
 ### Changed
 - serialization has been changed from a number to a ULID string format
   - ULIDs are 128 bit, which would fail to parse as JSON
+- renamed uid::ulid() to ulid_str() to signify that it returns the ULID as a raw string
+- renamed uid module to ulid
+
+### Removed
+- uid ULID low level functions are no longer re-exported  
 
 ## \[0.1.2\]
 

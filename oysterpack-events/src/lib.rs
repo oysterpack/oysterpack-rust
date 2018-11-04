@@ -25,14 +25,15 @@ extern crate oysterpack_uid;
 #[macro_use]
 extern crate oysterpack_log;
 
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate serde;
-extern crate serde_json;
 extern crate chrono;
+extern crate serde_json;
 
 pub mod event;
+
+pub use event::{Event, Eventful, Id, InstanceId, Level};
 
 #[cfg(test)]
 #[macro_use]

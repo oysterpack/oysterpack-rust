@@ -35,8 +35,8 @@ let id = UserId::new();
 ```rust
 use oysterpack_uid::Uid;
 trait Foo{}
-// Send + Sync are added to the type def in order to satisfy Uid type constraints for thread safety,
-// i.e., in order to be able to send the Uid across threads.
+TypedULID
+TypedULID
 type FooId = Uid<dyn Foo + Send + Sync>;
 let id = FooId::new();
 ```
