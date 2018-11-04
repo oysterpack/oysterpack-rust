@@ -8,15 +8,19 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[0.2.0\] 2018-11-04
 
+The API has been re-designed and is not backward compatible with v0.1
+
 ### Added
-- ULID
-- DomainULID
+- ULID struct
+- DomainULID struct
+- HasDomain trait
 
 ### Changed
 - serialization has been changed from a number to a ULID string format
   - ULIDs are 128 bit, which would fail to parse as JSON
 - renamed uid::ulid() to ulid_str() to signify that it returns the ULID as a raw string
 - renamed uid module to ulid
+- renamed Uid to TypedULID
 
 ### Removed
 - uid ULID low level functions are no longer re-exported  
