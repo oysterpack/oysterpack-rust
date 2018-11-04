@@ -164,7 +164,10 @@ fn benchmark_new_ulid() {
         for _ in 0..1000000 {
             let _ = ULID::generate();
         }
-        info!("benchmark_new_ulid(): ULID::generate() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): ULID::generate() : {:?}",
+            now.elapsed()
+        );
 
         let id = FooId::generate();
         let now = Instant::now();
@@ -180,13 +183,19 @@ fn benchmark_new_ulid() {
         for _ in 0..1000000 {
             let _ = ULID::generate().to_string();
         }
-        info!("benchmark_new_ulid(): ULID::generate().to_string() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): ULID::generate().to_string() : {:?}",
+            now.elapsed()
+        );
 
         let now = Instant::now();
         for _ in 0..1000000 {
             let _ = FooId::generate().to_string();
         }
-        info!("benchmark_new_ulid(): TypedULID::generate().to_string() : {:?}", now.elapsed());
+        info!(
+            "benchmark_new_ulid(): TypedULID::generate().to_string() : {:?}",
+            now.elapsed()
+        );
 
         let now = Instant::now();
         for _ in 0..1000000 {

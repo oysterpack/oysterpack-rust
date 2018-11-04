@@ -22,8 +22,10 @@
 //!     - business logic should be working with this strongly typed domain ULID
 //!   - [DomainULID&lt;T&gt;](ulid/struct.DomainULID.html)
 //!     - the domain is defined explicitly on the struct
-//!     - meant to be used when multiple types of ULIDs need to be handled in a generic fashion, e.g.,
-//!      event tagging, storing to a database, etc
+//!     - meant to be used when ULIDs need to be handled in a generic fashion, e.g., event tagging, storing to a database, etc
+//! - ULIDs are thread safe, i.e., they can be sent across threads
+//! - ULIDs are lightweight and require no heap allocation
+//!
 //! - ULIDs are serializable via [serde](https://crates.io/crates/serde)
 //!
 //! ### Generating ULIDs
@@ -34,7 +36,7 @@
 //!
 //! ### Generating TypedULID&lt;T&gt; where T is a struct
 //! ```rust
-//! use oysterpack_uid::TypedULID;
+//! # use oysterpack_uid::TypedULID;
 //! struct User;
 //! type UserId = TypedULID<User>;
 //! let id = UserId::generate();

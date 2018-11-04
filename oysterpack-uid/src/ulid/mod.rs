@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Provides a typesafe [ULID](https://github.com/ulid/spec)
+//! Provides the [ULID](https://github.com/ulid/spec) functionality.
 
 use chrono::{DateTime, Utc};
 use rusty_ulid::{self, Ulid};
@@ -50,7 +50,33 @@ pub fn ulid_u128_into_string(ulid: u128) -> String {
     rusty_ulid::Ulid::from(ulid).to_string()
 }
 
-/// ULID
+/// Provides the core ULID functionality.
+///
+/// ```rust
+/// # extern crate oysterpack_uid;
+/// # use oysterpack_uid::*;
+/// let id = ULID::generate();
+///
+///
+/// // Get the ULID creation timestamp
+/// let datetime = id.datetime();
+///
+/// // ULID provides a bunch of useful conversion
+/// let id: u128 = ULID::generate().into();
+/// let id = ULID::from(id);
+/// let (id_1, id_2): (u64, u64) = ULID::generate().into();
+///
+/// let id3: ULID = "01CVG2MP5HJ45SRJTRRHRQ3RJ0".parse().unwrap();
+///
+/// // ULIDs are passed by value, i.e., copied
+///
+/// fn foo(id: ULID) {
+///   println!("{}", id);
+/// }
+///
+/// foo(id3);
+/// foo(id3);
+/// ```
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct ULID(Ulid);
 
@@ -112,7 +138,6 @@ impl From<ULID> for (u64, u64) {
     }
 }
 
-
 impl Serialize for ULID {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -121,7 +146,6 @@ impl Serialize for ULID {
         serializer.serialize_str(self.to_string().as_str())
     }
 }
-
 
 impl<'de> Deserialize<'de> for ULID {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -184,21 +208,17 @@ impl<'de> Deserialize<'de> for ULID {
     }
 }
 
-/// Represents a ULID for a domain defined by type T.
+/// A TypedULID represents a domain specific ULID, where the domain is defined and enforced by the
+/// type system.
 ///
-/// By default, TypedULID is serializable via serde. If serialization is not needed then you can opt out by
-/// including the dependency with default features disabled : `default-features = false`.
-///
-/// # Examples
-///
-/// ## TypedULID for structs
+/// ## How to define a TypedULID for structs
 /// ```rust
 /// # use oysterpack_uid::TypedULID;
 /// struct Foo;
 /// type FooId = TypedULID<Foo>;
 /// let id = FooId::generate();
 /// ```
-/// ## TypedULID for traits
+/// ## How to define TypedULID for traits
 /// ```rust
 /// # use oysterpack_uid::TypedULID;
 /// trait Foo{}
@@ -208,9 +228,23 @@ impl<'de> Deserialize<'de> for ULID {
 /// let id = FooId::generate();
 /// ```
 ///
-/// TypedULID&lt;T&gt; can be converted to a [DomainULID](ulid/struct.DomainULID.html) automatically if the
-/// TypedULID type T implements [HasDomain](ulid/trait.HasDomain.html).
+/// TypedULID&lt;T&gt; can be converted to a [DomainULID](struct.DomainULID.html) automatically if the
+/// TypedULID type T implements [HasDomain](trait.HasDomain.html).
 ///
+/// ```rust
+/// # use oysterpack_uid::*;
+/// struct Foo;
+///
+/// impl HasDomain for Foo {
+///     const DOMAIN: Domain = Domain("Foo");
+/// }
+///
+/// type FooId = TypedULID<Foo>;
+/// let id = FooId::generate();
+/// let id: DomainULID = id.into();
+/// assert_eq!(id.domain(), Foo::DOMAIN.name());
+///
+/// ```
 pub struct TypedULID<T: 'static + ?Sized> {
     id: ULID,
     _type: PhantomData<T>,
@@ -247,7 +281,6 @@ impl<T: 'static + ?Sized> TypedULID<T> {
     }
 }
 
-
 impl<T: 'static> Serialize for TypedULID<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -256,7 +289,6 @@ impl<T: 'static> Serialize for TypedULID<T> {
         serializer.serialize_str(self.to_string().as_str())
     }
 }
-
 
 impl<'de, T: 'static> Deserialize<'de> for TypedULID<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -524,7 +556,9 @@ impl<T: HasDomain> From<TypedULID<T>> for DomainULID {
     }
 }
 
-/// Represents a domain.
+/// Models the domain used by [DomainULID](ulid/struct.DomainULID.html).
+///
+/// This enables Domain(s) to be defined as consts, but in a more typesafe manner.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Domain(pub &'static str);
 
