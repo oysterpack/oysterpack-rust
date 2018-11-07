@@ -12,19 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Error event domain model.
-
-/// Event error levels level
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum Level {
-    /// System is unusable.
-    /// A panic condition.
-    Emergency,
-    /// Action must be taken immediately.
-    /// A condition that should be corrected immediately.
-    Alert,
-    /// Critical conditions
-    Critical,
-    /// Error conditions
-    Error,
-}
+//! macros

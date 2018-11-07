@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
+## \[0.2.1\] 2018-11-07
+
+### Added
+- impl AsRef<str> for Domain
+
 ## \[0.2.0\] 2018-11-04
 
 The API has been re-designed and is not backward compatible with v0.1

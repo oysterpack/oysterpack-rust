@@ -12,7 +12,8 @@ keywords = []
 categories = []
 
 [dependencies]
-log = "0.4"
+oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
+failure = "0.1.3"
 
 [dev-dependencies]
 version-sync = "0.5"

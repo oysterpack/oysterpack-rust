@@ -21,7 +21,7 @@ fn main() {
 }
 
 /// Generates UML class diagrams for the metadata module in Graphviz DOT and SVG format.
-/// The generated files will be located within
+/// The generated files will be located within the target/doc/$crate directory and be named: ml.dot, ml.svg
 fn generate_uml_graphviz() {
     use std::{env, path};
 

@@ -1,29 +1,29 @@
 [package]
-name = "oysterpack_events"
+name = "oysterpack_errors"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Core"
+description = "OysterPack Errors"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-events"
-documentation = "https://docs.rs/oysterpack_core"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-errors"
+documentation = "https://docs.rs/oysterpack_errors"
 readme = "README.md"
+keywords = []
+categories = []
 
 [dependencies]
-oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
 oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
 oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
+oysterpack_events = {path = "../oysterpack-events", version = "0.1"}
 
+failure = "0.1.3"
+chrono = "0.4.6"
 serde = {version = "1", features = ["derive"] }
-serde_json = "1"
-
-chrono = {version = "0.4", features=["serde"]}
 
 [dev-dependencies]
 version-sync = "0.5"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
-failure = "0.1.3"
 
 [badges]
 maintenance = {status = "actively-developed"}

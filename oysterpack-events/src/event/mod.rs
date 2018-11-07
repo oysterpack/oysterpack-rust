@@ -12,21 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Event domain model.
+//! Provides event standardization
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{DomainULID, TypedULID};
+use oysterpack_uid::{ulid::ulid_u128_into_string, DomainULID, TypedULID};
 use serde::Serialize;
 use serde_json;
-use std::{
-    collections::HashSet,
-    fmt::{Debug, Display},
-};
-
-#[macro_use]
-mod macros;
-
-pub mod error;
+use std::collections::HashSet;
+use std::fmt::{self, Debug, Display};
 
 #[cfg(test)]
 mod tests;
@@ -34,14 +27,14 @@ mod tests;
 /// Is applied to some eventful data.
 pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     /// Event Id
-    const EVENT_ID: Id;
+    fn event_id(&self) -> Id;
 
     /// Event severity level
-    const EVENT_LEVEL: Level;
+    fn event_level(&self) -> Level;
 
     /// Event constructor
-    fn new_event(data: Self, mod_src: ModuleSource) -> Event<Self> {
-        Event::new(Self::EVENT_ID, data, mod_src)
+    fn new_event(self, mod_src: ModuleSource) -> Event<Self> {
+        Event::new(self, mod_src)
     }
 }
 
@@ -58,12 +51,18 @@ op_newtype!{
 
 impl Id {
     /// converts itself into a TypedULID
-    pub fn as_uid(&self) -> TypedULID<Self> {
+    pub fn as_ulid(&self) -> TypedULID<Self> {
         TypedULID::from(self.0)
     }
 }
 
-/// Represents an Event instance. This is used to define the EventInstanceId type.
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        f.write_str(ulid_u128_into_string(self.0).as_str())
+    }
+}
+
+/// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
 #[allow(missing_debug_implementations)]
 pub struct Instance;
 
@@ -83,7 +82,7 @@ pub type InstanceId = TypedULID<Instance>;
 /// - events can be tagged in order to enable events to be linked to other entities. For example, events
 ///   can be associated with a service, application, transaction, etc. - as long as the related entity
 ///   can be identified via a DomainULID.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event<Data>
 where
     Data: Debug + Display + Send + Sync + Clone + Eventful,
@@ -91,6 +90,7 @@ where
     id: TypedULID<Id>,
     instance_id: InstanceId,
     data: Data,
+    msg: String,
     mod_src: ModuleSource,
     #[serde(skip_serializing_if = "Option::is_none")]
     tag_ids: Option<HashSet<DomainULID>>,
@@ -102,18 +102,33 @@ where
 {
     const EVENT_TARGET_BASE: &'static str = "op_event";
 
-    /// Constructs the new event and logs it.
-    pub fn new(id: Id, data: Data, mod_src: ModuleSource) -> Event<Data> {
+    /// Constructor
+    pub fn new(data: Data, mod_src: ModuleSource) -> Event<Data> {
+        let msg = data.to_string();
         Event {
-            id: id.as_uid(),
+            id: data.event_id().as_ulid(),
             instance_id: InstanceId::generate(),
             data,
+            msg,
             mod_src,
             tag_ids: None,
         }
     }
 
-    /// Tags the event
+    /// Constructor
+    pub fn from(instance_id: InstanceId, data: Data, mod_src: ModuleSource) -> Event<Data> {
+        let msg = data.to_string();
+        Event {
+            id: data.event_id().as_ulid(),
+            instance_id,
+            data,
+            msg,
+            mod_src,
+            tag_ids: None,
+        }
+    }
+
+    /// Tags the event. DomainULID(s) are used to tag the Event.
     pub fn with_tag_id(mut self, tag_id: &DomainULID) -> Event<Data> {
         if self.tag_ids.is_none() {
             self.tag_ids = Some(HashSet::new())
@@ -136,11 +151,11 @@ where
         let target = format!(
             "{}::{}",
             Event::<Data>::EVENT_TARGET_BASE,
-            Data::EVENT_ID.as_uid()
+            self.data.event_id().as_ulid()
         );
         log!(
             target: &target,
-            Data::EVENT_LEVEL.into(),
+            self.data.event_level().into(),
             "{}",
             serde_json::to_string_pretty(self).unwrap()
         );
@@ -148,12 +163,12 @@ where
 
     /// Returns the Event Id
     pub fn id(&self) -> Id {
-        Data::EVENT_ID
+        self.data.event_id()
     }
 
     /// Returns the Event SeverityLevel
     pub fn severity_level(&self) -> Level {
-        Data::EVENT_LEVEL
+        self.data.event_level()
     }
 
     /// Returns the event timestamp, i.e., when it occurred.
@@ -169,6 +184,17 @@ where
     /// Returns the event data
     pub fn data(&self) -> &Data {
         &self.data
+    }
+
+    /// Returns the event message, which is meant to be in human readable form derived from the
+    /// event's data.
+    pub fn message(&self) -> &str {
+        &self.msg
+    }
+
+    /// Returns where in the source code base the event was created
+    pub fn module_source(&self) -> &ModuleSource {
+        &self.mod_src
     }
 
     /// Returns tags
@@ -240,7 +266,7 @@ pub struct Class {
 }
 
 /// Event severity level
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Level {
     /// System is unusable.
     /// A panic condition.
@@ -270,17 +296,6 @@ impl Level {
         match self {
             Level::Error | Level::Critical | Level::Alert | Level::Emergency => true,
             _ => false,
-        }
-    }
-}
-
-impl From<error::Level> for Level {
-    fn from(error_level: error::Level) -> Level {
-        match error_level {
-            error::Level::Emergency => Level::Emergency,
-            error::Level::Alert => Level::Alert,
-            error::Level::Critical => Level::Critical,
-            error::Level::Error => Level::Error,
         }
     }
 }

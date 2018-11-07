@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::{Event, Eventful, Id, Level, ModuleSource};
+use super::*;
 use oysterpack_uid::{Domain, DomainULID, HasDomain, ULID};
+use serde_json;
 use std::fmt::{self, Display, Formatter};
+use std::sync::mpsc;
+use std::thread;
 use tests::run_test;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -24,7 +27,7 @@ impl Foo {}
 
 impl Display for Foo {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(self.0.as_str())
+        write!(f, r#"Foo says : "{}""#, self.0)
     }
 }
 
@@ -60,17 +63,27 @@ impl Into<DomainULID> for ServiceId {
     }
 }
 
-// BOILERPLATE THAT CAN BE GENERATED //
-impl Eventful for Foo {
+impl Foo {
     const EVENT_ID: Id = Id(1863291442537893263425065359976496302);
 
     const EVENT_LEVEL: Level = Level::Info;
 }
 
+// BOILERPLATE THAT CAN BE GENERATED //
+impl Eventful for Foo {
+    fn event_id(&self) -> Id {
+        Self::EVENT_ID
+    }
+
+    fn event_level(&self) -> Level {
+        Self::EVENT_LEVEL
+    }
+}
+
 #[test]
 fn foo_event() {
     run_test("foo_event", || {
-        let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!());
+        let foo_event = Foo("foo data".into()).new_event(op_module_source!());
         assert!(foo_event.tag_ids().is_none());
         info!(
             "foo_event: {}",
@@ -96,8 +109,6 @@ fn source_code_location_serde() {
     assert_eq!(module, loc.module_path());
     assert_eq!(line, loc.line());
 }
-
-use std::{sync::mpsc, thread};
 
 #[test]
 fn event_threadsafety() {
@@ -130,4 +141,55 @@ fn event_tags() {
         assert!(tags.contains(&app_id.into()));
         assert!(tags.contains(&service_id.into()));
     });
+}
+
+#[test]
+fn error_event() {
+    #[derive(Debug, Fail, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+    #[fail(display = "Invalid auth token")]
+    struct InvalidAuthToken;
+
+    impl InvalidAuthToken {
+        const EVENT_ID: Id = Id(1863507426672832691683188093609129621);
+
+        const EVENT_LEVEL: Level = Level::Error;
+    }
+
+    impl Eventful for InvalidAuthToken {
+        fn event_id(&self) -> Id {
+            Self::EVENT_ID
+        }
+
+        fn event_level(&self) -> Level {
+            Self::EVENT_LEVEL
+        }
+    }
+
+    run_test("error_event", || {
+        let failure = InvalidAuthToken;
+        let failure_event = failure.new_event(op_module_source!());
+        info!("failure_event: {}", failure_event);
+        let failure_event2: Event<InvalidAuthToken> =
+            serde_json::from_str(failure_event.to_string().as_str()).unwrap();
+        assert_eq!(*failure_event2.data(), *failure_event.data());
+    });
+}
+
+#[test]
+fn ordered_levels() {
+    // higher priority comes first
+    assert!(Level::Emergency < Level::Alert);
+    assert!(Level::Alert < Level::Critical);
+    assert!(Level::Critical < Level::Error);
+    assert!(Level::Error < Level::Warning);
+    assert!(Level::Warning < Level::Notice);
+    assert!(Level::Notice < Level::Info);
+    assert!(Level::Info < Level::Debug);
+}
+
+#[test]
+fn event_id_display() {
+    let id = ULID::generate();
+    let id = Id(id.into());
+    assert_eq!(id.to_string(), id.to_string());
 }

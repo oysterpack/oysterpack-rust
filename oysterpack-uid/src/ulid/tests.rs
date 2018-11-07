@@ -263,3 +263,12 @@ fn ulid_default() {
         assert_eq!(foo_id.ulid(), foo_ulid);
     });
 }
+
+#[test]
+fn domain() {
+    run_test("domain", || {
+        const USERS: Domain = Domain("users");
+        assert_eq!(USERS.as_ref(),"users");
+        assert_eq!(USERS.as_ref(),USERS.name());
+    });
+}

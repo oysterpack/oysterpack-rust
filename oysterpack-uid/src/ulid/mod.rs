@@ -558,7 +558,7 @@ impl<T: HasDomain> From<TypedULID<T>> for DomainULID {
 
 /// Models the domain used by [DomainULID](ulid/struct.DomainULID.html).
 ///
-/// This enables Domain(s) to be defined as consts, but in a more typesafe manner.
+/// Domain(s) are static and are defined as consts.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Domain(pub &'static str);
 
@@ -572,6 +572,12 @@ impl Domain {
 impl fmt::Display for Domain {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.0)
+    }
+}
+
+impl AsRef<str> for Domain {
+    fn as_ref(&self) -> &str {
+        self.0
     }
 }
 

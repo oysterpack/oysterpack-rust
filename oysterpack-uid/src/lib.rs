@@ -76,7 +76,7 @@
 //! - ULID is the clear winner in terms of encoding the identifier as a String
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.1")]
 
 extern crate chrono;
 extern crate rusty_ulid;

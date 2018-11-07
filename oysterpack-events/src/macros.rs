@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Event related macros
+//! macros
 
 /// Returns event::ModuleSource
 #[macro_export]

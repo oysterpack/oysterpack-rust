@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This crate models application events.
+//! This crate standardizes events for the OysterPack platform.
 //!
+//! ![uml](ml.svg)
 
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_events/0.1.0")]
@@ -25,15 +26,20 @@ extern crate oysterpack_uid;
 #[macro_use]
 extern crate oysterpack_log;
 
-extern crate failure;
 #[macro_use]
 extern crate serde;
 extern crate chrono;
 extern crate serde_json;
+#[cfg(test)]
+#[macro_use]
+extern crate failure;
 
+#[macro_use]
+mod macros;
 pub mod event;
 
 pub use event::{Event, Eventful, Id, InstanceId, Level};
+pub use macros::*;
 
 #[cfg(test)]
 #[macro_use]
