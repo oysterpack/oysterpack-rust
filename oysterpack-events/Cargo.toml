@@ -15,7 +15,7 @@ oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
 oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
 oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 
-serde = {version = "1", features = ["derive"] }
+serde = {version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 
 chrono = {version = "0.4", features=["serde"]}

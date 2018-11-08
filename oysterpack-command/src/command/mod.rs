@@ -19,6 +19,7 @@ use crossbeam_channel as channel;
 use failure::Fail;
 use oysterpack_events::Eventful;
 use oysterpack_uid::{Domain, HasDomain, TypedULID};
+use oysterpack_errors::Error;
 use std::fmt::Debug;
 use tokio::prelude::*;
 
@@ -34,36 +35,14 @@ pub struct Command<F: Future> {
     progress_sender_chan: Option<channel::Sender<Progress>>,
 }
 
-/// Command transitions:
-///
-/// ```
-/// //          |----------->|-> CANCELLED
-/// // CREATED -|-> RUNNING -|-> SUCCESS
-/// //                       |-> FAILURE
-/// ```
-#[derive(Debug, Clone)]
-pub enum Status {
-    /// Command future has been created, but has not started running
-    CREATED,
-    /// Command future has started running, i.e., it has been polled at least once
-    RUNNING,
-    /// Command has completed successfully
-    SUCCESS,
-    /// Command has completed with an error
-    FAILURE,
-    /// Command was cancelled
-    CANCELLED,
-}
-
 //TODO: Cancellation results in a command cancelled event
-impl<F, T, E> Future for Command<F>
+impl<F, T> Future for Command<F>
 where
-    F: Future<Item = T, Error = E>,
+    F: Future<Item = T, Error = Error>,
     T: Send + Debug,
-    E: Fail,
 {
-    type Item = T;
-    type Error = E;
+    type Item = F::Item;
+    type Error = F::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if self.done() {
@@ -84,15 +63,17 @@ where
         if let Some(poll_duration) = self.progress.poll_duration.checked_add(&poll_duration) {
             self.progress.poll_duration = poll_duration;
         }
-        self.progress.completed = Some(Utc::now());
+
         let result = match poll_result {
             Ok(result @ Async::Ready(_)) => {
+                self.progress.completed = Some(Utc::now());
                 self.progress.status = Status::SUCCESS;
                 Ok(result)
             }
             result @ Ok(Async::NotReady) => result,
             Err(err) => {
-                self.progress.status = Status::FAILURE;
+                self.progress.completed = Some(Utc::now());
+                self.progress.status = Status::FAILURE(err.clone());
                 Err(err)
             }
         };
@@ -107,11 +88,10 @@ where
     }
 }
 
-impl<F, T, E> Command<F>
+impl<F, T> Command<F>
 where
-    F: Future<Item = T, Error = E>,
+    F: Future<Item = T, Error = Error>,
     T: Send + Debug,
-    E: Fail,
 {
     /// Constructs a new Command using the specified future as its underlying future.
     /// The underlying future will be fused.
@@ -165,6 +145,27 @@ pub struct Instance;
 /// Event instance IDs are generated for each new Event instance that is created.
 pub type InstanceId = TypedULID<Instance>;
 
+/// Command transitions:
+///
+/// ```
+/// //          |----------->|-> CANCELLED
+/// // CREATED -|-> RUNNING -|-> SUCCESS
+/// //                       |-> FAILURE
+/// ```
+#[derive(Debug, Clone)]
+pub enum Status {
+    /// Command future has been created, but has not started running
+    CREATED,
+    /// Command future has started running, i.e., it has been polled at least once
+    RUNNING,
+    /// Command has completed successfully
+    SUCCESS,
+    /// Command has completed with an error
+    FAILURE(Error),
+    /// Command was cancelled
+    CANCELLED,
+}
+
 impl Status {
     /// Returns true if status == CREATED
     pub fn created(&self) -> bool {
@@ -195,7 +196,7 @@ impl Status {
 
     /// Returns true if status == FAILURE
     pub fn failure(&self) -> bool {
-        if let Status::FAILURE = *self {
+        if let Status::FAILURE(_) = *self {
             true
         } else {
             false
@@ -226,7 +227,7 @@ pub struct Progress {
     first_polled: Option<DateTime<Utc>>,
     // when the future instance was last polled
     last_polled: Option<DateTime<Utc>>,
-    // when the future completed
+    // when the future completed, whether it succeeded ot failed
     completed: Option<DateTime<Utc>>,
     // the cumulative amount of time spent polling
     poll_duration: Duration,

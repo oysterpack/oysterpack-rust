@@ -22,6 +22,7 @@ use oysterpack_events::{
 use oysterpack_uid::ulid::ulid_u128_into_string;
 use oysterpack_uid::{Domain, HasDomain, TypedULID};
 use std::fmt;
+use std::sync::Arc;
 
 /// Converts the Error into an Event&lt;Error&gt;
 ///
@@ -108,6 +109,10 @@ macro_rules! op_error {
 ///   - normally this should be constant across applications
 ///   - the error instance create timestamp is captured because InstanceId is a ULID
 /// - the source code location that created the error is captured
+/// - errors can have an optional Error cause specified, i.e., errors can be chained
+/// - errors are serializable
+/// - errors are cloneable
+/// - errors implement the Fail trait
 #[derive(Debug, Clone, Serialize, Deserialize, Fail)]
 #[fail(
     display = "{:?}({}:{})[{}] {}",
@@ -123,6 +128,8 @@ pub struct Error {
     level: Level,
     msg: String,
     mod_src: ModuleSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cause: Option<Arc<Error>>
 }
 
 impl Error {
@@ -138,6 +145,15 @@ impl Error {
             level,
             msg: msg.to_string(),
             mod_src,
+            cause: None
+        }
+    }
+
+    /// Sets the error cause
+    pub fn with_cause(self, cause: Error) -> Error {
+        Error {
+            cause: Some(Arc::new(cause)),
+            .. self
         }
     }
 
@@ -169,6 +185,11 @@ impl Error {
     /// Returns the event timestamp, i.e., when it occurred.
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.instance_id.ulid().datetime()
+    }
+
+    /// This error may have been caused by another underlying Error
+    pub fn cause(&self) -> Option<Arc<Error>> {
+        self.cause.as_ref().map(|cause| cause.clone())
     }
 }
 
@@ -290,6 +311,7 @@ mod tests {
     mod errs {
         use super::*;
         pub const FOO_ERR: (Id, Level) = (Id(1863702216415833425137248269790651577), Level::Error);
+        pub const BAR_ERR: (Id, Level) = (Id(1863710844723084375065842092297071588), Level::Alert);
     }
 
     #[test]
@@ -305,6 +327,17 @@ mod tests {
             let event: Event<Error> = err.new_event(op_module_source!());
             event.log();
         });
+    }
+
+    #[test]
+    fn error_with_cause() {
+        run_test("error_with_cause", || {
+            let cause = op_error!(errs::FOO_ERR,"THE ROOT CAUSE");
+            let err = op_error!(errs::BAR_ERR,"THE TOP LEVEL ERROR");
+            let err = err.with_cause(cause);
+            let err_event = op_error_event!(err);
+            err_event.log();
+        })
     }
 
 }
