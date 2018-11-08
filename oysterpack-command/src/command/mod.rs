@@ -17,9 +17,9 @@
 use chrono::{DateTime, Duration, Utc};
 use crossbeam_channel as channel;
 use failure::Fail;
+use oysterpack_errors::Error;
 use oysterpack_events::Eventful;
 use oysterpack_uid::{Domain, HasDomain, TypedULID};
-use oysterpack_errors::Error;
 use std::fmt::Debug;
 use tokio::prelude::*;
 
@@ -53,7 +53,7 @@ where
         self.progress.poll_counter += 1;
         self.progress.last_polled = Some(Utc::now());
         if let Status::CREATED = self.progress.status {
-            self.progress.first_polled = self.progress.last_polled.clone();
+            self.progress.first_polled = self.progress.last_polled;
             self.progress.status = Status::RUNNING;
         }
 

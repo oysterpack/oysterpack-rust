@@ -49,12 +49,13 @@
 //!
 //! ```
 
-// #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_errors/0.1.0")]
 
+#[allow(unused_imports)]
 #[macro_use]
 extern crate oysterpack_log;
+#[allow(unused_imports)]
 #[macro_use]
 pub extern crate oysterpack_events;
 #[macro_use]

@@ -189,7 +189,7 @@ impl Error {
 
     /// This error may have been caused by another underlying Error
     pub fn cause(&self) -> Option<Arc<Error>> {
-        self.cause.as_ref().map(|cause| cause.clone())
+        self.cause.as_ref().cloned()
     }
 }
 

@@ -21,6 +21,7 @@
 //! This implementation provides support for async commands, i.e., command futures.
 
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
+#![allow(unused_imports, dead_code)]
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_command/0.1.0")]
 
@@ -40,7 +41,7 @@ extern crate serde;
 extern crate chrono;
 #[macro_use]
 extern crate failure;
-
+#[macro_use]
 extern crate futures;
 extern crate tokio;
 extern crate tokio_threadpool;
