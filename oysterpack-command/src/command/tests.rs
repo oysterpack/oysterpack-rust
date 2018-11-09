@@ -98,70 +98,6 @@ fn futures_mpsc() {
             Disconnected(T),
         }
 
-        struct ReceiveMessage<T, Handler>
-        where
-            Handler: ProcessMessage<T> + Send + 'static,
-            T: Send + 'static,
-        {
-            state: Option<ReceiveMessageState<T, Handler>>,
-            received_msg_count: usize,
-        }
-
-        impl<T, Handler> Future for ReceiveMessage<T, Handler>
-        where
-            Handler: ProcessMessage<T> + Send + 'static,
-            T: Send + 'static,
-        {
-            type Item = ();
-            type Error = ();
-
-            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-                info!("received_msg_count = {}", self.received_msg_count);
-                let mut state = self.state.take();
-
-                let received_msg = match state {
-                    Some(ref mut state) => match try_ready!(state.receiver.poll()) {
-                        Some(msg) => {
-
-                            // TODO: POC: process the message on the threadpool
-                            let blocking_task = future::poll_fn(|| {
-                                blocking( || info!("BLOCKING ..."))
-                            }).map_err(|_| ());
-                            tokio::spawn(blocking_task);
-
-                            state.handler.process(msg);
-                            self.received_msg_count += 1;
-                            true
-                        }
-                        None => false,
-                    },
-                    None => false,
-                };
-
-                if received_msg {
-                    tokio::spawn(ReceiveMessage {
-                        state: state,
-                        received_msg_count: self.received_msg_count,
-                    });
-                }
-
-                Ok(Async::Ready(()))
-            }
-        }
-
-        struct ReceiveMessageState<T, Handler>
-        where
-            Handler: ProcessMessage<T> + Send,
-            T: Send,
-        {
-            receiver: Receiver<T>,
-            handler: Handler,
-        }
-
-        trait ProcessMessage<T: Send>: Send + Clone {
-            fn process(&mut self, msg: T);
-        }
-
         let (mut tx, mut rx) = mpsc::channel::<String>(0);
 
         let mut tasks = vec![];
@@ -175,23 +111,6 @@ fn futures_mpsc() {
         let task_count = tasks.len();
         info!("SendMessage task count = {}", task_count);
 
-        #[derive(Clone)]
-        struct LogMessage;
-
-        impl<T: std::fmt::Display + Send> ProcessMessage<T> for LogMessage {
-            fn process(&mut self, msg: T) {
-                info!("received msg: {}", msg);
-            }
-        }
-
-        let receive_msgs = ReceiveMessage {
-            state: Some(ReceiveMessageState {
-                receiver: rx,
-                handler: LogMessage,
-            }),
-            received_msg_count: 0,
-        };
-
         // join the send tasks
         let task = future::join_all(tasks).map(|_| ());
         // once all is sent, then close the initial sender channel.
@@ -200,7 +119,12 @@ fn futures_mpsc() {
             tx.close();
             future::ok(())
         });
-        let task = task.join(receive_msgs).map(|_| ());
+        // process all of the messages
+        let task = task.join(rx.for_each(|msg|{
+                info!("received msg: {}", msg);
+                future::ok(())
+            })
+        ).map(|_| ());
 
         tokio::run(task);
         info!("tasks completed");
