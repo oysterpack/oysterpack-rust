@@ -16,7 +16,7 @@ use super::command::*;
 use crossbeam_channel as channel;
 use errors;
 use failure::{self, Fail};
-use oysterpack_uid::ulid_u128;
+use oysterpack_uid::ulid::ulid_u128;
 use std::time::SystemTime;
 use time::system_time;
 use tokio::{self, prelude::*};

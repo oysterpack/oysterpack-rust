@@ -33,19 +33,19 @@ fn test() {
     info!(
         "new: UserId({}) with datetime: {}",
         user_id,
-        user_id.datetime()
+        user_id.ulid().datetime()
     );
 
     let user_id = user_id.increment().unwrap();
     info!(
         "incremented: UserId({}) with datetime: {}",
         user_id,
-        user_id.datetime()
+        user_id.ulid().datetime()
     );
 
     assert!(user_id.clone().increment().unwrap() > user_id);
 
-    let event_id = EventId::new(uid::ulid_u128());
+    let event_id = EventId::new(uid::ulid::ulid_u128());
     info!(
         "event_id as json: {}",
         serde_json::to_string(&event_id).unwrap()
