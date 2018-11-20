@@ -17,7 +17,7 @@
 //! ## Features
 //!
 //! ### Service Instance Tracking
-//! 1. Service Actor instances register themselved in order to be tracked
+//! 1. Service Actor instances register themselves in order to be tracked
 //!
 //! ### Service State
 //! 1. Services can have persistent state

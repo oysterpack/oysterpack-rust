@@ -21,8 +21,10 @@ use oysterpack_events::{
 };
 use oysterpack_uid::ulid::ulid_u128_into_string;
 use oysterpack_uid::{Domain, HasDomain, TypedULID};
-use std::fmt;
-use std::sync::Arc;
+use std::{
+    fmt,
+    sync::Arc,
+};
 
 /// Converts the Error into an Event&lt;Error&gt;
 ///
@@ -44,7 +46,10 @@ use std::sync::Arc;
 #[macro_export]
 macro_rules! op_error_event {
     ($err:expr) => {
-        $err.new_event($crate::oysterpack_events::event::ModuleSource::new(module_path!(), line!()))
+        $err.new_event($crate::oysterpack_events::event::ModuleSource::new(
+            module_path!(),
+            line!(),
+        ))
     };
 }
 
@@ -129,11 +134,10 @@ pub struct Error {
     msg: String,
     mod_src: ModuleSource,
     #[serde(skip_serializing_if = "Option::is_none")]
-    cause: Option<Arc<Error>>
+    cause: Option<Arc<Error>>,
 }
 
 impl Error {
-
     /// Constructor
     pub fn new<MSG>(id: Id, level: Level, msg: MSG, mod_src: ModuleSource) -> Error
     where
@@ -145,7 +149,7 @@ impl Error {
             level,
             msg: msg.to_string(),
             mod_src,
-            cause: None
+            cause: None,
         }
     }
 
@@ -153,7 +157,7 @@ impl Error {
     pub fn with_cause(self, cause: Error) -> Error {
         Error {
             cause: Some(Arc::new(cause)),
-            .. self
+            ..self
         }
     }
 
@@ -191,6 +195,35 @@ impl Error {
     pub fn cause(&self) -> Option<Arc<Error>> {
         self.cause.as_ref().cloned()
     }
+
+    /// Returns the error cause chain.
+    pub fn causes(&self) -> Option<Vec<Arc<Error>>> {
+        fn add_cause(mut error_chain: Vec<Arc<Error>>, error: &Arc<Error>) -> Vec<Arc<Error>> {
+            error_chain.push(Arc::clone(error));
+            match (*error).cause.as_ref() {
+                Some(cause) => add_cause(error_chain, cause),
+                None => error_chain,
+            }
+        }
+
+        self.cause
+            .as_ref()
+            .map(|cause| add_cause(Vec::new(), cause))
+    }
+
+    /// Returns the root error cause
+    pub fn root_cause(&self) -> Option<Arc<Error>> {
+        fn _cause(error: &Arc<Error>) -> Arc<Error> {
+            match (*error).cause.as_ref() {
+                Some(cause) => _cause(cause),
+                None => Arc::clone(error),
+            }
+        }
+
+        self.cause
+            .as_ref()
+            .map(|cause| _cause(cause))
+    }
 }
 
 impl Eventful for Error {
@@ -213,7 +246,11 @@ impl Eventful for Error {
     /// NOTE: the Event ModuleSource is where the event was created in the code. The Error ModuleSource
     /// is where the Error was created in the code.
     fn new_event(self, mod_src: ModuleSource) -> Event<Self> {
-        Event::from(event::InstanceId::from(self.instance_id.ulid()), self, mod_src)
+        Event::from(
+            event::InstanceId::from(self.instance_id.ulid()),
+            self,
+            mod_src,
+        )
     }
 }
 
@@ -288,13 +325,18 @@ mod tests {
             error!("{}", err);
             assert_eq!(Id(id.into()), err.id());
             assert_eq!(Level::Error, err.level());
+            assert_eq!(err.message(), "BOOM");
 
             let err2 = op_error!(Id(id.into()), Level::Error, "BOOM");
             error!("{}", err2);
 
             assert_eq!(err2.id(), err.id());
             assert_eq!(err2.level(), err.level());
-            assert_ne!(err2.instance_id(), err.instance_id())
+            assert_ne!(err2.instance_id(), err.instance_id());
+
+            assert!(err2.cause().is_none());
+            assert!(err2.causes().is_none());
+            assert!(err2.root_cause().is_none());
         });
     }
 
@@ -312,6 +354,8 @@ mod tests {
         use super::*;
         pub const FOO_ERR: (Id, Level) = (Id(1863702216415833425137248269790651577), Level::Error);
         pub const BAR_ERR: (Id, Level) = (Id(1863710844723084375065842092297071588), Level::Alert);
+        pub const BAZ_ERR: (Id, Level) =
+            (Id(1864734280873114327279151769208160280), Level::Critical);
     }
 
     #[test]
@@ -332,9 +376,21 @@ mod tests {
     #[test]
     fn error_with_cause() {
         run_test("error_with_cause", || {
-            let cause = op_error!(errs::FOO_ERR,"THE ROOT CAUSE");
-            let err = op_error!(errs::BAR_ERR,"THE TOP LEVEL ERROR");
+            let cause = op_error!(errs::FOO_ERR, "THE MIDDLE CAUSE");
+            let cause = cause.with_cause(op_error!(errs::BAZ_ERR, "THE ROOT CAUSE"));
+            let err = op_error!(errs::BAR_ERR, "THE TOP LEVEL ERROR");
             let err = err.with_cause(cause);
+
+            match err.causes() {
+                None => panic!("There should have been causes"),
+                Some(causes) => {
+                    assert_eq!(causes.len(), 2);
+                    assert_eq!(causes[0].id(), errs::FOO_ERR.0);
+                    assert_eq!(causes[1].id(), errs::BAZ_ERR.0);
+                }
+            }
+            assert_eq!(err.root_cause().unwrap().id(), errs::BAZ_ERR.0);
+
             let err_event = op_error_event!(err);
             err_event.log();
         })

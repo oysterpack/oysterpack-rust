@@ -23,7 +23,7 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![allow(unused_imports, dead_code)]
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_command/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
 #[macro_use]
 extern crate oysterpack_log;
@@ -33,6 +33,7 @@ extern crate oysterpack_events;
 extern crate oysterpack_macros;
 #[macro_use]
 extern crate oysterpack_errors;
+extern crate actix;
 extern crate oysterpack_app_metadata;
 extern crate oysterpack_uid;
 
@@ -52,7 +53,8 @@ extern crate crossbeam_channel;
 #[cfg(test)]
 extern crate oysterpack_testing;
 
-mod command;
+pub mod actor;
+pub mod message;
 
 #[cfg(test)]
 op_tests_mod!();

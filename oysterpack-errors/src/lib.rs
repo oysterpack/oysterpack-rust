@@ -13,15 +13,18 @@
 // limitations under the License.
 
 //! Errors must be treated as a core architectural concern. This standardizes Errors on the OysterPack
-//! platform. Errors will have the following properties :
+//! platform. Errors have the following properties:
 //!
 //! - Errors are assigned a ULID - think of it as the Error type id
 //! - Error instances are assigned a ULID
 //!   - this enables specific errors to be looked up
-//!   - the error instance creat timestamp is embedded within the ULID
+//!   - the error instance create timestamp is embedded within the ULID
 //! - Errors are assigned a severity level
 //! - The source code location where the Error was created is captured
+//! - Error causes can be linked to the error
 //! - Errors can be converted into oysterpack_events::Event
+//! - Errors implement [failure::Fail](https://docs.rs/failure/latest/failure/trait.Fail.html)
+//! - Errors are threadsafe, i.e., they can be sent across threads
 //!
 //! ## How to Define Errors
 //! ```rust
@@ -42,15 +45,16 @@
 //! }
 //!
 //! fn main() {
+//!     let cause = op_error!(errs::BAR_ERR, "CAUSE".to_string());
 //!     let err = op_error!(errs::FOO_ERR, "BOOM!!".to_string());
+//!     let err = err.with_cause(cause);
 //!     let event: Event<Error> = op_error_event!(err);
 //!     event.log();
 //! }
-//!
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_errors/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_errors/0.1.1")]
 
 #[allow(unused_imports)]
 #[macro_use]
