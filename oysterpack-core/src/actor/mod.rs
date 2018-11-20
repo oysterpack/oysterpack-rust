@@ -36,15 +36,37 @@
 //!    via an actor service.
 
 use actix::{
-    dev::{Actor, ArbiterService, Context, Handler, Message, MessageResponse, ResponseChannel},
+    dev::{
+        Actor, ArbiterService, Context, Handler, Message, MessageResponse, ResponseChannel,
+        SystemService,
+    },
     sync::SyncContext,
 };
 use chrono::{DateTime, Utc};
 use oysterpack_errors::Error;
-use oysterpack_uid::TypedULID;
+use oysterpack_uid::{
+    TypedULID,
+    ulid::ulid_u128_into_string,
+};
+use std::fmt;
 
-/// Service
+/// Service is an ArbiterService, which means a new instance is created per Arbiter.
 pub trait Service: ArbiterService {
+    /// Each Service is assigned an Id
+    fn id(&self) -> Id;
+
+    /// Each new instance is assigned a
+    fn instance_id(&self) -> InstanceId;
+
+    /// When the actor instance was created
+    fn created_on(&self) -> DateTime<Utc> {
+        self.instance_id().ulid().datetime()
+    }
+}
+
+/// AppService is a SystemService, which means there is only 1 instance per actor system.
+/// An actor system maps to an application, thus the name.
+pub trait AppService: SystemService {
     /// Each Service is assigned an Id
     fn id(&self) -> Id;
 
@@ -63,6 +85,12 @@ op_newtype! {
     pub Id(pub u128)
 }
 
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(ulid_u128_into_string(self.0).as_str())
+    }
+}
+
 /// ServiceActor is used to define InstanceId
 #[derive(Debug)]
 pub struct ServiceActor;
@@ -74,6 +102,13 @@ pub type InstanceId = TypedULID<ServiceActor>;
 pub struct ServiceInfo {
     id: Id,
     instance_id: InstanceId,
+}
+
+impl fmt::Display for ServiceInfo {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ServiceInfo({}:{})", self.id, self.instance_id)
+    }
 }
 
 impl ServiceInfo {
@@ -134,7 +169,7 @@ impl Message for GetServiceInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::{Arbiter, Supervised, System};
+    use actix::{msgs::Execute, spawn, Arbiter, Supervised, System};
     use futures::{future, prelude::*};
     use std::time::Duration;
     use tests::run_test;
@@ -159,14 +194,15 @@ mod tests {
             type Context = Context<Self>;
 
             fn started(&mut self, ctx: &mut Self::Context) {
-                info!("started: {:?}", self.service_info);
+                info!("started: {}", self.service_info);
             }
 
             fn stopped(&mut self, ctx: &mut Self::Context) {
-                info!("stopped: {:?}", self.service_info);
+                info!("stopped: {}", self.service_info);
             }
         }
 
+        // TODO: macro
         impl Service for Foo {
             fn id(&self) -> Id {
                 self.service_info.id
@@ -177,18 +213,21 @@ mod tests {
             }
         }
 
+        // TODO: macro
         impl ArbiterService for Foo {
             fn service_started(&mut self, ctx: &mut Context<Self>) {
-                info!("service_started: {:?}", self.service_info);
+                info!("service_started: {}", self.service_info);
             }
         }
 
+        // TODO: macro
         impl Supervised for Foo {
             fn restarting(&mut self, ctx: &mut Self::Context) {
-                info!("restarting: {:?}", self.service_info);
+                info!("restarting: {}", self.service_info);
             }
         }
 
+        // TODO: macro - relies on `service_info` field
         impl Handler<GetServiceInfo> for Foo {
             type Result = ServiceInfo;
 
@@ -200,16 +239,62 @@ mod tests {
         run_test("GetServiceInfo", || {
             System::run(|| {
                 let foo = Arbiter::registry().get::<Foo>();
+                let frontend = Arbiter::builder().name("frontend").build();
+                let frontend2 = frontend.clone();
 
                 Arbiter::spawn(
-                    foo.send(GetServiceInfo)
+                    Arbiter::registry()
+                        .get::<Foo>()
+                        .send(GetServiceInfo)
                         .timeout(Duration::from_millis(10))
                         .then(|info| {
                             match info {
-                                Ok(info) => info!("GetServiceInfo Response: {:?}", info),
+                                Ok(info) => info!("GetServiceInfo Response: {}", info),
                                 Err(err) => error!("GetServiceInfo failed: {:?}", err),
                             }
                             future::ok::<_, ()>(())
+                        }).then(move |_| {
+                            frontend.send(Execute::new(|| -> Result<(), ()> {
+                                let future = Arbiter::registry()
+                                    .get::<Foo>()
+                                    .send(GetServiceInfo)
+                                    .timeout(Duration::from_millis(10))
+                                    .then(|info| {
+                                        match info {
+                                            Ok(info) => info!(
+                                                "frontend: GetServiceInfo Response: {}",
+                                                info
+                                            ),
+                                            Err(err) => {
+                                                error!("frontend: GetServiceInfo failed: {:?}", err)
+                                            }
+                                        }
+                                        future::ok::<_, ()>(())
+                                    });
+                                spawn(future);
+                                Ok(())
+                            }))
+                        }).then(move |_| {
+                            frontend2.send(Execute::new(|| -> Result<(), ()> {
+                                let future = Arbiter::registry()
+                                    .get::<Foo>()
+                                    .send(GetServiceInfo)
+                                    .timeout(Duration::from_millis(10))
+                                    .then(|info| {
+                                        match info {
+                                            Ok(info) => info!(
+                                                "frontend: GetServiceInfo Response: {}",
+                                                info
+                                            ),
+                                            Err(err) => {
+                                                error!("frontend: GetServiceInfo failed: {:?}", err)
+                                            }
+                                        }
+                                        future::ok::<_, ()>(())
+                                    });
+                                spawn(future);
+                                Ok(())
+                            }))
                         }).then(|_| {
                             System::current().stop();
                             future::ok::<_, ()>(())
@@ -260,3 +345,5 @@ mod tests {
         });
     }
 }
+
+pub mod arbiters;
