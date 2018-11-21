@@ -13,7 +13,14 @@
 // limitations under the License.
 
 //! Actors are core on the OysterPack platform. [Actix](https://crates.io/crates/actix) is used as the
-//! underlying Actor framework.
+//! underlying Actor framework. Top level actors are registered as services, either as an ArbiterService
+//! or as a SystemService.
+//!
+//! ## Actor Design Guidelines
+//! 1. Top level actors are registered as services, i.e., ArbiterService or SystemService
+//! 2. Internally, normal actors are used as workers.
+//! 3. Sync actors, i.e., actors with a SyncContext, are not exposed directly. They should be accessed
+//!    via an actor service.
 //!
 //! ## Features
 //! - service actors are assigned an Id
@@ -28,12 +35,6 @@
 //! - events
 //!   - service started
 //!   - service stopped
-//!
-//! ## Actor Design Guidelines
-//! 1. Top level actors are registered as services, i.e., ArbiterService or SystemService
-//! 2. Internally, normal actors are used as workers.
-//! 3. Sync actors, i.e., actors with a SyncContext, are not exposed directly. They should be accessed
-//!    via an actor service.
 
 use actix::{
     dev::{

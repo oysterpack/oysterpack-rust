@@ -12,7 +12,48 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Arbiter central registry
+//! The Arbiters actor serves as the Arbiter central registry.
+//! - Arbiters implements AppService, i.e., it is registered as a SystemService.
+//!
+//! ## Messages
+//! - [GetArbiter](struct.GetArbiter.html)
+//! - [GetArbiterNames](struct.GetArbiterNames.html)
+//!
+//! ```rust
+//! # extern crate oysterpack_core;
+//! # extern crate actix;
+//! # extern crate futures;
+//! # use oysterpack_core::actor::arbiters::*;
+//! # use actix::{msgs::{Execute, StartActor}, prelude::*, registry::SystemRegistry,spawn,};
+//! # use futures::{future, prelude::*};
+//! System::run(|| {
+//!   let arbiters = System::current().registry().get::<Arbiters>();
+//!   let future = arbiters
+//!       .send(GetArbiterNames)
+//!       .and_then(|names| {
+//!           // There are no Arbiters registered
+//!           assert!(names.is_none());
+//!           let arbiters = System::current().registry().get::<Arbiters>();
+//!           // A new Arbiter named "WEB" will be registered and its address will be returned
+//!           arbiters.send(GetArbiter::from("WEB"))
+//!       }).and_then(|arbiter_addr| {
+//!           arbiter_addr.send(actix::msgs::Execute::new(|| -> Result<(), ()> {
+//!               let arbiters = System::current().registry().get::<Arbiters>();
+//!               let future = arbiters.send(GetArbiterNames).then(|result| {
+//!                 // The "WEB" Arbiter is registered
+//!                 assert_eq!(result.unwrap().unwrap(),vec![Name("WEB")]);
+//!                 future::ok::<(), ()>(())
+//!               });
+//!               spawn(future);
+//!               Ok(())
+//!           }))
+//!       }).and_then(|_| {
+//!           System::current().stop();
+//!           Ok(())
+//!       }).map_err(|_| ());
+//!   spawn(future);
+//! });
+//! ```
 
 use super::{
     AppService, GetServiceInfo, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
@@ -27,7 +68,7 @@ use std::{collections::HashMap, fmt};
 /// Arbiters ServiceId (01CWSGYS79QQHAE6ZDRKB48F6S)
 pub const SERVICE_ID: ServiceId = ServiceId(1865070194757304474174751345022876889);
 
-/// Arbiter registry
+/// Arbiter registry AppService
 #[derive(Debug)]
 pub struct Arbiters {
     service_info: ServiceInfo,
@@ -113,6 +154,25 @@ impl Message for GetArbiter {
     type Result = Addr<Arbiter>;
 }
 
+impl GetArbiter {
+    /// Name getter
+    pub fn name(&self) -> Name {
+        self.name
+    }
+}
+
+impl From<Name> for GetArbiter {
+    fn from(name: Name) -> Self {
+        GetArbiter { name }
+    }
+}
+
+impl From<&'static str> for GetArbiter {
+    fn from(name: &'static str) -> Self {
+        GetArbiter { name: Name(name) }
+    }
+}
+
 impl Handler<GetArbiter> for Arbiters {
     type Result = MessageResult<GetArbiter>;
 
@@ -126,13 +186,173 @@ impl Handler<GetArbiter> for Arbiters {
     }
 }
 
+/// GetArbiterNames request message
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct GetArbiterNames;
+
+impl Message for GetArbiterNames {
+    type Result = Option<Vec<Name>>;
+}
+
+impl Handler<GetArbiterNames> for Arbiters {
+    type Result = MessageResult<GetArbiterNames>;
+
+    fn handle(&mut self, _: GetArbiterNames, _: &mut Self::Context) -> Self::Result {
+        if self.arbiters.is_empty() {
+            return MessageResult(None);
+        }
+        let names = self.arbiters.keys().map(|key| key.clone()).collect();
+        MessageResult(Some(names))
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::{msgs::Execute, prelude::*, registry::SystemRegistry, spawn};
+    use actix::{
+        msgs::{Execute, StartActor},
+        prelude::*,
+        registry::SystemRegistry,
+        spawn,
+    };
     use futures::{future, prelude::*};
     use tests::run_test;
+
+    fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
+        f.map(|_| ()).map_err(|_| ())
+    }
+
+    fn spawn_task(future: impl Future + 'static) {
+        spawn(into_task(future));
+    }
+
+    fn stop_system() {
+        warn!("Sending System stop signal ...");
+        System::current().stop();
+        warn!("System stop signalled");
+    }
+
+    struct Foo;
+
+    impl Actor for Foo {
+        type Context = Context<Self>;
+
+        fn started(&mut self, ctx: &mut Self::Context) {
+            info!("Foo started");
+        }
+
+        fn stopped(&mut self, ctx: &mut Self::Context) {
+            info!("Foo stopped");
+        }
+    }
+
+    struct Echo(String);
+
+    impl Message for Echo {
+        type Result = String;
+    }
+
+    impl Handler<Echo> for Foo {
+        type Result = MessageResult<Echo>;
+
+        fn handle(&mut self, request: Echo, _: &mut Self::Context) -> Self::Result {
+            MessageResult(request.0.clone())
+        }
+    }
+
+    #[test]
+    fn get_arbiter_names() {
+        run_test("arbiters", || {
+            System::run(|| {
+                let arbiters = System::current().registry().get::<Arbiters>();
+                let future = arbiters
+                    .send(GetArbiterNames)
+                    .and_then(|names| {
+                        assert!(names.is_none());
+                        let arbiters = System::current().registry().get::<Arbiters>();
+                        arbiters.send(GetArbiter::from("WEB"))
+                    }).and_then(|arbiter_addr| {
+                        arbiter_addr.send(actix::msgs::Execute::new(|| -> Result<(), ()> {
+                            let arbiters = System::current().registry().get::<Arbiters>();
+                            let future = arbiters.send(GetArbiterNames).then(|result| {
+                                assert_eq!(result.unwrap().unwrap(), vec![Name("WEB")]);
+                                future::ok::<(), ()>(())
+                            });
+                            spawn(future);
+                            Ok(())
+                        }))
+                    }).and_then(|_| {
+                        System::current().stop();
+                        Ok(())
+                    }).map_err(|_| ());
+                spawn(future);
+            });
+        });
+
+        run_test("GetArbiterNames - no Arbiters registered", || {
+            System::run(|| {
+                let arbiters = System::current().registry().get::<Arbiters>();
+                let future = arbiters
+                    .send(GetArbiterNames)
+                    .then(|result| {
+                        match result {
+                            Ok(None) => info!("There are no Arbiters registered"),
+                            Ok(Some(names)) => {
+                                panic!("There should be no Arbiters registered: {:?}", names)
+                            }
+                            Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
+                        }
+                        future::ok::<(), ()>(())
+                    }).then(|_| {
+                        stop_system();
+                        future::ok::<(), ()>(())
+                    });
+                spawn_task(future);
+            });
+        });
+
+        run_test("GetArbiterNames - Arbiter registered", || {
+            System::run(|| {
+                let arbiters = System::current().registry().get::<Arbiters>();
+                let future = arbiters
+                    .send(GetArbiter::from("A"))
+                    .then(|result| match result {
+                        Ok(arbiter_addr) => arbiter_addr.send(StartActor::new(|_| Foo)),
+                        Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
+                    }).then(|result| {
+                        match result {
+                            Ok(foo_addr) => {
+                                let addr = foo_addr.clone();
+                                foo_addr.send(Echo("CIAO".to_string())).then(|result| {
+                                    match result {
+                                        Ok(msg) => info!("Echo response: {}", msg),
+                                        Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
+                                    }
+                                    // when all references to the Foo actor address get dropped,
+                                    // the actor instance is stopped.
+                                    future::ok::<_, ()>(addr)
+                                })
+                            }
+                            Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
+                        }
+                    }).then(move |_| arbiters.send(GetArbiterNames))
+                    .then(|result| {
+                        match result {
+                            Ok(None) => panic!("Arbiters should be registered"),
+                            Ok(Some(names)) => info!("Registered Arbiters: {:?}", names),
+                            Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
+                        }
+                        future::ok::<(), ()>(())
+                    }).then(|_| {
+                        stop_system();
+                        future::ok::<(), ()>(())
+                    });
+
+                spawn_task(future);
+            });
+        });
+    }
 
     #[test]
     fn get_service_info() {
@@ -143,7 +363,12 @@ mod tests {
                     arbiters.send(GetServiceInfo).then(|result| {
                         match result {
                             Ok(info) => info!("{}", info),
-                            Err(err) => panic!("{}", err),
+                            Err(err) => {
+                                // this should only happen if the actor has been stopped, but in this case
+                                // because the Actor is an ArbiterService, it will run as long as the Arbiter
+                                // is running.
+                                panic!("SHOULD NEVER HAPPEN: {}", err)
+                            }
                         }
                         future::ok::<_, ()>(())
                     })
@@ -158,18 +383,14 @@ mod tests {
             });
         });
 
-        fn into_task<>(f: impl Future) -> impl Future<Item=(), Error=()> {
-            f.map(|_| ()).map_err(|_| ())
-        }
-
         run_test("GetServiceInfo - within separate Arbiter", || {
             System::run(|| {
-                fn get_service_info() -> impl Future {
+                fn get_service_info(msg: String) -> impl Future {
                     let arbiters = System::current().registry().get::<Arbiters>();
-                    arbiters.send(GetServiceInfo).then(|result| {
+                    arbiters.send(GetServiceInfo).then(move |result| {
                         match result {
-                            Ok(info) => info!("{}", info),
-                            Err(err) => panic!("{}", err),
+                            Ok(info) => info!("{}: {}", info, msg),
+                            Err(err) => panic!("SHOULD NEVER HAPPEN {}", err),
                         }
                         future::ok::<_, ()>(())
                     })
@@ -177,24 +398,52 @@ mod tests {
 
                 const FRONTEND: Name = Name("FRONTEND");
                 let arbiters = System::current().registry().get::<Arbiters>();
-                let future =
-                    arbiters
-                        .send(GetArbiter { name: FRONTEND })
-                        .then(|result| {
-                            let future = match result {
-                                Ok(arbiter) => arbiter.send(Execute::new(|| -> Result<(), ()> {
-                                    let future = get_service_info().then(|_| {
-                                        System::current().stop();
-                                        future::ok::<_, ()>(())
-                                    });
-                                    spawn(future);
-                                    Ok(())
-                                })),
-                                Err(err) => panic!("GetArbiter failed: {}", err),
-                            };
-                            spawn(into_task(future));
-                            future::ok::<_, ()>(())
-                        });
+                let future = arbiters.send(GetArbiter { name: FRONTEND }).then(|result| {
+                    let future = match result {
+                        Ok(arbiter) => arbiter.send(Execute::new(|| -> Result<(), ()> {
+                            spawn_task(get_service_info("FRONTEND - 1".to_string()));
+                            spawn_task(get_service_info("FRONTEND - 2".to_string()));
+                            Ok(())
+                        })),
+                        Err(err) => panic!("GetArbiter failed: {}", err),
+                    };
+                    spawn_task(future.then(|_| {
+                        stop_system();
+                        future::ok::<_, ()>(())
+                    }));
+                    future::ok::<_, ()>(())
+                });
+                spawn(future);
+            });
+        });
+
+        run_test("GetServiceInfo - stop system tasks are spawned", || {
+            System::run(|| {
+                fn get_service_info() -> impl Future {
+                    let arbiters = System::current().registry().get::<Arbiters>();
+                    arbiters.send(GetServiceInfo).then(|result| {
+                        match result {
+                            Ok(info) => info!("{}", info),
+                            Err(err) => {
+                                // this should only happen if the actor has been stopped, but in this case
+                                // because the Actor is an ArbiterService, it will run as long as the Arbiter
+                                // is running.
+                                panic!("SHOULD NEVER HAPPEN: {}", err)
+                            }
+                        }
+                        future::ok::<_, ()>(())
+                    })
+                }
+
+                for _ in 0..10 {
+                    spawn_task(get_service_info());
+                }
+
+                let future = get_service_info().then(|_| {
+                    stop_system();
+                    future::ok::<_, ()>(())
+                });
+
                 spawn(future);
             });
         });
