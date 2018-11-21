@@ -44,10 +44,7 @@ use actix::{
 };
 use chrono::{DateTime, Utc};
 use oysterpack_errors::Error;
-use oysterpack_uid::{
-    TypedULID,
-    ulid::ulid_u128_into_string,
-};
+use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID};
 use std::fmt;
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
@@ -105,7 +102,6 @@ pub struct ServiceInfo {
 }
 
 impl fmt::Display for ServiceInfo {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ServiceInfo({}:{})", self.id, self.instance_id)
     }
@@ -261,10 +257,9 @@ mod tests {
                                     .timeout(Duration::from_millis(10))
                                     .then(|info| {
                                         match info {
-                                            Ok(info) => info!(
-                                                "frontend: GetServiceInfo Response: {}",
-                                                info
-                                            ),
+                                            Ok(info) => {
+                                                info!("frontend: GetServiceInfo Response: {}", info)
+                                            }
                                             Err(err) => {
                                                 error!("frontend: GetServiceInfo failed: {:?}", err)
                                             }
@@ -282,10 +277,9 @@ mod tests {
                                     .timeout(Duration::from_millis(10))
                                     .then(|info| {
                                         match info {
-                                            Ok(info) => info!(
-                                                "frontend: GetServiceInfo Response: {}",
-                                                info
-                                            ),
+                                            Ok(info) => {
+                                                info!("frontend: GetServiceInfo Response: {}", info)
+                                            }
                                             Err(err) => {
                                                 error!("frontend: GetServiceInfo failed: {:?}", err)
                                             }
