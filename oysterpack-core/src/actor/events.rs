@@ -15,13 +15,7 @@
 //! Actor Events
 
 use super::*;
-use oysterpack_events::{
-    Eventful,
-    Id as EventId,
-    Level,
-    event::ModuleSource,
-    Event
-};
+use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
 use std::fmt;
 
 /// Actor Service lifecycle event
@@ -48,7 +42,7 @@ pub enum LifeCycle {
     Restarting,
     /// If actor does not modify execution context during stopping state actor state changes to Stopped.
     /// This state is considered final and at this point actor get dropped.
-    Stopped
+    Stopped,
 }
 
 impl fmt::Display for LifeCycle {
@@ -69,7 +63,7 @@ pub enum Scope {
     /// The Actor service is scoped per Arbiter
     Arbiter,
     /// The Actor service is scoped per System
-    System
+    System,
 }
 
 impl fmt::Display for Scope {
@@ -86,22 +80,22 @@ impl ServiceLifeCycleEvent {
     pub const EVENT_ID: EventId = EventId(1865187483179844794403987534312933829);
 
     /// Constructs a new event for a Service
-    pub fn for_service(service: &impl Service, state: LifeCycle ) -> ServiceLifeCycleEvent {
+    pub fn for_service(service: &impl Service, state: LifeCycle) -> ServiceLifeCycleEvent {
         ServiceLifeCycleEvent {
             id: service.id().into(),
             instance_id: service.instance_id(),
             scope: Scope::Arbiter,
-            state
+            state,
         }
     }
 
     /// Constructs a new event for a Service
-    pub fn for_app_service(service: &impl AppService, state: LifeCycle ) -> ServiceLifeCycleEvent {
+    pub fn for_app_service(service: &impl AppService, state: LifeCycle) -> ServiceLifeCycleEvent {
         ServiceLifeCycleEvent {
             id: service.id().into(),
             instance_id: service.instance_id(),
             scope: Scope::System,
-            state
+            state,
         }
     }
 
@@ -109,7 +103,6 @@ impl ServiceLifeCycleEvent {
     pub fn id(&self) -> Id {
         self.id.into()
     }
-
 
     /// Actor Service InstanceId getter
     pub fn instance_id(&self) -> InstanceId {
@@ -137,13 +130,17 @@ impl Eventful for ServiceLifeCycleEvent {
     fn event_level(&self) -> Level {
         match self.state {
             LifeCycle::Restarting => Level::Warning,
-            _ => Level::Info
+            _ => Level::Info,
         }
     }
 }
 
 impl fmt::Display for ServiceLifeCycleEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"{} Actor Service ({}:{}) {}", self.scope, self.id, self.instance_id, self.state)
+        write!(
+            f,
+            "{} Actor Service ({}:{}) {}",
+            self.scope, self.id, self.instance_id, self.state
+        )
     }
 }

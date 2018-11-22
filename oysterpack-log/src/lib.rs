@@ -70,7 +70,6 @@ pub mod manager;
 
 pub use config::LogConfig;
 
-
 pub use log::{
     // re-export the log macros
     debug,

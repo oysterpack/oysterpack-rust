@@ -53,6 +53,9 @@ extern crate crossbeam_channel;
 #[cfg(test)]
 extern crate oysterpack_testing;
 
+#[macro_use]
+mod macros;
+
 pub mod actor;
 pub mod message;
 

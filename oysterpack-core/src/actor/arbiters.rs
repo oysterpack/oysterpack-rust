@@ -55,20 +55,17 @@
 //! });
 //! ```
 
-use super::{
-    AppService, GetServiceInfo, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
-    events
-};
 use actix::{
     registry::SystemService, Actor, Addr, Arbiter, Context, Handler, Message, MessageResult,
     Supervised,
 };
+use actor::{self, events, AppService, GetServiceInfo, ServiceInfo};
 use futures::prelude::*;
-use std::{collections::HashMap, fmt};
 use oysterpack_events::Eventful;
+use std::{collections::HashMap, fmt};
 
 /// Arbiters ServiceId (01CWSGYS79QQHAE6ZDRKB48F6S)
-pub const SERVICE_ID: ServiceId = ServiceId(1865070194757304474174751345022876889);
+pub const SERVICE_ID: actor::Id = actor::Id(1865070194757304474174751345022876889);
 
 /// Arbiter registry AppService
 #[derive(Debug)]
@@ -86,6 +83,10 @@ impl Default for Arbiters {
     }
 }
 
+op_actor_service! {
+    AppService(Arbiters)
+}
+
 /// Arbiter name
 #[derive(Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Clone, Copy)]
 pub struct Name(pub &'static str);
@@ -99,56 +100,6 @@ impl From<&'static str> for Name {
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.0)
-    }
-}
-
-impl Actor for Arbiters {
-    type Context = Context<Self>;
-
-    fn started(&mut self, _: &mut Self::Context) {
-        let event = events::ServiceLifeCycleEvent::for_app_service(self, events::LifeCycle::Started)
-            .new_event(op_module_source!());
-        event.log();
-    }
-
-    fn stopped(&mut self, _: &mut Self::Context) {
-        let event = events::ServiceLifeCycleEvent::for_app_service(self, events::LifeCycle::Stopped)
-            .new_event(op_module_source!());
-        event.log();
-    }
-}
-
-impl AppService for Arbiters {
-    fn id(&self) -> ServiceId {
-        self.service_info.id
-    }
-
-    fn instance_id(&self) -> ServiceInstanceId {
-        self.service_info.instance_id
-    }
-}
-
-impl SystemService for Arbiters {
-    fn service_started(&mut self, _: &mut Context<Self>) {
-        let event = events::ServiceLifeCycleEvent::for_app_service(self, events::LifeCycle::ServiceStarted)
-            .new_event(op_module_source!());
-        event.log();
-    }
-}
-
-impl Supervised for Arbiters {
-    fn restarting(&mut self, _: &mut Self::Context) {
-        let event = events::ServiceLifeCycleEvent::for_app_service(self, events::LifeCycle::Restarting)
-            .new_event(op_module_source!());
-        event.log();
-    }
-}
-
-impl Handler<GetServiceInfo> for Arbiters {
-    type Result = ServiceInfo;
-
-    fn handle(&mut self, _: GetServiceInfo, _: &mut Self::Context) -> Self::Result {
-        self.service_info
     }
 }
 

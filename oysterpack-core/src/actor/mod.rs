@@ -174,8 +174,10 @@ impl Message for GetServiceInfo {
     type Result = ServiceInfo;
 }
 
-pub mod events;
+pub mod app;
 pub mod arbiters;
+pub mod events;
+pub mod logger;
 
 #[allow(warnings)]
 #[cfg(test)]
@@ -355,5 +357,3 @@ mod tests {
         });
     }
 }
-
-
