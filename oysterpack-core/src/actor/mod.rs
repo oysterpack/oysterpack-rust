@@ -45,7 +45,7 @@ use actix::{
 };
 use chrono::{DateTime, Utc};
 use oysterpack_errors::Error;
-use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID};
+use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
 use std::fmt;
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
@@ -86,6 +86,18 @@ op_newtype! {
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(ulid_u128_into_string(self.0).as_str())
+    }
+}
+
+impl From<ULID> for Id {
+    fn from(id: ULID) -> Id {
+        Id(id.into())
+    }
+}
+
+impl Into<ULID> for Id {
+    fn into(self) -> ULID {
+        ULID::from(self.0)
     }
 }
 
@@ -161,6 +173,9 @@ pub struct GetServiceInfo;
 impl Message for GetServiceInfo {
     type Result = ServiceInfo;
 }
+
+pub mod events;
+pub mod arbiters;
 
 #[allow(warnings)]
 #[cfg(test)]
@@ -341,4 +356,4 @@ mod tests {
     }
 }
 
-pub mod arbiters;
+
