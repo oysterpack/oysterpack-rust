@@ -52,6 +52,9 @@ extern crate crossbeam_channel;
 #[macro_use]
 #[cfg(test)]
 extern crate oysterpack_testing;
+#[macro_use]
+#[cfg(test)]
+extern crate oysterpack_app_metadata_macros;
 
 #[macro_use]
 mod macros;

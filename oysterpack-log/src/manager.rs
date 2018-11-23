@@ -14,11 +14,14 @@
 
 //! This module is the anchor point for configuring and initializing the [log](https://crates.io/crates/log) system.
 
+use config::LogConfig;
+use fern::Output;
+use log::Record;
 use oysterpack_app_metadata::Build;
-use fern::{Dispatch, Output};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
-use LogConfig;
-use config::LogOutput;
+use std::{
+    fmt,
+    sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT},
+};
 
 const LOG_NOT_INITIALIZED: usize = 0;
 const LOG_INITIALIZING: usize = 1;
@@ -34,11 +37,10 @@ static mut LOG_CONFIG: Option<LogConfig> = None;
 ///   - Build is used instead of the more specific PackageId because using Build ensures that the crate's
 ///     package name was obtained during build time. Otherwise, it's too easy to "hardcode" the crate package
 ///     name
-pub fn init(config: LogConfig, build: &Build) {
+pub fn init<F: RecordLogger>(config: LogConfig, build: &Build, logger: F) {
     match LOG_STATE.compare_and_swap(LOG_NOT_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) {
         LOG_NOT_INITIALIZED => {
-            let mut dispatch = fern::Dispatch::new()
-                .level(config.root_level().to_level_filter());
+            let mut dispatch = fern::Dispatch::new().level(config.root_level().to_level_filter());
 
             if let Some(crate_log_level) = config.crate_level() {
                 let crate_name = build.package().id().name().to_string();
@@ -46,18 +48,19 @@ pub fn init(config: LogConfig, build: &Build) {
             }
 
             if let Some(target_levels) = config.target_levels() {
-                for (target,level) in target_levels {
-                    dispatch = dispatch.level_for(target.as_ref().to_string(), level.to_level_filter());
+                for (target, level) in target_levels {
+                    dispatch =
+                        dispatch.level_for(target.as_ref().to_string(), level.to_level_filter());
                 }
             }
 
-            dispatch = configure_output(&config,dispatch);
+            dispatch
+                .chain(Output::call(move |record| logger.log(record)))
+                .apply()
+                .unwrap();
 
-            dispatch.apply().unwrap();
             let config_json = serde_json::to_string_pretty(&config).unwrap();
-            unsafe {
-                LOG_CONFIG = Some(config)
-            }
+            unsafe { LOG_CONFIG = Some(config) }
             LOG_STATE.swap(LOG_INITIALIZED, Ordering::SeqCst);
             info!("logging has been initialized using config: {}", config_json);
         }
@@ -66,34 +69,61 @@ pub fn init(config: LogConfig, build: &Build) {
             while LOG_STATE.load(Ordering::SeqCst) != LOG_INITIALIZED {
                 std::thread::yield_now();
             }
-        },
+        }
         _ => warn!("logging has already been initialized"),
     }
 }
 
-fn configure_output(config: &LogConfig, dispatch: Dispatch) -> fern::Dispatch {
-    match config.output() {
-        LogOutput::Stdout(line_sep) => {
-            configure_console_format(dispatch.chain(Output::stdout(line_sep.as_ref().to_string())))
-        },
-        LogOutput::Stderr(line_sep) => {
-            configure_console_format(dispatch.chain(Output::stderr(line_sep.as_ref().to_string())))
-        },
+/// Logs the record
+pub trait RecordLogger: Send + Sync + 'static{
+    /// log the record
+    fn log(&self, record: &Record);
+}
+
+/// Formats the record using the following format:
+/// `[UTC_TIMESTAMP_rfc3339][LEVEL][TARGET][MODULE_PATH:LINE] MESSAGE`
+///
+///  For example:
+/// `[2018-11-23T17:06:46.543Z][INFO][oysterpack_log::manager][oysterpack_log::manager:70] logging has been initialized`
+pub fn format(record: &Record) -> String {
+    if let (Some(module_path), Some(line)) = (record.module_path(), record.line()) {
+        format!(
+            "[{}][{}][{}][{}:{}] {}",
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            record.level(),
+            record.target(),
+            module_path,
+            line,
+            record.args()
+        )
+    } else {
+        format!(
+            "[{}][{}][{}] {}",
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            record.level(),
+            record.target(),
+            record.args()
+        )
+    }
+}
+/// logs the record to stdout
+#[derive(Debug)]
+pub struct StdoutLogger;
+
+impl RecordLogger for StdoutLogger {
+    fn log(&self, record: &Record) {
+        println!("{}", format(record))
     }
 }
 
-fn configure_console_format(dispatch: Dispatch) -> Dispatch {
-    dispatch.format(|out, message, record| {
-        out.finish(format_args!(
-            "{}[{}][{}][{}:{}] {}",
-            chrono::Local::now().format("[%H:%M:%S%.3f]"),
-            record.level(),
-            record.target(),
-            record.file().unwrap(),
-            record.line().unwrap(),
-            message
-        ))
-    })
+/// logs the record to stderr
+#[derive(Debug)]
+pub struct StderrLogger;
+
+impl RecordLogger for StderrLogger {
+    fn log(&self, record: &Record) {
+        eprintln!("{}", format(record))
+    }
 }
 
 /// Shutdown the logging system.
@@ -103,7 +133,5 @@ pub fn shutdown() {}
 /// Returns the LogConfig that was used to initialize the log system.
 /// If the logging system is not yet initialized, then None is returned.
 pub fn config() -> Option<&'static LogConfig> {
-    unsafe {
-        LOG_CONFIG.as_ref()
-    }
+    unsafe { LOG_CONFIG.as_ref() }
 }

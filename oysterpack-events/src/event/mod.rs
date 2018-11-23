@@ -145,9 +145,28 @@ where
     /// where `<event-id>` is formatted as a ULID, e.g.
     /// - `op_event::01CV38FM3Z4M2A8G50QRTGJHP4`
     ///
+    /// The message format is JSON.
+    pub fn log(&self) {
+        let target = format!(
+            "{}::{}",
+            Event::<Data>::EVENT_TARGET_BASE,
+            self.data.event_id().as_ulid()
+        );
+        log!(
+            target: &target,
+            self.data.event_level().into(),
+            "{}",
+            serde_json::to_string(self).unwrap()
+        );
+    }
+
+    /// Logs the event. The log target will take the form: `op_event::<event-id>`,
+    /// where `<event-id>` is formatted as a ULID, e.g.
+    /// - `op_event::01CV38FM3Z4M2A8G50QRTGJHP4`
+    ///
     /// The message format is pretty JSON, i.e., the event is serialized to pretty JSON.
     /// This will make it easier to read.
-    pub fn log(&self) {
+    pub fn log_pretty(&self) {
         let target = format!(
             "{}::{}",
             Event::<Data>::EVENT_TARGET_BASE,

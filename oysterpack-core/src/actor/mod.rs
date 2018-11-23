@@ -37,16 +37,39 @@
 //!   - service stopped
 
 use actix::{
+    self,
     dev::{
-        Actor, ArbiterService, Context, Handler, Message, MessageResponse, ResponseChannel,
-        SystemService,
+        Actor, Addr, ArbiterService, Context, Handler, Message, MessageResponse, ResponseChannel,
+        System, SystemService,
     },
     sync::SyncContext,
 };
 use chrono::{DateTime, Utc};
+use futures::Future;
 use oysterpack_errors::Error;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
 use std::fmt;
+
+/// Returns the Actor Address for the specified AppService.
+pub fn app_service<A>() -> Addr<A>
+where
+    A: AppService + Actor<Context = Context<A>>,
+{
+    System::current().registry().get::<A>()
+}
+
+/// Converts a Future into a Task compatible future that can be spawned.
+fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
+    f.map(|_| ()).map_err(|_| ())
+}
+
+/// The future will first be converted into Task compativle future, and then spawned on the current arbiter.
+///
+/// # Panics
+/// This function panics if actix system is not running.
+fn spawn_task(future: impl Future + 'static) {
+    actix::spawn(into_task(future));
+}
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
 pub trait Service: ArbiterService {

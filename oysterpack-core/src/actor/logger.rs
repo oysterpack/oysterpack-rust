@@ -16,15 +16,14 @@
 
 use actix::prelude::*;
 use actor::{self, events, GetServiceInfo, Service, ServiceInfo};
-use futures::prelude::*;
-use oysterpack_events::{
-    Eventful,
-    event::ModuleSource
+use chrono::prelude::*;
+use futures::{prelude::*, sync::oneshot};
+use oysterpack_events::{event::ModuleSource, Eventful};
+use oysterpack_log::{
+    log::{Level, Record},
+    manager::RecordLogger,
 };
-use oysterpack_log::log::{
-    Record,
-    Level
-};
+use std::fmt;
 
 /// Logger ServiceId (01CWXSW61VREYK48PZ7QE549G5)
 pub const SERVICE_ID: actor::Id = actor::Id(1865243759930187031543830440471307781);
@@ -54,16 +53,28 @@ pub struct LogRecord {
     target: LogTarget,
     level: Level,
     msg: LogMessage,
-    module_source: Option<ModuleSource>
+    module_source: Option<ModuleSource>,
 }
 
 /// Log target
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LogTarget(String);
 
+impl fmt::Display for LogTarget {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0.as_str())
+    }
+}
+
 /// Log message
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LogMessage(String);
+
+impl fmt::Display for LogMessage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0.as_str())
+    }
+}
 
 impl<'a> From<&'a Record<'a>> for LogRecord {
     fn from(record: &Record) -> Self {
@@ -72,8 +83,10 @@ impl<'a> From<&'a Record<'a>> for LogRecord {
             level: record.level(),
             msg: LogMessage(format!("{}", record.args())),
             module_source: record.module_path().and_then(|module_path| {
-                record.line().map(|line| ModuleSource::new(module_path,line))
-            })
+                record
+                    .line()
+                    .map(|line| ModuleSource::new(module_path, line))
+            }),
         }
     }
 }
@@ -100,15 +113,101 @@ impl LogRecord {
     }
 }
 
+impl Message for LogRecord {
+    type Result = ();
+}
+
+impl Handler<LogRecord> for Logger {
+    type Result = MessageResult<LogRecord>;
+
+    fn handle(&mut self, request: LogRecord, _: &mut Self::Context) -> Self::Result {
+        let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        match request.module_source() {
+            Some(module_source) => println!(
+                "[{}][{}][{}][{}] {}",
+                now,
+                request.level(),
+                request.target(),
+                module_source,
+                request.message()
+            ),
+            None => println!(
+                "[{}][{}][{}] {}",
+                now,
+                request.level(),
+                request.target(),
+                request.message()
+            ),
+        }
+
+        MessageResult(())
+    }
+}
+
+/// Sends LogRecord to the Logger Actor service.
+#[derive(Debug)]
+struct LogRecordSender {
+    logger: Addr<Logger>,
+}
+
+impl LogRecordSender {
+    /// The default Arbiter that hosts the Logger service actor
+    pub const DEFAULT_ARBITER: actor::arbiters::Name = actor::arbiters::Name("log");
+
+    /// constructor
+    pub fn new(logger: Addr<Logger>) -> Self {
+        LogRecordSender { logger }
+    }
+}
+
+/// initializes the Log system
+///
+/// # Panics
+/// This function panics if actix system is not running.
+pub fn init_logging(
+    config: oysterpack_log::LogConfig,
+    build: oysterpack_app_metadata::Build,
+) -> impl Future<Item = (), Error = ()> {
+    let arbiters_addr = actor::app_service::<actor::arbiters::Arbiters>();
+    let task = arbiters_addr
+        .send(actor::arbiters::GetArbiter::from(
+            LogRecordSender::DEFAULT_ARBITER,
+        )).then(|result| match result {
+            Ok(arbiter) => arbiter.send(actix::msgs::Execute::new(move || -> Result<(), ()> {
+                let logger = Arbiter::registry().get::<Logger>();
+                oysterpack_log::init(config, &build, LogRecordSender::new(logger));
+                Ok(())
+            })),
+            Err(err) => panic!("SHOULD NEVER HAPPEN: {}", err),
+        });
+    actor::into_task(task)
+}
+
+impl RecordLogger for LogRecordSender {
+    fn log(&self, record: &Record) {
+        actor::spawn_task(self.logger.send(LogRecord::from(record)));
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use actix::{dev::*, Arbiter, System};
+    use actor::app_service;
+    use actor::arbiters;
+    use futures::{future, prelude::*};
+
+    fn stop_system() {
+        println!("Sending System stop signal ...");
+        System::current().stop();
+        println!("System stop signalled");
+    }
 
     #[test]
     fn log_message_from_log_record() {
         let record = Record::builder()
-            .args(format_args!("Error!"))
+            .args(format_args!("BOOM!!!"))
             .level(Level::Error)
             .target("myApp")
             .file(Some("server.rs"))
@@ -118,9 +217,75 @@ mod tests {
 
         let log_record: LogRecord = LogRecord::from(&record);
         println!("{:?}", log_record);
-        assert_eq!(*log_record.target(),LogTarget(record.target().to_string()));
-        assert_eq!(log_record.level(),record.level());
-        assert_eq!(*log_record.message(),LogMessage(format!("{}",record.args())));
-        assert_eq!(log_record.module_source(),Some(ModuleSource::new(record.module_path().unwrap(), record.line().unwrap())).as_ref());
+        assert_eq!(*log_record.target(), LogTarget(record.target().to_string()));
+        assert_eq!(log_record.level(), record.level());
+        assert_eq!(
+            *log_record.message(),
+            LogMessage(format!("{}", record.args()))
+        );
+        assert_eq!(
+            log_record.module_source(),
+            Some(ModuleSource::new(
+                record.module_path().unwrap(),
+                record.line().unwrap()
+            )).as_ref()
+        );
+    }
+
+    #[test]
+    fn logger_actor() {
+        System::run(|| {
+            let record = Record::builder()
+                .args(format_args!("BOOM!"))
+                .level(Level::Error)
+                .target("myApp")
+                .file(Some(file!()))
+                .line(Some(line!()))
+                .module_path(Some(module_path!()))
+                .build();
+            let record: LogRecord = LogRecord::from(&record);
+
+            let arbiters_addr = app_service::<arbiters::Arbiters>();
+            let task = arbiters_addr
+                .send(arbiters::GetArbiter::from("log"))
+                .and_then(|arbiter| {
+                    arbiter.send(actix::msgs::Execute::new(|| -> Result<(), ()> {
+                        let logger = Arbiter::registry().get::<Logger>();
+                        actor::spawn_task(logger.send(record));
+                        Ok(())
+                    }))
+                }).then(|_| {
+                    System::current().stop();
+                    future::ok::<(), ()>(())
+                });
+
+            actor::spawn_task(task);
+        });
+    }
+
+    op_build_mod!();
+
+    #[test]
+    fn init_logging() {
+        use oysterpack_log;
+
+        System::run(|| {
+            let app_build = build::get();
+            let config = oysterpack_log::config::LogConfigBuilder::new(Level::Info).build();
+            let task = super::init_logging(config, app_build);
+            let task = task
+                .and_then(|_| {
+                    for i in 0..10 {
+                        info!("LOG MSG #{}", i);
+                    }
+                    Ok(())
+                }).then(|_| {
+                    // Not all log messages may have been processed. Queued messages will simply get dropped.
+                    info!("STOPPING ACTOR SYSTEM");
+                    System::current().stop();
+                    future::ok::<(), ()>(())
+                });
+            actor::spawn_task(task);
+        });
     }
 }

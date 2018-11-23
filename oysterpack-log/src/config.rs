@@ -14,7 +14,7 @@
 
 //! Log config
 
-use log::Level;
+use log::{Level, Record};
 use std::collections::BTreeMap;
 
 /// Log config
@@ -25,7 +25,6 @@ pub struct LogConfig {
     crate_level: Option<Level>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target_levels: Option<BTreeMap<Target, Level>>,
-    output: LogOutput,
 }
 
 impl LogConfig {
@@ -43,11 +42,6 @@ impl LogConfig {
     pub fn target_levels(&self) -> Option<&BTreeMap<Target, Level>> {
         self.target_levels.as_ref()
     }
-
-    /// Returns the log output destination
-    pub fn output(&self) -> &LogOutput {
-        &self.output
-    }
 }
 
 impl Default for LogConfig {
@@ -57,7 +51,6 @@ impl Default for LogConfig {
             root_level: Level::Warn,
             crate_level: None,
             target_levels: None,
-            output: LogOutput::Stdout(Default::default()),
         }
     }
 }
@@ -97,13 +90,16 @@ impl LogConfigBuilder {
     }
 }
 
-op_newtype! {
-    /// Represents a log target
-    #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
-    pub Target(String)
-}
+/// Represents a log target
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct Target(String);
 
 impl Target {
+    /// Constructor
+    pub fn new(value: String) -> Self {
+        Target(value)
+    }
+
     /// Constructs a new Target by appending the specified target.
     ///
     /// ## Examples
@@ -136,40 +132,6 @@ impl<'a> From<&'a str> for Target {
 impl AsRef<str> for Target {
     fn as_ref(&self) -> &str {
         &self.0
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-/// Used to configure log output.
-/// The idea is that the config schema for each kind of LogOutput is defined by the enum variant.
-pub enum LogOutput {
-    /// Indicates to log output to stdout
-    Stdout(LineSeparator),
-    /// Indicates to log to stderr
-    Stderr(LineSeparator),
-}
-
-op_newtype! {
-   /// Represents a line separator
-   #[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
-   pub LineSeparator(String)
-}
-
-impl<'a> From<&'a str> for LineSeparator {
-    fn from(line_sep: &'a str) -> Self {
-        LineSeparator(line_sep.to_string())
-    }
-}
-
-impl AsRef<str> for LineSeparator {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Default for LineSeparator {
-    fn default() -> Self {
-        "\n".into()
     }
 }
 

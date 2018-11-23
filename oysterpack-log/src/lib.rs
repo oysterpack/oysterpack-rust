@@ -23,7 +23,7 @@
 //!
 //! fn main() {
 //!     let app_build = build::get();
-//!     oysterpack_log::init(log_config(),&app_build);
+//!     oysterpack_log::init(log_config(),&app_build,oysterpack_log::manager::StdoutLogger);
 //!     // The LogConfig used to initialize the log system can be retrieved.
 //!     // This enables the LogConfig to be inspected.
 //!     let log_config = oysterpack_log::config().unwrap();
@@ -81,14 +81,10 @@ pub use log::{
     warn,
     // re-export some other common log members
     Level,
-    LevelFilter
+    LevelFilter,
 };
 
-pub use manager::{
-    config,
-    init,
-    shutdown
-};
+pub use manager::{config, init, shutdown};
 
 #[cfg(test)]
 op_build_mod!();
@@ -102,7 +98,7 @@ mod tests {
         let log_config = ::config::LogConfigBuilder::new(log::Level::Warn)
             .crate_level(log::Level::Debug)
             .build();
-        ::manager::init(log_config, &::build::get());
+        ::manager::init(log_config, &::build::get(), ::manager::StdoutLogger);
         let before = std::time::Instant::now();
         test();
         let after = std::time::Instant::now();
