@@ -183,7 +183,7 @@ pub fn init_logging(config: oysterpack_log::LogConfig) -> impl Future<Item = (),
 
 impl RecordLogger for LogRecordSender {
     fn log(&self, record: &Record) {
-        actor::spawn_task(self.logger.send(LogRecord::from(record)));
+        self.logger.do_send(LogRecord::from(record));
     }
 }
 

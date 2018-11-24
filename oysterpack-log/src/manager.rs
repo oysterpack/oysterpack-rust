@@ -55,10 +55,9 @@ pub fn init<F: RecordLogger>(config: LogConfig, logger: F) {
                 }
             }
 
-            dispatch
+            let _ = dispatch
                 .chain(Output::call(move |record| logger.log(record)))
-                .apply()
-                .unwrap();
+                .apply();
 
             let config_json = serde_json::to_string_pretty(&config).unwrap();
             unsafe { LOG_CONFIG = Some(config) }
