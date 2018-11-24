@@ -16,10 +16,7 @@
 
 use super::*;
 use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
-use oysterpack_uid::{
-    DomainULID,
-    Domain
-};
+use oysterpack_uid::{Domain, DomainULID};
 use std::fmt;
 
 /// Actor Service lifecycle event
@@ -100,7 +97,7 @@ impl ServiceLifeCycleEvent {
 
     /// Service lifecycle domain ULID
     pub fn domain_ulid() -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into() )
+        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into())
     }
 
     /// Service started EventId (01CX32ZXWW6Z5NKPHMFXB0Y9SV)
@@ -157,8 +154,8 @@ impl ServiceLifeCycleEvent {
 
 impl Eventful for ServiceLifeCycleEvent {
     /// Event Id
-    fn event_id(&self) -> EventId {
-        self.state.event_id()
+    fn event_id(&self) -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, self.id)
     }
 
     /// Event severity level

@@ -53,5 +53,5 @@ fn configure_logging(build: &app_metadata::Build) {
     let log_config = oysterpack::log::config::LogConfigBuilder::new(log::Level::Warn)
         .crate_level(log::Level::Info)
         .build();
-    oysterpack::log::init(log_config, build);
+    oysterpack::log::init(log_config, oysterpack::log::manager::StdoutLogger);
 }

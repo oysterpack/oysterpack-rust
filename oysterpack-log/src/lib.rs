@@ -67,7 +67,7 @@ pub use log::{
     LevelFilter,
 };
 
-pub use manager::{config, init, RecordLogger};
+pub use manager::{config, init, RecordLogger, StdoutLogger, StderrLogger};
 
 
 #[cfg(test)]

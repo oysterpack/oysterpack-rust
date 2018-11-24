@@ -15,11 +15,11 @@
 //! Provides event standardization
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{ulid::ulid_u128_into_string, DomainULID, ULID, TypedULID};
+use oysterpack_uid::{DomainULID, TypedULID};
 use serde::Serialize;
 use serde_json;
 use std::collections::HashSet;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{Debug, Display};
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +27,7 @@ mod tests;
 /// Is applied to some eventful data.
 pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     /// Event Id
-    fn event_id(&self) -> Id;
+    fn event_id(&self) -> DomainULID;
 
     /// Event severity level
     fn event_level(&self) -> Level;
@@ -47,19 +47,6 @@ op_newtype!{
     /// event Id(s) as constants.
     #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
     pub Id(pub u128)
-}
-
-impl Id {
-    /// converts itself into a TypedULID
-    pub fn as_ulid(&self) -> ULID {
-        ULID::from(self.0)
-    }
-}
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(ulid_u128_into_string(self.0).as_str())
-    }
 }
 
 /// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
@@ -87,7 +74,7 @@ pub struct Event<Data>
 where
     Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    id: ULID,
+    id: DomainULID,
     instance_id: InstanceId,
     data: Data,
     msg: String,
@@ -106,7 +93,7 @@ where
     pub fn new(data: Data, mod_src: ModuleSource) -> Event<Data> {
         let msg = data.to_string();
         Event {
-            id: data.event_id().as_ulid(),
+            id: data.event_id().clone(),
             instance_id: InstanceId::generate(),
             data,
             msg,
@@ -119,7 +106,7 @@ where
     pub fn from(instance_id: InstanceId, data: Data, mod_src: ModuleSource) -> Event<Data> {
         let msg = data.to_string();
         Event {
-            id: data.event_id().as_ulid(),
+            id: data.event_id().clone(),
             instance_id,
             data,
             msg,
@@ -150,7 +137,7 @@ where
         let target = format!(
             "{}::{}",
             Event::<Data>::EVENT_TARGET_BASE,
-            self.data.event_id().as_ulid()
+            self.data.event_id().ulid()
         );
         log!(
             target: &target,
@@ -170,7 +157,7 @@ where
         let target = format!(
             "{}::{}",
             Event::<Data>::EVENT_TARGET_BASE,
-            self.data.event_id().as_ulid()
+            self.data.event_id().ulid()
         );
         log!(
             target: &target,
@@ -181,7 +168,7 @@ where
     }
 
     /// Returns the Event Id
-    pub fn id(&self) -> Id {
+    pub fn id(&self) -> DomainULID {
         self.data.event_id()
     }
 

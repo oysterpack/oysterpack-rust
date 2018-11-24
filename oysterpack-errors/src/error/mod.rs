@@ -20,7 +20,7 @@ use oysterpack_events::{
     Event, Eventful,
 };
 use oysterpack_uid::ulid::ulid_u128_into_string;
-use oysterpack_uid::{Domain, HasDomain, TypedULID};
+use oysterpack_uid::{Domain, TypedULID, DomainULID, ULID};
 use std::{
     fmt,
     sync::Arc,
@@ -128,7 +128,7 @@ macro_rules! op_error {
     msg
 )]
 pub struct Error {
-    id: TypedULID<Id>,
+    id: ULID,
     instance_id: InstanceId,
     level: Level,
     msg: String,
@@ -138,13 +138,16 @@ pub struct Error {
 }
 
 impl Error {
+    /// Error Domain
+    pub const DOMAIN: Domain = Domain("Error");
+
     /// Constructor
     pub fn new<MSG>(id: Id, level: Level, msg: MSG, mod_src: ModuleSource) -> Error
     where
         MSG: fmt::Display,
     {
         Error {
-            id: id.as_ulid(),
+            id: ULID::from(id.0),
             instance_id: InstanceId::generate(),
             level,
             msg: msg.to_string(),
@@ -228,8 +231,8 @@ impl Error {
 
 impl Eventful for Error {
     /// Event Id
-    fn event_id(&self) -> event::Id {
-        event::Id(self.id.into())
+    fn event_id(&self) -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, self.id)
     }
 
     /// Event severity level
@@ -264,17 +267,6 @@ impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         f.write_str(ulid_u128_into_string(self.0).as_str())
     }
-}
-
-impl Id {
-    /// converts itself into a TypedULID
-    pub fn as_ulid(&self) -> TypedULID<Self> {
-        TypedULID::from(self.0)
-    }
-}
-
-impl HasDomain for Id {
-    const DOMAIN: Domain = Domain("Error");
 }
 
 /// Marker type for an Error instance, which is used to define [InstanceId](type.InstanceId.html)

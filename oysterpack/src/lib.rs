@@ -25,16 +25,13 @@
 //!     let app_build = build::get();
 //!
 //!     // initialize the log system
-//!     log::init(log_config(),&app_build);
+//!     log::init(log_config(), log::StderrLogger);
 //!
 //!     // The LogConfig used to initialize the log system can be retrieved.
 //!     // This enables the LogConfig to be inspected.
 //!     let log_config = log::config().unwrap();
 //!
 //!     run();
-//!
-//!     // shutdown the logging system
-//!     log::shutdown();
 //! }
 //!
 //! /// This should be loaded from the app's configuration.

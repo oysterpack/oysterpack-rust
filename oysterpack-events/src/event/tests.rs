@@ -64,15 +64,16 @@ impl Into<DomainULID> for ServiceId {
 }
 
 impl Foo {
-    const EVENT_ID: Id = Id(1863291442537893263425065359976496302);
+    const DOMAIN: Domain = Domain("Foo");
+    const EVENT_ID: u128 = 1863291442537893263425065359976496302;
 
     const EVENT_LEVEL: Level = Level::Info;
 }
 
 // BOILERPLATE THAT CAN BE GENERATED //
 impl Eventful for Foo {
-    fn event_id(&self) -> Id {
-        Self::EVENT_ID
+    fn event_id(&self) -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, Self::EVENT_ID.into())
     }
 
     fn event_level(&self) -> Level {
@@ -94,7 +95,7 @@ fn foo_event() {
         let foo_event2: Event<Foo> =
             serde_json::from_str(&serde_json::to_string_pretty(&foo_event).unwrap()).unwrap();
         assert_eq!(foo_event2.id(), foo_event.id());
-        assert_eq!(foo_event.id(), Foo::EVENT_ID);
+        assert_eq!(foo_event.id().ulid(), ULID::from(Foo::EVENT_ID));
         assert_eq!(*foo_event.data(), Foo("foo data".into()));
     });
 }
@@ -150,14 +151,15 @@ fn error_event() {
     struct InvalidAuthToken;
 
     impl InvalidAuthToken {
-        const EVENT_ID: Id = Id(1863507426672832691683188093609129621);
+        pub const DOMAIN: Domain = Domain("InvalidAuthToken");
+        const EVENT_ID: u128 = 1863507426672832691683188093609129621;
 
         const EVENT_LEVEL: Level = Level::Error;
     }
 
     impl Eventful for InvalidAuthToken {
-        fn event_id(&self) -> Id {
-            Self::EVENT_ID
+        fn event_id(&self) -> DomainULID {
+            DomainULID::from_ulid(&Self::DOMAIN, Self::EVENT_ID.into())
         }
 
         fn event_level(&self) -> Level {
