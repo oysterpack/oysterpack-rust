@@ -29,8 +29,6 @@
 //!     let log_config = oysterpack_log::config().unwrap();
 //!
 //!     run();
-//!
-//!     oysterpack_log::shutdown();
 //! }
 //!
 //! /// This should be loaded from the app's configuration.
@@ -84,7 +82,7 @@ pub use log::{
     LevelFilter,
 };
 
-pub use manager::{config, init, shutdown};
+pub use manager::{config, init, RecordLogger};
 
 #[cfg(test)]
 op_build_mod!();

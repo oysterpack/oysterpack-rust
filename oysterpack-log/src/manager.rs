@@ -126,10 +126,6 @@ impl RecordLogger for StderrLogger {
     }
 }
 
-/// Shutdown the logging system.
-/// This should be called on application shutdown.
-pub fn shutdown() {}
-
 /// Returns the LogConfig that was used to initialize the log system.
 /// If the logging system is not yet initialized, then None is returned.
 pub fn config() -> Option<&'static LogConfig> {

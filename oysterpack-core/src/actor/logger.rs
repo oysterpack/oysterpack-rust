@@ -30,6 +30,7 @@ pub const SERVICE_ID: actor::Id = actor::Id(186524375993018703154383044047130778
 
 /// Logger Actor.
 /// - should run in its own dedicated Arbiter, i.e., thread.
+/// - logs to stderr (for now - long term we need remote centralized logging)
 #[derive(Debug)]
 pub struct Logger {
     service_info: ServiceInfo,
@@ -47,7 +48,7 @@ op_actor_service! {
   Service(Logger)
 }
 
-/// LogRecord
+/// LogRecord is a threadsafe version of log::Record, i.e., it implements Send + Sync
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogRecord {
     target: LogTarget,
@@ -123,7 +124,7 @@ impl Handler<LogRecord> for Logger {
     fn handle(&mut self, request: LogRecord, _: &mut Self::Context) -> Self::Result {
         let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         match request.module_source() {
-            Some(module_source) => println!(
+            Some(module_source) => eprintln!(
                 "[{}][{}][{}][{}] {}",
                 now,
                 request.level(),
@@ -131,7 +132,7 @@ impl Handler<LogRecord> for Logger {
                 module_source,
                 request.message()
             ),
-            None => println!(
+            None => eprintln!(
                 "[{}][{}][{}] {}",
                 now,
                 request.level(),
@@ -160,7 +161,8 @@ impl LogRecordSender {
     }
 }
 
-/// initializes the Log system
+/// Initializes the [log](https://crates.io/crates/log) system.
+/// - log records are converted to LogRecord and sent asynchronously to the Logger service actor.
 ///
 /// # Panics
 /// This function panics if actix system is not running.
@@ -172,13 +174,12 @@ pub fn init_logging(
     let task = arbiters_addr
         .send(actor::arbiters::GetArbiter::from(
             LogRecordSender::DEFAULT_ARBITER,
-        )).then(|result| match result {
-            Ok(arbiter) => arbiter.send(actix::msgs::Execute::new(move || -> Result<(), ()> {
+        )).and_then(|arbiter| {
+            arbiter.send(actix::msgs::Execute::new(move || -> Result<(), ()> {
                 let logger = Arbiter::registry().get::<Logger>();
                 oysterpack_log::init(config, &build, LogRecordSender::new(logger));
                 Ok(())
-            })),
-            Err(err) => panic!("SHOULD NEVER HAPPEN: {}", err),
+            }))
         });
     actor::into_task(task)
 }
@@ -194,8 +195,10 @@ impl RecordLogger for LogRecordSender {
 mod tests {
     use super::*;
     use actix::{dev::*, Arbiter, System};
-    use actor::app_service;
-    use actor::arbiters;
+    use actor::{
+        app_service,
+        arbiters
+    };
     use futures::{future, prelude::*};
 
     fn stop_system() {
@@ -269,10 +272,12 @@ mod tests {
     fn init_logging() {
         use oysterpack_log;
 
+        fn log_config() -> oysterpack_log::LogConfig {
+            oysterpack_log::config::LogConfigBuilder::new(Level::Info).build()
+        }
+
         System::run(|| {
-            let app_build = build::get();
-            let config = oysterpack_log::config::LogConfigBuilder::new(Level::Info).build();
-            let task = super::init_logging(config, app_build);
+            let task = super::init_logging(log_config(), build::get());
             let task = task
                 .and_then(|_| {
                     for i in 0..10 {

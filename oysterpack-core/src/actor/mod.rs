@@ -59,7 +59,7 @@ where
 }
 
 /// Converts a Future into a Task compatible future that can be spawned.
-fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
+pub fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
     f.map(|_| ()).map_err(|_| ())
 }
 
@@ -67,7 +67,7 @@ fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
 ///
 /// # Panics
 /// This function panics if actix system is not running.
-fn spawn_task(future: impl Future + 'static) {
+pub fn spawn_task(future: impl Future + 'static) {
     actix::spawn(into_task(future));
 }
 
