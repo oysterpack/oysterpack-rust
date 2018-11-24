@@ -16,6 +16,10 @@
 
 use super::*;
 use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
+use oysterpack_uid::{
+    DomainULID,
+    Domain
+};
 use std::fmt;
 
 /// Actor Service lifecycle event
@@ -43,6 +47,19 @@ pub enum LifeCycle {
     /// If actor does not modify execution context during stopping state actor state changes to Stopped.
     /// This state is considered final and at this point actor get dropped.
     Stopped,
+}
+
+impl LifeCycle {
+    /// Maps a Service lifecycle event to an EventId
+    pub fn event_id(&self) -> EventId {
+        match self {
+            LifeCycle::ServiceStarted => ServiceLifeCycleEvent::SERVICE_STARTED,
+            LifeCycle::Started => ServiceLifeCycleEvent::STARTED,
+            LifeCycle::Stopping => ServiceLifeCycleEvent::STOPPING,
+            LifeCycle::Restarting => ServiceLifeCycleEvent::RESTARTING,
+            LifeCycle::Stopped => ServiceLifeCycleEvent::STOPPED,
+        }
+    }
 }
 
 impl fmt::Display for LifeCycle {
@@ -76,8 +93,26 @@ impl fmt::Display for Scope {
 }
 
 impl ServiceLifeCycleEvent {
-    /// EventId
-    pub const EVENT_ID: EventId = EventId(1865187483179844794403987534312933829);
+    /// Service lifecycle domain is used to tag Service lifecycle events
+    pub const DOMAIN: Domain = Domain("ServiceLifeCycle");
+    /// Service lifecycle domain ULID (01CX33EAT3VHNRQ4WNMBS9YH9Q)
+    const DOMAIN_ULID: u128 = 1865458711825091376828104373373453623;
+
+    /// Service lifecycle domain ULID
+    pub fn domain_ulid() -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into() )
+    }
+
+    /// Service started EventId (01CX32ZXWW6Z5NKPHMFXB0Y9SV)
+    pub const SERVICE_STARTED: EventId = EventId(1865458141241550241048255441954350907);
+    /// Actor started EventId (01CX32RTCRQCA3BZ592WAQX0HG)
+    pub const STARTED: EventId = EventId(1865457859605975574382982648968413744);
+    /// Actor stopping EventId (01CX32TDDHQPT0049EMBTVHPGW)
+    pub const STOPPING: EventId = EventId(1865457922771153115754426188305062428);
+    /// Supervised Actor restarting Event id (01CX32TSAAKSKRV97RPRJVVTDF)
+    pub const RESTARTING: EventId = EventId(1865457937501766424200139812145850799);
+    /// Actor stopped EventId (01CX32VJ5NSW78JM82XM75C30S)
+    pub const STOPPED: EventId = EventId(1865457968270367213097641946809502745);
 
     /// Constructs a new event for a Service
     pub fn for_service(service: &impl Service, state: LifeCycle) -> ServiceLifeCycleEvent {
@@ -123,7 +158,7 @@ impl ServiceLifeCycleEvent {
 impl Eventful for ServiceLifeCycleEvent {
     /// Event Id
     fn event_id(&self) -> EventId {
-        ServiceLifeCycleEvent::EVENT_ID
+        self.state.event_id()
     }
 
     /// Event severity level
@@ -132,6 +167,10 @@ impl Eventful for ServiceLifeCycleEvent {
             LifeCycle::Restarting => Level::Warning,
             _ => Level::Info,
         }
+    }
+
+    fn new_event(self, mod_src: ModuleSource) -> Event<Self> {
+        Event::new(self, mod_src).with_tag_id(&Self::domain_ulid())
     }
 }
 

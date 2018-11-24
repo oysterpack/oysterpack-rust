@@ -64,3 +64,6 @@ pub mod message;
 
 #[cfg(test)]
 op_tests_mod!();
+
+#[cfg(test)]
+op_build_mod!();

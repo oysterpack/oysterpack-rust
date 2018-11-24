@@ -15,7 +15,7 @@
 //! Provides event standardization
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{ulid::ulid_u128_into_string, DomainULID, TypedULID};
+use oysterpack_uid::{ulid::ulid_u128_into_string, DomainULID, ULID, TypedULID};
 use serde::Serialize;
 use serde_json;
 use std::collections::HashSet;
@@ -51,8 +51,8 @@ op_newtype!{
 
 impl Id {
     /// converts itself into a TypedULID
-    pub fn as_ulid(&self) -> TypedULID<Self> {
-        TypedULID::from(self.0)
+    pub fn as_ulid(&self) -> ULID {
+        ULID::from(self.0)
     }
 }
 
@@ -87,7 +87,7 @@ pub struct Event<Data>
 where
     Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    id: TypedULID<Id>,
+    id: ULID,
     instance_id: InstanceId,
     data: Data,
     msg: String,

@@ -16,14 +16,9 @@
 //! Given a LogConfig, this crate will know how to initialize the logging system and how to shut it down.
 //!
 //! ```rust
-//! #[macro_use]
-//! extern crate oysterpack_app_metadata_macros;
-//!
-//! op_build_mod!();
 //!
 //! fn main() {
-//!     let app_build = build::get();
-//!     oysterpack_log::init(log_config(),&app_build,oysterpack_log::manager::StdoutLogger);
+//!     oysterpack_log::init(log_config(),oysterpack_log::manager::StdoutLogger);
 //!     // The LogConfig used to initialize the log system can be retrieved.
 //!     // This enables the LogConfig to be inspected.
 //!     let log_config = oysterpack_log::config().unwrap();
@@ -45,22 +40,12 @@
 #![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
 
 #[macro_use]
-extern crate oysterpack_macros;
-extern crate oysterpack_app_metadata;
-
-extern crate chrono;
-extern crate fern;
-#[macro_use]
 pub extern crate log;
-
+extern crate fern;
+extern crate chrono;
+#[macro_use]
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
 extern crate serde_json;
-
-#[cfg(test)]
-#[macro_use]
-extern crate oysterpack_app_metadata_macros;
 
 #[allow(missing_docs)]
 pub mod config;
@@ -84,8 +69,6 @@ pub use log::{
 
 pub use manager::{config, init, RecordLogger};
 
-#[cfg(test)]
-op_build_mod!();
 
 #[cfg(test)]
 mod tests {
@@ -96,7 +79,7 @@ mod tests {
         let log_config = ::config::LogConfigBuilder::new(log::Level::Warn)
             .crate_level(log::Level::Debug)
             .build();
-        ::manager::init(log_config, &::build::get(), ::manager::StdoutLogger);
+        ::manager::init(log_config, ::manager::StdoutLogger);
         let before = std::time::Instant::now();
         test();
         let after = std::time::Instant::now();

@@ -26,14 +26,14 @@ macro_rules! op_actor_service {
                 let event =
                     events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Started)
                         .new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
 
             fn stopped(&mut self, _: &mut Self::Context) {
                 let event =
                     events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Stopped)
                         .new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 
@@ -43,7 +43,7 @@ macro_rules! op_actor_service {
                     self,
                     events::LifeCycle::ServiceStarted,
                 ).new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 
@@ -52,7 +52,7 @@ macro_rules! op_actor_service {
                 let event =
                     events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Restarting)
                         .new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 
@@ -83,7 +83,7 @@ macro_rules! op_actor_service {
                     self,
                     events::LifeCycle::Started,
                 ).new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
 
             fn stopped(&mut self, _: &mut Self::Context) {
@@ -91,7 +91,7 @@ macro_rules! op_actor_service {
                     self,
                     events::LifeCycle::Stopped,
                 ).new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 
@@ -101,7 +101,7 @@ macro_rules! op_actor_service {
                     self,
                     events::LifeCycle::ServiceStarted,
                 ).new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 
@@ -111,7 +111,7 @@ macro_rules! op_actor_service {
                     self,
                     events::LifeCycle::Restarting,
                 ).new_event(op_module_source!());
-                event.log();
+                event.log_pretty();
             }
         }
 

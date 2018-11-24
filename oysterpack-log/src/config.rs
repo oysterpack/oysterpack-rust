@@ -14,8 +14,11 @@
 
 //! Log config
 
-use log::{Level, Record};
-use std::collections::BTreeMap;
+use log::Level;
+use std::{
+    fmt,
+    collections::BTreeMap
+};
 
 /// Log config
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,6 +135,13 @@ impl<'a> From<&'a str> for Target {
 impl AsRef<str> for Target {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Display for Target {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.0.as_str())
     }
 }
 

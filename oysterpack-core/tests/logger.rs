@@ -14,9 +14,6 @@
 
 extern crate oysterpack_core;
 extern crate oysterpack_log;
-extern crate oysterpack_app_metadata;
-#[macro_use]
-extern crate oysterpack_app_metadata_macros;
 
 extern crate actix;
 extern crate futures;
@@ -27,8 +24,6 @@ use oysterpack_log::log::*;
 use actix::System;
 use futures::{future, prelude::*};
 
-op_build_mod!();
-
 #[test]
 fn init_logging() {
     use oysterpack_log;
@@ -38,7 +33,7 @@ fn init_logging() {
     }
 
     System::run(|| {
-        let task = actor::logger::init_logging(log_config(), build::get());
+        let task = actor::logger::init_logging(log_config());
         let task = task
             .and_then(|_| {
                 for i in 0..10 {
@@ -46,11 +41,11 @@ fn init_logging() {
                 }
                 Ok(())
             }).then(|_| {
-            // Not all log messages may have been processed. Queued messages will simply get dropped.
-            info!("STOPPING ACTOR SYSTEM");
-            System::current().stop();
-            future::ok::<(), ()>(())
-        });
+                // Not all log messages may have been processed. Queued messages will simply get dropped.
+                info!("STOPPING ACTOR SYSTEM");
+                System::current().stop();
+                future::ok::<(), ()>(())
+            });
         actor::spawn_task(task);
     });
 }

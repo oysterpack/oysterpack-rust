@@ -166,10 +166,7 @@ impl LogRecordSender {
 ///
 /// # Panics
 /// This function panics if actix system is not running.
-pub fn init_logging(
-    config: oysterpack_log::LogConfig,
-    build: oysterpack_app_metadata::Build,
-) -> impl Future<Item = (), Error = ()> {
+pub fn init_logging(config: oysterpack_log::LogConfig) -> impl Future<Item = (), Error = ()> {
     let arbiters_addr = actor::app_service::<actor::arbiters::Arbiters>();
     let task = arbiters_addr
         .send(actor::arbiters::GetArbiter::from(
@@ -177,7 +174,7 @@ pub fn init_logging(
         )).and_then(|arbiter| {
             arbiter.send(actix::msgs::Execute::new(move || -> Result<(), ()> {
                 let logger = Arbiter::registry().get::<Logger>();
-                oysterpack_log::init(config, &build, LogRecordSender::new(logger));
+                oysterpack_log::init(config, LogRecordSender::new(logger));
                 Ok(())
             }))
         });
@@ -195,10 +192,7 @@ impl RecordLogger for LogRecordSender {
 mod tests {
     use super::*;
     use actix::{dev::*, Arbiter, System};
-    use actor::{
-        app_service,
-        arbiters
-    };
+    use actor::{app_service, arbiters};
     use futures::{future, prelude::*};
 
     fn stop_system() {
@@ -266,8 +260,6 @@ mod tests {
         });
     }
 
-    op_build_mod!();
-
     #[test]
     fn init_logging() {
         use oysterpack_log;
@@ -277,7 +269,7 @@ mod tests {
         }
 
         System::run(|| {
-            let task = super::init_logging(log_config(), build::get());
+            let task = super::init_logging(log_config());
             let task = task
                 .and_then(|_| {
                     for i in 0..10 {
