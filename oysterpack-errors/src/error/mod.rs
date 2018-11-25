@@ -20,11 +20,8 @@ use oysterpack_events::{
     Event, Eventful,
 };
 use oysterpack_uid::ulid::ulid_u128_into_string;
-use oysterpack_uid::{Domain, TypedULID, DomainULID, ULID};
-use std::{
-    fmt,
-    sync::Arc,
-};
+use oysterpack_uid::{Domain, DomainULID, TypedULID, ULID};
+use std::{fmt, sync::Arc};
 
 /// Converts the Error into an Event&lt;Error&gt;
 ///
@@ -102,6 +99,12 @@ macro_rules! op_error {
             $msg.to_string(),
             $crate::oysterpack_events::event::ModuleSource::new(module_path!(), line!()),
         )
+    };
+    ( $error:expr ) => {
+        $error.to_error($crate::oysterpack_events::event::ModuleSource::new(
+            module_path!(),
+            line!(),
+        ))
     };
 }
 
@@ -223,9 +226,7 @@ impl Error {
             }
         }
 
-        self.cause
-            .as_ref()
-            .map(|cause| _cause(cause))
+        self.cause.as_ref().map(|cause| _cause(cause))
     }
 }
 
@@ -302,12 +303,115 @@ impl Into<event::Level> for Level {
     }
 }
 
+/// Should be implemented by Error objects
+pub trait IsError: fmt::Display {
+    /// Error Id
+    fn error_id(&self) -> Id;
+
+    /// Error Level
+    fn error_level(&self) -> Level;
+
+    /// Converts itself into an Error
+    fn to_error(&self, mod_src: ModuleSource) -> Error {
+        Error::new(self.error_id(), self.error_level(), &self, mod_src)
+    }
+}
+
+#[allow(warnings)]
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use oysterpack_uid::ULID;
+    use std::time::Duration;
     use tests::run_test;
+
+    #[test]
+    fn is_error() {
+        struct RequestTimeout {
+            timeout: Duration,
+        }
+
+        impl RequestTimeout {
+            pub const ERROR_ID: Id = Id(1865548837704866157621294180822811573);
+            pub const ERROR_LEVEL: Level = Level::Error;
+        }
+
+        impl IsError for RequestTimeout {
+            /// Error Id
+            fn error_id(&self) -> Id {
+                RequestTimeout::ERROR_ID
+            }
+
+            /// Error Level
+            fn error_level(&self) -> Level {
+                RequestTimeout::ERROR_LEVEL
+            }
+        }
+
+        impl fmt::Display for RequestTimeout {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "Request timed out: {:?}", self.timeout)
+            }
+        }
+
+        enum AuthErr {
+            UnknownSubject,
+            InvalidCredentials,
+            Unauthorized,
+            BadRequest,
+            ServerError,
+            RequestTimeout(RequestTimeout),
+        }
+
+        impl IsError for AuthErr {
+            /// Error Id
+            fn error_id(&self) -> Id {
+                match self {
+                    AuthErr::UnknownSubject => Id(1),
+                    AuthErr::InvalidCredentials => Id(2),
+                    AuthErr::Unauthorized => Id(3),
+                    AuthErr::BadRequest => Id(4),
+                    AuthErr::ServerError => Id(5),
+                    AuthErr::RequestTimeout(err) => err.error_id(),
+                }
+            }
+
+            /// Error Level
+            fn error_level(&self) -> Level {
+                match self {
+                    AuthErr::UnknownSubject => Level::Alert,
+                    AuthErr::InvalidCredentials => Level::Error,
+                    AuthErr::Unauthorized => Level::Alert,
+                    AuthErr::BadRequest => Level::Error,
+                    AuthErr::ServerError => Level::Alert,
+                    AuthErr::RequestTimeout(err) => err.error_level(),
+                }
+            }
+        }
+
+        impl fmt::Display for AuthErr {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let msg = match self {
+                    AuthErr::UnknownSubject => "UnknownSubject".to_string(),
+                    AuthErr::InvalidCredentials => "InvalidCredentials".to_string(),
+                    AuthErr::Unauthorized => "Unauthorized".to_string(),
+                    AuthErr::BadRequest => "BadRequest".to_string(),
+                    AuthErr::ServerError => "ServerError".to_string(),
+                    AuthErr::RequestTimeout(err) => err.to_string(),
+                };
+                f.write_str(msg.as_str())
+            }
+        }
+
+        let err = AuthErr::RequestTimeout(RequestTimeout {
+            timeout: Duration::from_millis(100),
+        });
+        let err: Error = op_error!(err);
+        println!("err: {}", err);
+        assert_eq!(err.id(), RequestTimeout::ERROR_ID);
+        assert_eq!(err.level(), RequestTimeout::ERROR_LEVEL);
+    }
 
     #[test]
     fn error() {

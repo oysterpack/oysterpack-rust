@@ -79,7 +79,7 @@ extern crate oysterpack_testing;
 #[macro_use]
 pub mod error;
 
-pub use error::{Error, Id, Level};
+pub use error::{Error, Id, IsError, Level};
 
 #[cfg(test)]
 op_tests_mod!();

@@ -36,9 +36,7 @@ use oysterpack_log::log::*;
 
 use actix::System;
 use futures::{
-    future, prelude::*, sync,
-    stream::*,
-    sink::*
+    future, prelude::*,
 };
 
 use std::{
@@ -59,7 +57,7 @@ fn async_stderr_logger_benchmark(c: & mut Criterion) {
             let task = actor::logger::init_logging(log_config());
             let task = task
                 .and_then(move |_| {
-                    for i in 0..10 {
+                    for i in 0..20 {
                         info!("LOG MSG #{}", i);
                     }
                     Ok(())
