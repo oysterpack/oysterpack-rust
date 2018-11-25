@@ -27,12 +27,12 @@ pub struct ServiceLifeCycleEvent {
     id: ULID,
     instance_id: InstanceId,
     scope: Scope,
-    state: LifeCycle,
+    state: ServiceLifeCycle,
 }
 
 /// Actor lifecycle
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub enum LifeCycle {
+pub enum ServiceLifeCycle {
     /// Service has bee started
     ServiceStarted,
     /// Actor has been started
@@ -41,32 +41,31 @@ pub enum LifeCycle {
     Stopping,
     /// Supervised actors may be restarted when failures occur
     Restarting,
-    /// If actor does not modify execution context during stopping state actor state changes to Stopped.
     /// This state is considered final and at this point actor get dropped.
     Stopped,
 }
 
-impl LifeCycle {
+impl ServiceLifeCycle {
     /// Maps a Service lifecycle event to an EventId
     pub fn event_id(&self) -> EventId {
         match self {
-            LifeCycle::ServiceStarted => ServiceLifeCycleEvent::SERVICE_STARTED,
-            LifeCycle::Started => ServiceLifeCycleEvent::STARTED,
-            LifeCycle::Stopping => ServiceLifeCycleEvent::STOPPING,
-            LifeCycle::Restarting => ServiceLifeCycleEvent::RESTARTING,
-            LifeCycle::Stopped => ServiceLifeCycleEvent::STOPPED,
+            ServiceLifeCycle::ServiceStarted => ServiceLifeCycleEvent::SERVICE_STARTED,
+            ServiceLifeCycle::Started => ServiceLifeCycleEvent::STARTED,
+            ServiceLifeCycle::Stopping => ServiceLifeCycleEvent::STOPPING,
+            ServiceLifeCycle::Restarting => ServiceLifeCycleEvent::RESTARTING,
+            ServiceLifeCycle::Stopped => ServiceLifeCycleEvent::STOPPED,
         }
     }
 }
 
-impl fmt::Display for LifeCycle {
+impl fmt::Display for ServiceLifeCycle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            LifeCycle::ServiceStarted => f.write_str("ServiceStarted"),
-            LifeCycle::Started => f.write_str("Started"),
-            LifeCycle::Stopping => f.write_str("Stopping"),
-            LifeCycle::Restarting => f.write_str("Restarting"),
-            LifeCycle::Stopped => f.write_str("Stopped"),
+            ServiceLifeCycle::ServiceStarted => f.write_str("ServiceStarted"),
+            ServiceLifeCycle::Started => f.write_str("Started"),
+            ServiceLifeCycle::Stopping => f.write_str("Stopping"),
+            ServiceLifeCycle::Restarting => f.write_str("Restarting"),
+            ServiceLifeCycle::Stopped => f.write_str("Stopped"),
         }
     }
 }
@@ -112,7 +111,7 @@ impl ServiceLifeCycleEvent {
     pub const STOPPED: EventId = EventId(1865457968270367213097641946809502745);
 
     /// Constructs a new event for a Service
-    pub fn for_service(service: &impl Service, state: LifeCycle) -> ServiceLifeCycleEvent {
+    pub fn for_service(service: &impl Service, state: ServiceLifeCycle) -> ServiceLifeCycleEvent {
         ServiceLifeCycleEvent {
             id: service.id().into(),
             instance_id: service.instance_id(),
@@ -122,7 +121,10 @@ impl ServiceLifeCycleEvent {
     }
 
     /// Constructs a new event for a Service
-    pub fn for_app_service(service: &impl AppService, state: LifeCycle) -> ServiceLifeCycleEvent {
+    pub fn for_app_service(
+        service: &impl AppService,
+        state: ServiceLifeCycle,
+    ) -> ServiceLifeCycleEvent {
         ServiceLifeCycleEvent {
             id: service.id().into(),
             instance_id: service.instance_id(),
@@ -147,7 +149,7 @@ impl ServiceLifeCycleEvent {
     }
 
     /// Actor Service LifeCycle state getter
-    pub fn state(&self) -> LifeCycle {
+    pub fn state(&self) -> ServiceLifeCycle {
         self.state
     }
 }
@@ -161,7 +163,7 @@ impl Eventful for ServiceLifeCycleEvent {
     /// Event severity level
     fn event_level(&self) -> Level {
         match self.state {
-            LifeCycle::Restarting => Level::Warning,
+            ServiceLifeCycle::Restarting => Level::Warning,
             _ => Level::Info,
         }
     }
@@ -178,5 +180,108 @@ impl fmt::Display for ServiceLifeCycleEvent {
             "{} Actor Service ({}:{}) {}",
             self.scope, self.id, self.instance_id, self.state
         )
+    }
+}
+
+use oysterpack_app_metadata::PackageId;
+
+/// Actor Service lifecycle event
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct AppLifeCycleEvent {
+    package_id: PackageId,
+    instance_id: TypedULID<crate::actor::app::App>,
+    state: AppLifeCycle,
+}
+
+impl fmt::Display for AppLifeCycleEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "App({})({}) {}",
+            self.package_id, self.instance_id, self.state
+        )
+    }
+}
+
+impl AppLifeCycleEvent {
+    /// Service lifecycle domain is used to tag Service lifecycle events
+    pub const DOMAIN: Domain = Domain("AppLifeCycle");
+    /// Service lifecycle domain ULID (01CX5XA422P1MWPCRN7459PP04)
+    const DOMAIN_ULID: u128 = 1865572633565274881515421221332408324;
+
+    /// App lifecycle domain ULID
+    pub fn domain_ulid() -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into())
+    }
+
+    /// App started EventId (01CX5XBDTGPKT502WY42EVKD42)
+    pub const STARTED: EventId = EventId(1865572685266217927843817693478761602);
+    /// App stopped EventId (01CX5XBT512FQVTNBY40CRCRH3)
+    pub const STOPPED: EventId = EventId(1865572700528146015116120354537759267);
+
+    /// constructor
+    pub fn new(
+        package_id: PackageId,
+        instance_id: TypedULID<crate::actor::app::App>,
+        state: AppLifeCycle,
+    ) -> AppLifeCycleEvent {
+        AppLifeCycleEvent {
+            package_id,
+            instance_id,
+            state,
+        }
+    }
+
+    /// PackageId getter
+    pub fn package_id(&self) -> &PackageId {
+        &self.package_id
+    }
+
+    /// Instance id getter
+    pub fn instance_id(&self) -> TypedULID<crate::actor::app::App> {
+        self.instance_id
+    }
+    /// AppLifeCycle state getter
+    pub fn state(&self) -> AppLifeCycle {
+        self.state
+    }
+}
+
+impl Eventful for AppLifeCycleEvent {
+    fn event_id(&self) -> DomainULID {
+        DomainULID::from_ulid(&Self::DOMAIN, ULID::from(self.state.event_id().0))
+    }
+
+    /// Event severity level
+    fn event_level(&self) -> Level {
+        Level::Info
+    }
+}
+
+/// Actor lifecycle
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum AppLifeCycle {
+    /// Actor System has been started
+    Started,
+    /// Actor system has been stopped
+    Stopped,
+}
+
+impl fmt::Display for AppLifeCycle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AppLifeCycle::Started => f.write_str("Started"),
+            AppLifeCycle::Stopped => f.write_str("Stopped"),
+        }
+    }
+}
+
+impl AppLifeCycle {
+    /// Returns the Event Id for the corresponding app lifecycle state
+    pub fn event_id(&self) -> EventId {
+        match self {
+            AppLifeCycle::Started => AppLifeCycleEvent::STARTED,
+            AppLifeCycle::Stopped => AppLifeCycleEvent::STOPPED,
+        }
     }
 }

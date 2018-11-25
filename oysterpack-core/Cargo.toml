@@ -34,6 +34,7 @@ crossbeam-channel = "0.3.0"
 version-sync = "0.5"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 criterion = "0.2.5"
+serde_json = "1.0.33"
 
 [build-dependencies]
 oysterpack_built = {path = "../oysterpack-built", version="0.3"}

@@ -55,6 +55,8 @@ extern crate oysterpack_testing;
 #[macro_use]
 #[cfg(test)]
 extern crate oysterpack_app_metadata_macros;
+#[cfg(test)]
+extern crate serde_json;
 
 #[macro_use]
 mod macros;

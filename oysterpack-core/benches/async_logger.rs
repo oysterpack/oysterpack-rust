@@ -35,25 +35,19 @@ use oysterpack_core::actor;
 use oysterpack_log::log::*;
 
 use actix::System;
-use futures::{
-    future, prelude::*,
-};
+use futures::{future, prelude::*};
 
-use std::{
-    thread,
-    sync::mpsc
-};
+use std::{sync::mpsc, thread};
 
-
-fn async_stderr_logger_benchmark(c: & mut Criterion) {
+fn async_stderr_logger_benchmark(c: &mut Criterion) {
     fn log_config() -> oysterpack_log::LogConfig {
         oysterpack_log::config::LogConfigBuilder::new(Level::Info).build()
     }
 
-    let (tx,rx) = mpsc::channel();
+    let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        System::run( move || {
+        System::run(move || {
             let task = actor::logger::init_logging(log_config());
             let task = task
                 .and_then(move |_| {
@@ -62,13 +56,12 @@ fn async_stderr_logger_benchmark(c: & mut Criterion) {
                     }
                     Ok(())
                 }).then(move |_| {
-                let _ = tx.send(System::current());
-                future::ok::<(), ()>(())
-            });
+                    let _ = tx.send(System::current());
+                    future::ok::<(), ()>(())
+                });
             actor::spawn_task(task);
         });
     });
-
 
     let system: System = rx.recv().unwrap();
 

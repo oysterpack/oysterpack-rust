@@ -19,116 +19,136 @@
 #[macro_export]
 macro_rules! op_actor_service {
     ( Service($name:ident) ) => {
-        impl Actor for $name {
-            type Context = Context<Self>;
+        impl $crate::actix::dev::Actor for $name {
+            type Context = $crate::actix::dev::Context<Self>;
 
             fn started(&mut self, _: &mut Self::Context) {
-                let event =
-                    events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Started)
-                        .new_event(op_module_source!());
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_service(
+                    self,
+                    $crate::actor::events::ServiceLifeCycle::Started,
+                ).new_event(op_module_source!());
                 event.log_pretty();
             }
 
             fn stopped(&mut self, _: &mut Self::Context) {
-                let event =
-                    events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Stopped)
-                        .new_event(op_module_source!());
-                event.log_pretty();
-            }
-        }
-
-        impl ArbiterService for $name {
-            fn service_started(&mut self, _: &mut Context<Self>) {
-                let event = events::ServiceLifeCycleEvent::for_service(
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_service(
                     self,
-                    events::LifeCycle::ServiceStarted,
+                    $crate::actor::events::ServiceLifeCycle::Stopped,
                 ).new_event(op_module_source!());
                 event.log_pretty();
             }
         }
 
-        impl Supervised for $name {
-            fn restarting(&mut self, _: &mut Self::Context) {
-                let event =
-                    events::ServiceLifeCycleEvent::for_service(self, events::LifeCycle::Restarting)
-                        .new_event(op_module_source!());
+        impl $crate::actix::dev::ArbiterService for $name {
+            fn service_started(&mut self, _: &mut $crate::actix::dev::Context<Self>) {
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_service(
+                    self,
+                    $crate::actor::events::ServiceLifeCycle::ServiceStarted,
+                ).new_event(op_module_source!());
                 event.log_pretty();
             }
         }
 
-        impl Service for $name {
-            fn id(&self) -> actor::Id {
+        impl $crate::actix::dev::Supervised for $name {
+            fn restarting(&mut self, _: &mut Self::Context) {
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_service(
+                    self,
+                    $crate::actor::events::ServiceLifeCycle::Restarting,
+                ).new_event(op_module_source!());
+                event.log_pretty();
+            }
+        }
+
+        impl $crate::actor::Service for $name {
+            fn id(&self) -> $crate::actor::Id {
                 self.service_info.id
             }
 
-            fn instance_id(&self) -> actor::InstanceId {
+            fn instance_id(&self) -> $crate::actor::InstanceId {
                 self.service_info.instance_id
             }
         }
 
-        impl Handler<GetServiceInfo> for $name {
-            type Result = ServiceInfo;
+        impl $crate::actix::dev::Handler<$crate::actor::GetServiceInfo> for $name {
+            type Result = $crate::actor::ServiceInfo;
 
-            fn handle(&mut self, _: GetServiceInfo, _: &mut Self::Context) -> Self::Result {
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetServiceInfo,
+                _: &mut Self::Context,
+            ) -> Self::Result {
                 self.service_info
             }
         }
     };
     ( AppService($name:ident) ) => {
-        impl Actor for $name {
-            type Context = Context<Self>;
+        impl $crate::actix::dev::Actor for $name {
+            type Context = $crate::actix::dev::Context<Self>;
 
             fn started(&mut self, _: &mut Self::Context) {
-                let event = events::ServiceLifeCycleEvent::for_app_service(
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_app_service(
                     self,
-                    events::LifeCycle::Started,
+                    $crate::actor::events::ServiceLifeCycle::Started,
                 ).new_event(op_module_source!());
                 event.log_pretty();
             }
 
             fn stopped(&mut self, _: &mut Self::Context) {
-                let event = events::ServiceLifeCycleEvent::for_app_service(
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_app_service(
                     self,
-                    events::LifeCycle::Stopped,
+                    $crate::actor::events::ServiceLifeCycle::Stopped,
                 ).new_event(op_module_source!());
                 event.log_pretty();
             }
         }
 
-        impl SystemService for $name {
-            fn service_started(&mut self, _: &mut Context<Self>) {
-                let event = events::ServiceLifeCycleEvent::for_app_service(
+        impl $crate::actix::dev::SystemService for $name {
+            fn service_started(&mut self, _: &mut $crate::actix::dev::Context<Self>) {
+                use $crate::oysterpack_events::Eventful;
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_app_service(
                     self,
-                    events::LifeCycle::ServiceStarted,
+                    $crate::actor::events::ServiceLifeCycle::ServiceStarted,
                 ).new_event(op_module_source!());
                 event.log_pretty();
             }
         }
 
-        impl Supervised for $name {
+        impl $crate::actix::dev::Supervised for $name {
             fn restarting(&mut self, _: &mut Self::Context) {
-                let event = events::ServiceLifeCycleEvent::for_app_service(
+                use $crate::oysterpack_events::Eventful;
+
+                let event = $crate::actor::events::ServiceLifeCycleEvent::for_app_service(
                     self,
-                    events::LifeCycle::Restarting,
+                    $crate::actor::events::ServiceLifeCycle::Restarting,
                 ).new_event(op_module_source!());
                 event.log_pretty();
             }
         }
 
-        impl AppService for $name {
-            fn id(&self) -> actor::Id {
+        impl $crate::actor::AppService for $name {
+            fn id(&self) -> $crate::actor::Id {
                 self.service_info.id
             }
 
-            fn instance_id(&self) -> actor::InstanceId {
+            fn instance_id(&self) -> $crate::actor::InstanceId {
                 self.service_info.instance_id
             }
         }
 
-        impl Handler<GetServiceInfo> for $name {
-            type Result = ServiceInfo;
+        impl $crate::actix::dev::Handler<$crate::actor::GetServiceInfo> for $name {
+            type Result = $crate::actor::ServiceInfo;
 
-            fn handle(&mut self, _: GetServiceInfo, _: &mut Self::Context) -> Self::Result {
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetServiceInfo,
+                _: &mut Self::Context,
+            ) -> Self::Result {
                 self.service_info
             }
         }

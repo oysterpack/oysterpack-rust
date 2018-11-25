@@ -153,7 +153,7 @@ struct LogRecordSender {
 
 impl LogRecordSender {
     /// The default Arbiter that hosts the Logger service actor
-    pub const DEFAULT_ARBITER: actor::arbiters::Name = actor::arbiters::Name("log");
+    pub const DEFAULT_ARBITER: actor::arbiters::Name = actor::arbiters::Name("OP_LOG");
 
     /// constructor
     pub fn new(logger: Addr<Logger>) -> Self {
@@ -163,6 +163,7 @@ impl LogRecordSender {
 
 /// Initializes the [log](https://crates.io/crates/log) system.
 /// - log records are converted to LogRecord and sent asynchronously to the Logger service actor.
+/// - the Logger service actor runs in a dedicated Arbiter, i.e., thread
 ///
 /// # Panics
 /// This function panics if actix system is not running.

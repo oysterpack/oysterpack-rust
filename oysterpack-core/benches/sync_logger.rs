@@ -34,12 +34,12 @@ use oysterpack_log::log::*;
 use actix::System;
 use futures::{future, prelude::*, sync};
 
-fn sync_stderr_logger_benchmark(c: & mut Criterion) {
+fn sync_stderr_logger_benchmark(c: &mut Criterion) {
     fn log_config() -> oysterpack_log::LogConfig {
         oysterpack_log::config::LogConfigBuilder::new(Level::Info).build()
     }
 
-    oysterpack_log::init(log_config(),oysterpack_log::StderrLogger);
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
     c.bench_function("StderrLogger", |b| b.iter(|| error!("CIAO")));
 }
