@@ -15,7 +15,8 @@
 //! Provides event standardization
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{DomainULID, TypedULID};
+use oysterpack_uid::{DomainULID, TypedULID, ULID};
+use oysterpack_log;
 use serde::Serialize;
 use serde_json;
 use std::collections::HashSet;
@@ -47,6 +48,12 @@ op_newtype!{
     /// event Id(s) as constants.
     #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
     pub Id(pub u128)
+}
+
+impl Into<ULID> for Id {
+    fn into(self) -> ULID {
+        ULID::from(self.0)
+    }
 }
 
 /// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
@@ -87,7 +94,21 @@ impl<Data> Event<Data>
 where
     Data: Debug + Display + Send + Sync + Clone + Eventful,
 {
-    const EVENT_TARGET_BASE: &'static str = "op_event";
+    /// Event log target base.
+    ///
+    /// The log target will take the form: `op_event::<event-id>`,
+    /// where `<event-id>` is formatted as a ULID, e.g.
+    /// - `op_event::01CV38FM3Z4M2A8G50QRTGJHP4`
+    pub const EVENT_TARGET_BASE: &'static str = "op_event";
+
+    /// Event log target base.
+    ///
+    /// The log target will take the form: `op_event::<event-id>`,
+    /// where `<event-id>` is formatted as a ULID, e.g.
+    /// - `op_event::01CV38FM3Z4M2A8G50QRTGJHP4`
+    pub fn log_target_base() -> oysterpack_log::config::Target {
+        oysterpack_log::config::Target::new(Self::EVENT_TARGET_BASE.to_string())
+    }
 
     /// Constructor
     pub fn new(data: Data, mod_src: ModuleSource) -> Event<Data> {

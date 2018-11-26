@@ -21,3 +21,13 @@ macro_rules! op_module_source {
         $crate::event::ModuleSource::new(module_path!(), line!())
     }};
 }
+
+/// Generates a new event
+#[macro_export]
+macro_rules! op_event {
+    ($event:expr) => {{
+        $event.new_event($crate::op_module_source!())
+    }};
+}
+
+

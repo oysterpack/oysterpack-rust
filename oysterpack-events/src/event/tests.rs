@@ -84,7 +84,7 @@ impl Eventful for Foo {
 #[test]
 fn foo_event() {
     run_test("foo_event", || {
-        let foo_event = Foo("foo data".into()).new_event(op_module_source!());
+        let foo_event = op_event!(Foo("foo data".into()));
         assert!(foo_event.tag_ids().is_none());
         info!(
             "foo_event: {}",

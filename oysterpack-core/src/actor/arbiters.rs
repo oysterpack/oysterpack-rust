@@ -87,6 +87,8 @@ op_actor_service! {
     AppService(Arbiters)
 }
 
+impl crate::actor::LifeCycle for Arbiters {}
+
 /// Arbiter name
 #[derive(Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Clone, Copy)]
 pub struct Name(pub &'static str);

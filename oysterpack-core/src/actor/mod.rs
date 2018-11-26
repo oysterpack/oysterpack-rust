@@ -72,7 +72,17 @@ pub fn spawn_task(future: impl Future + 'static) {
 }
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
-pub trait Service: ArbiterService {
+pub trait Service: ArbiterService + LifeCycle {
+    /// Each Service is assigned an Id
+    fn id(&self) -> Id;
+
+    /// Each new instance is assigned a
+    fn instance_id(&self) -> InstanceId;
+}
+
+/// AppService is a SystemService, which means there is only 1 instance per actor system.
+/// An actor system maps to an application, thus the name.
+pub trait AppService: SystemService + LifeCycle {
     /// Each Service is assigned an Id
     fn id(&self) -> Id;
 
@@ -85,19 +95,24 @@ pub trait Service: ArbiterService {
     }
 }
 
-/// AppService is a SystemService, which means there is only 1 instance per actor system.
-/// An actor system maps to an application, thus the name.
-pub trait AppService: SystemService {
-    /// Each Service is assigned an Id
-    fn id(&self) -> Id;
+/// Service lifecycle
+pub trait LifeCycle: Actor {
+    /// Lifecycle method called when the Actor is started
+    fn on_started(&mut self, _: &mut Self::Context) {}
 
-    /// Each new instance is assigned a
-    fn instance_id(&self) -> InstanceId;
+    /// Lifecycle method called when the Actor service is started
+    fn on_service_started(&mut self, _: &mut Self::Context) {}
 
-    /// When the actor instance was created
-    fn created_on(&self) -> DateTime<Utc> {
-        self.instance_id().ulid().datetime()
+    /// Lifecycle method called when the Actor is restarting
+    fn on_restarting(&mut self, _: &mut Self::Context) {}
+
+    /// Lifecycle method called when the Actor is stopping
+    fn on_stopping(&mut self, _: &mut Self::Context) -> actix::Running {
+        actix::Running::Stop
     }
+
+    /// Lifecycle method called when the Actor is stopped
+    fn on_stopped(&mut self, _: &mut Self::Context) {}
 }
 
 op_newtype! {
@@ -199,6 +214,7 @@ impl Message for GetServiceInfo {
 
 pub mod app;
 pub mod arbiters;
+pub mod eventlog;
 pub mod events;
 pub mod logger;
 
@@ -249,6 +265,8 @@ mod tests {
                 self.service_info.instance_id
             }
         }
+
+        impl LifeCycle for Foo {}
 
         // TODO: macro
         impl ArbiterService for Foo {

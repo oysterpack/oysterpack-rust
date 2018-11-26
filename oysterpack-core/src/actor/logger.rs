@@ -48,6 +48,8 @@ op_actor_service! {
   Service(Logger)
 }
 
+impl crate::actor::LifeCycle for Logger {}
+
 /// LogRecord is a threadsafe version of log::Record, i.e., it implements Send + Sync
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogRecord {

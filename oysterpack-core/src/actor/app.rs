@@ -29,6 +29,7 @@ use futures::{future, prelude::Future};
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
 
+// TODO: log AppLifecycleEvent(s)
 /// App represents an application instance.
 #[derive(Debug)]
 pub struct App {
@@ -76,6 +77,8 @@ impl App {
         })
     }
 }
+
+impl crate::actor::LifeCycle for App {}
 
 /// SetBuild Request
 #[derive(Debug, Clone)]
