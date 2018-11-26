@@ -58,6 +58,12 @@ impl Default for LogConfig {
     }
 }
 
+impl fmt::Display for LogConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(serde_json::to_string_pretty(self).unwrap().as_str())
+    }
+}
+
 /// LogConfig builder
 #[derive(Debug)]
 pub struct LogConfigBuilder {

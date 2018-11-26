@@ -18,7 +18,10 @@
 //!
 
 use oysterpack_app_metadata::{Build, PackageId};
-use oysterpack_log::LogConfig;
+use oysterpack_log::{
+    LogConfig,
+    self
+};
 use oysterpack_uid::TypedULID;
 use oysterpack_events::Eventful;
 
@@ -231,6 +234,24 @@ impl Handler<GetAppInstanceInfo> for App {
     }
 }
 
+/// GetLogConfig Request
+/// - returns the LogConfig that is in use
+#[derive(Debug, Copy, Clone)]
+pub struct GetLogConfig;
+
+impl Message for GetLogConfig {
+    /// When using App::run(), this will always return some LogConfig.
+    type Result = Option<&'static LogConfig>;
+}
+
+impl Handler<GetLogConfig> for App {
+    type Result = MessageResult<GetLogConfig>;
+
+    fn handle(&mut self, _: GetLogConfig, _: &mut Self::Context) -> Self::Result {
+        MessageResult(oysterpack_log::config())
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -303,6 +324,10 @@ mod tests {
                 app.send(GetAppInstanceInfo)
             }).then(|app_instance_info| {
                 info!("app_instance_id = {}", app_instance_info.unwrap());
+                let app = System::current().registry().get::<App>();
+                app.send(GetLogConfig)
+            }).then(|logconfig| {
+                info!("logconfig = {}", logconfig.unwrap().unwrap());
                 future::ok::<(), ()>(())
             }),
         );
