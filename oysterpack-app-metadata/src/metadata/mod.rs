@@ -433,6 +433,19 @@ impl PackageId {
         PackageId { name, version }
     }
 
+    /// PackaheId constructor for this crate. The package name and version are obtained via Cargo env variables:
+    /// - CARGO_PKG_NAME
+    /// - CARGO_PKG_VERSION
+    ///
+    /// ## Panics
+    /// If version fails to be parsed as semver format
+    pub fn for_this_crate() -> PackageId {
+        PackageId {
+            name : env!("CARGO_PKG_NAME").to_string(),
+            version: semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
+        }
+    }
+
     /// Package name
     pub fn name(&self) -> &str {
         &self.name
@@ -450,5 +463,6 @@ impl fmt::Display for PackageId {
     }
 }
 
+#[allow(warnings)]
 #[cfg(test)]
 mod tests;

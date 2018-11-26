@@ -25,6 +25,12 @@
 //! ## Features
 //! - service actors are assigned an Id
 //! - each service actor instance is assigned an InstanceId
+//! - [Service]() actors are ArbiterService(s), i.e., they are assigned to run within a specific thread
+//! - [AppService]() actors are SystemService(s), i.e., they run within the System arbiter
+//! - the [op_actor_service!]() macro generates the boilerplate Actor service code
+//!   - logs service lifecycle events
+//!
+//! ## TODO
 //! - service actor metrics are tracked
 //!   - active service actor instance count
 //!   - total service actor instance count
@@ -32,9 +38,6 @@
 //!   - last message received timestamp
 //!   - message processing stats
 //! - error tracking
-//! - events
-//!   - service started
-//!   - service stopped
 
 use actix::{
     self,

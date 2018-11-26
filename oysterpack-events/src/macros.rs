@@ -22,7 +22,7 @@ macro_rules! op_module_source {
     }};
 }
 
-/// Generates a new event
+/// Generates a new event from something Eventful
 #[macro_export]
 macro_rules! op_event {
     ($event:expr) => {{

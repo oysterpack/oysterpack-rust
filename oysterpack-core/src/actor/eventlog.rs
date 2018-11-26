@@ -24,6 +24,7 @@ use oysterpack_events::{Event, Eventful};
 pub const SERVICE_ID: ServiceId = ServiceId(1865602198802033292836235027287714127);
 
 /// EventLog App Service
+/// - for now simply logs the event - long term we need centralized event logging
 #[derive(Debug, Clone)]
 pub struct EventLog {
     service_info: ServiceInfo,

@@ -17,19 +17,23 @@
 //! - run() is the key method used to run the application actor system
 //!
 
-use oysterpack_app_metadata::Build;
+use oysterpack_app_metadata::{Build, PackageId};
 use oysterpack_log::LogConfig;
 use oysterpack_uid::TypedULID;
+use oysterpack_events::Eventful;
 
-use actor::{Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo};
+use actor::{
+    eventlog::{EventLog, LogEvent},
+    events, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
+};
 
 use actix::dev::{Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
+use std::fmt;
 
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
 
-// TODO: log AppLifecycleEvent(s)
 /// App represents an application instance.
 #[derive(Debug)]
 pub struct App {
@@ -56,9 +60,12 @@ impl App {
     /// Runs the App actor System.
     /// - log system is initialized
     /// - the Build is stored
+    /// - AppLifeCycleEvent Started event is logged
     /// - the supplied future is spawned
     ///   - the supplied future is the application workflow
-    /// - once the supplied future completes, then the System is stopped
+    /// - after the supplied future completes:
+    ///   - AppLifeCycleEvent Stopped event is logged
+    ///   - the System is stopped
     pub fn run<F>(build: Build, log_config: LogConfig, f: F) -> i32
     where
         F: Future<Item = (), Error = ()> + 'static,
@@ -68,10 +75,28 @@ impl App {
                 .then(move |_| {
                     let app = System::current().registry().get::<App>();
                     app.send(SetBuild(build))
+                        .then(move |_| app.send(GetAppInstanceInfo))
+                }).then(|appinstance_info| {
+                    let appinstance_info = appinstance_info.unwrap();
+                    let eventlog = System::current().registry().get::<EventLog>();
+                    let event = events::AppLifeCycleEvent::started(
+                        appinstance_info.package_id().clone(),
+                        appinstance_info.instance_id(),
+                    );
+                    eventlog.send(LogEvent(op_event!(event)))
                 }).then(|_| f)
                 .then(|_| {
                     let app = System::current().registry().get::<App>();
-                    app.send(StopApp)
+                    app.send(GetAppInstanceInfo)
+                        .then(|appinstance_info| {
+                            let appinstance_info = appinstance_info.unwrap();
+                            let eventlog = System::current().registry().get::<EventLog>();
+                            let event = events::AppLifeCycleEvent::stopped(
+                                appinstance_info.package_id().clone(),
+                                appinstance_info.instance_id(),
+                            );
+                            eventlog.send(LogEvent(op_event!(event)))
+                        }).then(move |_| app.send(StopApp))
                 });
             crate::actor::spawn_task(task);
         })
@@ -156,6 +181,56 @@ impl Handler<GetInstanceId> for App {
     }
 }
 
+/// GetInstanceId Request
+/// - when an App is started, it assigns itself a new instance id.
+#[derive(Debug, Copy, Clone)]
+pub struct GetAppInstanceInfo;
+
+/// App instance info
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+pub struct AppInstanceInfo {
+    package_id: PackageId,
+    instance_id: TypedULID<App>,
+}
+
+impl AppInstanceInfo {
+    /// PackageId getter
+    pub fn package_id(&self) -> &PackageId {
+        &self.package_id
+    }
+
+    /// App instance id getter
+    pub fn instance_id(&self) -> TypedULID<App> {
+        self.instance_id
+    }
+}
+
+impl Message for GetAppInstanceInfo {
+    type Result = AppInstanceInfo;
+}
+
+impl fmt::Display for AppInstanceInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({},{})", self.package_id, self.instance_id)
+    }
+}
+
+impl Handler<GetAppInstanceInfo> for App {
+    type Result = MessageResult<GetAppInstanceInfo>;
+
+    fn handle(&mut self, _: GetAppInstanceInfo, _: &mut Self::Context) -> Self::Result {
+        MessageResult(AppInstanceInfo {
+            package_id: self
+                .build
+                .as_ref()
+                .map_or_else(PackageId::for_this_crate, |build| {
+                    build.package().id().clone()
+                }),
+            instance_id: self.instance_id,
+        })
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -224,6 +299,10 @@ mod tests {
                 app.send(GetInstanceId)
             }).then(|app_instance_id| {
                 info!("app_instance_id = {}", app_instance_id.unwrap());
+                let app = System::current().registry().get::<App>();
+                app.send(GetAppInstanceInfo)
+            }).then(|app_instance_info| {
+                info!("app_instance_id = {}", app_instance_info.unwrap());
                 future::ok::<(), ()>(())
             }),
         );

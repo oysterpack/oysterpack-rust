@@ -92,3 +92,15 @@ fn parsing_dependencies_graphviz_dot_into_package_ids() {
         info!("package_ids : {}", package_ids.join("\n"));
     });
 }
+
+#[test]
+fn crate_package_id() {
+    run_test("PackageId::for_this_crate()", || {
+        let package_id = PackageId::for_this_crate();
+        info!("package_id = {}", package_id);
+        assert_eq!(package_id.name(), env!("CARGO_PKG_NAME"));
+        assert_eq!(*package_id.version(), semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap());
+    })
+
+
+}

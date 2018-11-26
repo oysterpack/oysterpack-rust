@@ -232,6 +232,22 @@ impl AppLifeCycleEvent {
         }
     }
 
+    /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Started
+    pub fn started(
+        package_id: PackageId,
+        instance_id: TypedULID<crate::actor::app::App>,
+    ) -> AppLifeCycleEvent {
+        AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Started)
+    }
+
+    /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Stopped
+    pub fn stopped(
+        package_id: PackageId,
+        instance_id: TypedULID<crate::actor::app::App>,
+    ) -> AppLifeCycleEvent {
+        AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Stopped)
+    }
+
     /// PackageId getter
     pub fn package_id(&self) -> &PackageId {
         &self.package_id
