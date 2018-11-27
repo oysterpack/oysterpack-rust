@@ -47,7 +47,7 @@ pub enum ServiceLifeCycle {
 
 impl ServiceLifeCycle {
     /// Maps a Service lifecycle event to an EventId
-    pub fn event_id(&self) -> EventId {
+    pub fn event_id(self) -> EventId {
         match self {
             ServiceLifeCycle::ServiceStarted => ServiceLifeCycleEvent::SERVICE_STARTED,
             ServiceLifeCycle::Started => ServiceLifeCycleEvent::STARTED,
@@ -294,7 +294,7 @@ impl fmt::Display for AppLifeCycle {
 
 impl AppLifeCycle {
     /// Returns the Event Id for the corresponding app lifecycle state
-    pub fn event_id(&self) -> EventId {
+    pub fn event_id(self) -> EventId {
         match self {
             AppLifeCycle::Started => AppLifeCycleEvent::STARTED,
             AppLifeCycle::Stopped => AppLifeCycleEvent::STOPPED,

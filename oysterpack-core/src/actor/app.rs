@@ -18,12 +18,9 @@
 //!
 
 use oysterpack_app_metadata::{Build, PackageId};
-use oysterpack_log::{
-    LogConfig,
-    self
-};
-use oysterpack_uid::TypedULID;
 use oysterpack_events::Eventful;
+use oysterpack_log::{self, LogConfig};
+use oysterpack_uid::TypedULID;
 
 use actor::{
     eventlog::{EventLog, LogEvent},

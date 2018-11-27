@@ -75,20 +75,20 @@ macro_rules! op_tests_mod {
                 if FERN_STATE.compare_and_swap(LOG_NOT_LOG_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) == LOG_NOT_LOG_INITIALIZED {
                     const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
                     let _ = $crate::fern::Dispatch::new()
-                        .format(|out, message, record| {
-                            out.finish(format_args!(
-                                "{}[{}][{}][{}:{}] {}",
-                                $crate::chrono::Local::now().format("[%H:%M:%S%.3f]"),
+                        .level($crate::log::LevelFilter::Warn)
+                        .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
+                        .level_for("op_event", $crate::log::LevelFilter::Debug)
+                        .chain($crate::fern::Output::call(move |record| {
+                            println!(
+                                "[{}][{}][{}][{}:{}] {}",
+                                $crate::chrono::Local::now().format("%H:%M:%S%.3f"),
                                 record.level(),
                                 record.target(),
                                 record.module_path().unwrap(),
                                 record.line().unwrap(),
-                                message
-                            ))
-                        }).level($crate::log::LevelFilter::Warn)
-                        .level_for(CARGO_PKG_NAME, $crate::log::LevelFilter::Debug)
-                        .level_for("op_event", $crate::log::LevelFilter::Debug)
-                        .chain(::std::io::stdout())
+                                format!("{}", record.args())
+                            )
+                        }))
                         $(
                         .level_for($target,$crate::log::LevelFilter::$level)
                         )*

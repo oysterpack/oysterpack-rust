@@ -47,7 +47,7 @@ use actix::{
     },
     sync::SyncContext,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 use oysterpack_errors::Error;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
@@ -149,7 +149,7 @@ pub struct ServiceActor;
 pub type InstanceId = TypedULID<ServiceActor>;
 
 /// Service info
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct ServiceInfo {
     id: Id,
     instance_id: InstanceId,
@@ -215,6 +215,83 @@ impl Message for GetServiceInfo {
     type Result = ServiceInfo;
 }
 
+/// Ping is used as a heartbeat.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Ping(DateTime<Utc>);
+
+impl Ping {
+    /// constructor
+    pub fn new() -> Ping {
+        Default::default()
+    }
+
+    /// When the Ping was created
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.0
+    }
+}
+
+impl Default for Ping {
+    fn default() -> Ping {
+        Ping(Utc::now())
+    }
+}
+
+impl Message for Ping {
+    type Result = Pong;
+}
+
+impl fmt::Display for Ping {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Ping({})", self.0.to_rfc3339())
+    }
+}
+
+/// Ping response
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Pong {
+    ping: Ping,
+    received: DateTime<Utc>,
+}
+
+impl From<Ping> for Pong {
+    fn from(ping: Ping) -> Pong {
+        Pong {
+            ping,
+            received: Utc::now(),
+        }
+    }
+}
+
+impl Pong {
+    /// The Ping request that this Pong is responding to
+    pub fn ping(&self) -> Ping {
+        self.ping
+    }
+
+    /// When the Ping was received
+    pub fn ping_received_timestamp(&self) -> DateTime<Utc> {
+        self.received
+    }
+
+    /// how long it took to receive the Ping
+    pub fn duration(&self) -> Duration {
+        self.received.signed_duration_since(self.ping.timestamp())
+    }
+}
+
+impl fmt::Display for Pong {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Received {} at {} : Duration({})",
+            self.ping,
+            self.received.to_rfc3339(),
+            self.duration()
+        )
+    }
+}
+
 pub mod app;
 pub mod arbiters;
 pub mod eventlog;
@@ -225,7 +302,10 @@ pub mod logger;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::{msgs::Execute, spawn, Arbiter, Supervised, System};
+    use actix::{
+        msgs::{Execute, StartActor},
+        spawn, Arbiter, Supervised, System,
+    };
     use futures::{future, prelude::*};
     use std::time::Duration;
     use tests::run_test;
@@ -246,53 +326,11 @@ mod tests {
             }
         }
 
-        impl Actor for Foo {
-            type Context = Context<Self>;
-
-            fn started(&mut self, ctx: &mut Self::Context) {
-                info!("started: {}", self.service_info);
-            }
-
-            fn stopped(&mut self, ctx: &mut Self::Context) {
-                info!("stopped: {}", self.service_info);
-            }
-        }
-
-        // TODO: macro
-        impl Service for Foo {
-            fn id(&self) -> Id {
-                self.service_info.id
-            }
-
-            fn instance_id(&self) -> InstanceId {
-                self.service_info.instance_id
-            }
+        op_actor_service! {
+            Service(Foo)
         }
 
         impl LifeCycle for Foo {}
-
-        // TODO: macro
-        impl ArbiterService for Foo {
-            fn service_started(&mut self, ctx: &mut Context<Self>) {
-                info!("service_started: {}", self.service_info);
-            }
-        }
-
-        // TODO: macro
-        impl Supervised for Foo {
-            fn restarting(&mut self, ctx: &mut Self::Context) {
-                info!("restarting: {}", self.service_info);
-            }
-        }
-
-        // TODO: macro - relies on `service_info` field
-        impl Handler<GetServiceInfo> for Foo {
-            type Result = ServiceInfo;
-
-            fn handle(&mut self, msg: GetServiceInfo, ctx: &mut Self::Context) -> Self::Result {
-                self.service_info
-            }
-        }
 
         run_test("GetServiceInfo", || {
             System::run(|| {
@@ -308,7 +346,7 @@ mod tests {
                         .then(|info| {
                             match info {
                                 Ok(info) => info!("GetServiceInfo Response: {}", info),
-                                Err(err) => error!("GetServiceInfo failed: {:?}", err),
+                                Err(err) => panic!("GetServiceInfo failed: {:?}", err),
                             }
                             future::ok::<_, ()>(())
                         }).then(move |_| {
@@ -323,7 +361,7 @@ mod tests {
                                                 info!("frontend: GetServiceInfo Response: {}", info)
                                             }
                                             Err(err) => {
-                                                error!("frontend: GetServiceInfo failed: {:?}", err)
+                                                panic!("frontend: GetServiceInfo failed: {:?}", err)
                                             }
                                         }
                                         future::ok::<_, ()>(())
@@ -343,7 +381,7 @@ mod tests {
                                                 info!("frontend: GetServiceInfo Response: {}", info)
                                             }
                                             Err(err) => {
-                                                error!("frontend: GetServiceInfo failed: {:?}", err)
+                                                panic!("frontend: GetServiceInfo failed: {:?}", err)
                                             }
                                         }
                                         future::ok::<_, ()>(())
@@ -399,5 +437,24 @@ mod tests {
                 }));
             });
         });
+
+        run_test("Ping", || {
+            System::run(|| {
+                let foo = Arbiter::registry().get::<Foo>();
+
+                let task = foo
+                    .send(Ping::new())
+                    .then(|pong| {
+                        let pong = pong.unwrap();
+                        info!("{}", pong);
+                        future::ok::<(), ()>(())
+                    }).then(|_| {
+                        System::current().stop();
+                        future::ok::<_, ()>(())
+                    });
+
+                spawn_task(task);
+            });
+        })
     }
 }

@@ -56,8 +56,8 @@
 //! ```
 
 use actix::{
-    registry::SystemService, Actor, Addr, Arbiter, Context, Handler, Message, MessageResult,
-    Supervised,
+    msgs::Execute, registry::SystemService, Actor, Addr, Arbiter, Context, Handler, MailboxError,
+    Message, MessageResult, Supervised, System,
 };
 use actor::{self, events, AppService, GetServiceInfo, ServiceInfo};
 use futures::prelude::*;
@@ -66,6 +66,24 @@ use std::{collections::HashMap, fmt};
 
 /// Arbiters ServiceId (01CWSGYS79QQHAE6ZDRKB48F6S)
 pub const SERVICE_ID: actor::Id = actor::Id(1865070194757304474174751345022876889);
+
+/// Gets a service from the specified Arbiter
+///
+/// ## Panics
+/// If invoked outside the context of a running actor System.
+pub fn service<A: actor::Service>(
+    arbiter: Name,
+) -> impl Future<Item = Addr<A>, Error = MailboxError> {
+    let arbiters = actor::app_service::<Arbiters>();
+    arbiters
+        .send(GetArbiter::from(arbiter))
+        .and_then(|arbiter| {
+            arbiter
+                .send(Execute::new(|| -> Result<Addr<A>, ()> {
+                    Ok(Arbiter::registry().get::<A>())
+                })).map(|service| service.unwrap())
+        })
+}
 
 /// Arbiter registry AppService
 #[derive(Debug)]
@@ -164,7 +182,7 @@ impl Handler<GetArbiterNames> for Arbiters {
         if self.arbiters.is_empty() {
             return MessageResult(None);
         }
-        let names = self.arbiters.keys().map(|key| key.clone()).collect();
+        let names = self.arbiters.keys().cloned().collect();
         MessageResult(Some(names))
     }
 }
@@ -409,6 +427,70 @@ mod tests {
 
                 spawn(future);
             });
+        });
+    }
+
+    const BAR_ID: actor::Id = actor::Id(1864734280873114327279151769208160280);
+
+    struct Bar {
+        service_info: ServiceInfo,
+    }
+
+    impl Default for Bar {
+        fn default() -> Self {
+            Bar {
+                service_info: ServiceInfo::for_new_actor_instance(BAR_ID),
+            }
+        }
+    }
+
+    op_actor_service! {
+        Service(Bar)
+    }
+
+    impl actor::LifeCycle for Bar {}
+
+    #[test]
+    fn get_service_from_arbiter() {
+        System::run(|| {
+            let task = service::<Bar>(Name("ARBITER-1")).and_then(|bar_1| {
+                service::<Bar>(Name("ARBITER-1")).and_then(move |bar_2| {
+                    bar_1
+                        .send(GetServiceInfo)
+                        .and_then(move |bar_1_service_info| {
+                            bar_2
+                                .send(GetServiceInfo)
+                                .and_then(move |bar_2_service_info| {
+                                    assert_eq!(bar_1_service_info, bar_2_service_info);
+                                    future::ok::<_, actix::MailboxError>(())
+                                })
+                        })
+                })
+            });
+
+            let task = task.then(|_| {
+                service::<Bar>(Name("ARBITER-1")).and_then(|bar_1| {
+                    service::<Bar>(Name("ARBITER-2")).and_then(move |bar_2| {
+                        bar_1
+                            .send(GetServiceInfo)
+                            .and_then(move |bar_1_service_info| {
+                                bar_2
+                                    .send(GetServiceInfo)
+                                    .and_then(move |bar_2_service_info| {
+                                        assert_ne!(bar_1_service_info, bar_2_service_info);
+                                        future::ok::<_, actix::MailboxError>(())
+                                    })
+                            })
+                    })
+                })
+            });
+
+            let task = task.then(|_| {
+                System::current().stop();
+                future::ok::<_, ()>(())
+            });
+
+            spawn_task(task);
         });
     }
 }

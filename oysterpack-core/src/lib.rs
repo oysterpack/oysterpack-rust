@@ -23,6 +23,7 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![allow(unused_imports, dead_code)]
 #![deny(missing_docs, missing_debug_implementations)]
+#![cfg_attr(feature = "cargo-clippy", allow(unreadable_literal))]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
 #[macro_use]
