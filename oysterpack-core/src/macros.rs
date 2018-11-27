@@ -139,6 +139,19 @@ macro_rules! op_actor_service {
                 $crate::actix::MessageResult($crate::actor::Pong::from(ping))
             }
         }
+
+        impl $crate::actix::dev::Handler<$crate::actor::GetServiceClient> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::GetServiceClient>;
+
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetServiceClient,
+                c: &mut Self::Context,
+            ) -> Self::Result {
+                use $crate::actix::prelude::AsyncContext;
+                $crate::actix::MessageResult($crate::actor::ServiceClient::for_service(c.address()))
+            }
+        }
     };
     ( AppService($name:ident) ) => {
         impl $crate::actix::dev::Actor for $name {
@@ -217,6 +230,21 @@ macro_rules! op_actor_service {
 
             fn handle(&mut self, ping: $crate::actor::Ping, _: &mut Self::Context) -> Self::Result {
                 $crate::actix::MessageResult($crate::actor::Pong::from(ping))
+            }
+        }
+
+        impl $crate::actix::dev::Handler<$crate::actor::GetServiceClient> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::GetServiceClient>;
+
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetServiceClient,
+                c: &mut Self::Context,
+            ) -> Self::Result {
+                use $crate::actix::prelude::AsyncContext;
+                $crate::actix::MessageResult($crate::actor::ServiceClient::for_app_service(
+                    c.address(),
+                ))
             }
         }
     };

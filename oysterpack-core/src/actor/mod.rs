@@ -42,8 +42,8 @@
 use actix::{
     self,
     dev::{
-        Actor, Addr, ArbiterService, Context, Handler, Message, MessageResponse, ResponseChannel,
-        System, SystemService,
+        Actor, Addr, ArbiterService, Context, Handler, MailboxError, Message, MessageResponse,
+        Recipient, ResponseChannel, System, SystemService,
     },
     sync::SyncContext,
 };
@@ -51,7 +51,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 use oysterpack_errors::Error;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
-use std::fmt;
+use std::{fmt, time};
 
 /// Returns the Actor Address for the specified AppService.
 pub fn app_service<A>() -> Addr<A>
@@ -292,6 +292,75 @@ impl fmt::Display for Pong {
     }
 }
 
+/// GetServiceClient request message
+#[derive(Debug, Clone)]
+pub struct GetServiceClient;
+
+impl Message for GetServiceClient {
+    type Result = ServiceClient;
+}
+
+/// ServiceClient
+#[derive(Clone)]
+pub struct ServiceClient {
+    get_service_info: Recipient<GetServiceInfo>,
+    ping: Recipient<Ping>,
+}
+
+impl ServiceClient {
+    /// constructor for an Actor Service
+    pub fn for_service<A>(service: Addr<A>) -> ServiceClient
+    where
+        A: Service + actix::Handler<GetServiceInfo> + actix::Handler<Ping>,
+    {
+        ServiceClient {
+            get_service_info: service.clone().recipient(),
+            ping: service.recipient(),
+        }
+    }
+
+    /// constructor for an Actor AppService
+    pub fn for_app_service<A>(service: Addr<A>) -> ServiceClient
+    where
+        A: AppService + actix::Handler<GetServiceInfo> + actix::Handler<Ping>,
+    {
+        ServiceClient {
+            get_service_info: service.clone().recipient(),
+            ping: service.recipient(),
+        }
+    }
+
+    /// Returns a future that will return ServiceInfo.
+    /// - MailboxError should never happen
+    pub fn get_service_info(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = ServiceInfo, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self.get_service_info.send(GetServiceInfo).timeout(duration),
+            None => self.get_service_info.send(GetServiceInfo),
+        }
+    }
+
+    /// Returns a future that will return ServiceInfo.
+    /// - MailboxError should never happen
+    pub fn ping(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Pong, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self.ping.send(Ping::new()).timeout(duration),
+            None => self.ping.send(Ping::new()),
+        }
+    }
+}
+
+impl fmt::Debug for ServiceClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("ServiceClient")
+    }
+}
+
 pub mod app;
 pub mod arbiters;
 pub mod eventlog;
@@ -455,6 +524,27 @@ mod tests {
 
                 spawn_task(task);
             });
-        })
+        });
+
+        run_test("GetServiceClient", || {
+            System::run(|| {
+                let foo = Arbiter::registry().get::<Foo>();
+                let task = foo
+                    .send(GetServiceClient)
+                    .then(|client| {
+                        let client = client.unwrap();
+                        client.ping(None)
+                    }).then(|pong| {
+                        let pong = pong.unwrap();
+                        info!("{}", pong);
+                        future::ok::<(), ()>(())
+                    }).then(|_| {
+                        System::current().stop();
+                        future::ok::<_, ()>(())
+                    });
+
+                spawn_task(task);
+            });
+        });
     }
 }
