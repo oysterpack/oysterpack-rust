@@ -189,7 +189,7 @@ use oysterpack_app_metadata::PackageId;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct AppLifeCycleEvent {
     package_id: PackageId,
-    instance_id: TypedULID<crate::actor::app::App>,
+    instance_id: ULID,
     state: AppLifeCycle,
 }
 
@@ -227,7 +227,7 @@ impl AppLifeCycleEvent {
     ) -> AppLifeCycleEvent {
         AppLifeCycleEvent {
             package_id,
-            instance_id,
+            instance_id: instance_id.ulid(),
             state,
         }
     }
@@ -255,8 +255,9 @@ impl AppLifeCycleEvent {
 
     /// Instance id getter
     pub fn instance_id(&self) -> TypedULID<crate::actor::app::App> {
-        self.instance_id
+        TypedULID::from(self.instance_id)
     }
+
     /// AppLifeCycle state getter
     pub fn state(&self) -> AppLifeCycle {
         self.state

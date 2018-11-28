@@ -14,7 +14,7 @@
 
 //! Event logging Actor service
 
-use actor::{AppService, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle, ServiceInfo};
+use actor::{AppService, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle, ServiceInfo, DisplayName};
 
 use actix::dev::{Actor, Addr, Context, Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
@@ -35,6 +35,10 @@ op_actor_service! {
 }
 
 impl LifeCycle for EventLog {}
+
+impl DisplayName for EventLog {
+    fn name() -> &'static str {"EventLog"}
+}
 
 impl Default for EventLog {
     fn default() -> EventLog {

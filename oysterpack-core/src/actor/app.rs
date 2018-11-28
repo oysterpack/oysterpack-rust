@@ -24,12 +24,15 @@ use oysterpack_uid::TypedULID;
 
 use actor::{
     eventlog::{EventLog, LogEvent},
-    events, AppService, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
+    events, AppService, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo, ServiceClient, DisplayName,
 };
 
 use actix::dev::{Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
-use std::fmt;
+use std::{
+    fmt,
+    collections::HashMap
+};
 
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
@@ -40,6 +43,7 @@ pub struct App {
     instance_id: TypedULID<App>,
     build: Option<Build>,
     service_info: ServiceInfo,
+    service_registry: HashMap<ServiceInfo,ServiceClient>
 }
 
 op_actor_service! {
@@ -52,6 +56,7 @@ impl Default for App {
             instance_id: TypedULID::generate(),
             build: None,
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
+            service_registry: HashMap::new()
         }
     }
 }
@@ -104,6 +109,10 @@ impl App {
 }
 
 impl crate::actor::LifeCycle for App {}
+
+impl DisplayName for App {
+    fn name() -> &'static str {"App"}
+}
 
 /// SetBuild Request
 #[derive(Debug, Clone)]
@@ -249,6 +258,49 @@ impl Handler<GetLogConfig> for App {
     }
 }
 
+/// RegisterService Message request
+#[derive(Debug, Clone)]
+pub struct RegisterService {
+    key: ServiceInfo,
+    service_client: ServiceClient
+}
+
+impl Message for RegisterService {
+    type Result = ();
+}
+
+impl RegisterService {
+    /// constructor
+    pub fn new(key: ServiceInfo, service_client: ServiceClient) -> RegisterService {
+        RegisterService{key, service_client}
+    }
+}
+
+impl Handler<RegisterService> for App {
+    type Result = MessageResult<RegisterService>;
+
+    fn handle(&mut self, req: RegisterService, _: &mut Self::Context) -> Self::Result {
+        self.service_registry.insert(req.key, req.service_client);
+        MessageResult(())
+    }
+}
+
+/// GetRegisteredServices
+#[derive(Debug, Clone, Copy)]
+pub struct GetRegisteredServices;
+
+impl Message for GetRegisteredServices {
+    type Result = HashMap<ServiceInfo, ServiceClient>;
+}
+
+impl Handler<GetRegisteredServices> for App {
+    type Result = MessageResult<GetRegisteredServices>;
+
+    fn handle(&mut self, _: GetRegisteredServices, _: &mut Self::Context) -> Self::Result {
+        MessageResult(self.service_registry.clone())
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -325,6 +377,10 @@ mod tests {
                 app.send(GetLogConfig)
             }).then(|logconfig| {
                 info!("logconfig = {}", logconfig.unwrap().unwrap());
+                let app = System::current().registry().get::<App>();
+                app.send(GetRegisteredServices)
+            }).then(|registered_services| {
+                info!("registered_services = {:?}", registered_services.unwrap());
                 future::ok::<(), ()>(())
             }),
         );

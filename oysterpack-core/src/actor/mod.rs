@@ -51,7 +51,9 @@ use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 use oysterpack_errors::Error;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
-use std::{fmt, time};
+use std::{fmt, time, hash::{
+    Hash, Hasher
+}};
 
 /// Returns the Actor Address for the specified AppService.
 pub fn app_service<A>() -> Addr<A>
@@ -75,7 +77,7 @@ pub fn spawn_task(future: impl Future + 'static) {
 }
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
-pub trait Service: ArbiterService + LifeCycle {
+pub trait Service: ArbiterService + LifeCycle + DisplayName {
     /// ServiceType
     const TYPE: ServiceType = ServiceType::ArbiterService;
 
@@ -88,7 +90,7 @@ pub trait Service: ArbiterService + LifeCycle {
 
 /// AppService is a SystemService, which means there is only 1 instance per actor system.
 /// An actor system maps to an application, thus the name.
-pub trait AppService: SystemService + LifeCycle {
+pub trait AppService: SystemService + LifeCycle + DisplayName {
     /// ServiceType
     const TYPE: ServiceType = ServiceType::SystemService;
 
@@ -102,6 +104,12 @@ pub trait AppService: SystemService + LifeCycle {
     fn created_on(&self) -> DateTime<Utc> {
         self.instance_id().ulid().datetime()
     }
+}
+
+/// Provides a name
+pub trait DisplayName {
+    /// name getter
+    fn name() -> &'static str;
 }
 
 /// ServiceType
@@ -164,11 +172,17 @@ pub struct ServiceActor;
 pub type InstanceId = TypedULID<ServiceActor>;
 
 /// Service info
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ServiceInfo {
     id: Id,
     instance_id: InstanceId,
     service_type: ServiceType,
+}
+
+impl Hash for ServiceInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.instance_id.hash(state);
+    }
 }
 
 impl fmt::Display for ServiceInfo {
@@ -201,6 +215,9 @@ impl ServiceInfo {
     pub fn created_on(&self) -> DateTime<Utc> {
         self.instance_id.ulid().datetime()
     }
+
+    /// ServiceType getter
+    pub fn service_type(&self) -> ServiceType {self.service_type}
 }
 
 impl<A, M> MessageResponse<A, M> for ServiceInfo
@@ -308,12 +325,21 @@ impl Message for GetServiceClient {
     type Result = ServiceClient;
 }
 
+/// GetDisplayName request message
+#[derive(Debug, Clone)]
+pub struct GetDisplayName;
+
+impl Message for GetDisplayName {
+    type Result = &'static str;
+}
+
 /// ServiceClient
 #[derive(Clone)]
 pub struct ServiceClient {
     get_service_info: Recipient<GetServiceInfo>,
     ping: Recipient<Ping>,
     get_arbiter_name: Recipient<GetArbiterName>,
+    name: &'static str
 }
 
 impl ServiceClient {
@@ -323,12 +349,14 @@ impl ServiceClient {
         A: Service
             + actix::Handler<GetServiceInfo>
             + actix::Handler<Ping>
-            + actix::Handler<GetArbiterName>,
+            + actix::Handler<GetArbiterName>
+            + DisplayName,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
+            name: <A as DisplayName>::name()
         }
     }
 
@@ -338,12 +366,14 @@ impl ServiceClient {
         A: AppService
             + actix::Handler<GetServiceInfo>
             + actix::Handler<Ping>
-            + actix::Handler<GetArbiterName>,
+            + actix::Handler<GetArbiterName>
+            + DisplayName,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
+            name: <A as DisplayName>::name()
         }
     }
 
@@ -382,11 +412,22 @@ impl ServiceClient {
             None => self.get_arbiter_name.send(GetArbiterName),
         }
     }
+
+    /// Service name getter
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
 }
 
 impl fmt::Debug for ServiceClient {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("ServiceClient")
+        write!(f, "ServiceClient({})", self.name)
+    }
+}
+
+impl fmt::Display for ServiceClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ServiceClient({})", self.name)
     }
 }
 
@@ -468,6 +509,10 @@ mod tests {
         }
 
         impl LifeCycle for Foo {}
+
+        impl DisplayName for Foo {
+            fn name() -> &'static str {"FOO"}
+        }
 
         run_test("GetServiceInfo", || {
             System::run(|| {
