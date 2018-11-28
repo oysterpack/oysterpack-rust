@@ -46,6 +46,46 @@ macro_rules! __op_log_event_for_app_service {
     };
 }
 
+/// internally used by the op_actor_service!() macro to generate code to log events
+#[macro_export]
+macro_rules! __op_service_handlers {
+    ( $name:ident ) => {
+        impl $crate::actix::dev::Handler<$crate::actor::GetServiceInfo> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::GetServiceInfo>;
+
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetServiceInfo,
+                _: &mut Self::Context,
+            ) -> Self::Result {
+                $crate::actix::MessageResult(self.service_info)
+            }
+        }
+
+        impl $crate::actix::dev::Handler<$crate::actor::Ping> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::Ping>;
+
+            fn handle(&mut self, ping: $crate::actor::Ping, _: &mut Self::Context) -> Self::Result {
+                $crate::actix::MessageResult($crate::actor::Pong::from(ping))
+            }
+        }
+
+        impl $crate::actix::dev::Handler<$crate::actor::GetArbiterName> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::GetArbiterName>;
+
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetArbiterName,
+                _: &mut Self::Context,
+            ) -> Self::Result {
+                $crate::actix::MessageResult($crate::actor::ArbiterName::new(
+                    $crate::actix::Arbiter::name(),
+                ))
+            }
+        }
+    };
+}
+
 /// Generates Actor service boilerplate code, which enables the developer to focus on the business logic,
 /// i.e., writing message handlers. It provides implementations for the following traits:
 /// - actix::dev::Actor
@@ -58,6 +98,7 @@ macro_rules! __op_log_event_for_app_service {
 /// - actix::dev::Supervised
 /// - actix::dev::Handler<actor::GetServiceInfo>
 /// - actix::dev::Handler<actor::Ping>
+/// - actix::dev::Handler<actor::GetArbiterName>
 #[macro_export]
 macro_rules! op_actor_service {
     ( Service($name:ident) ) => {
@@ -120,25 +161,7 @@ macro_rules! op_actor_service {
             }
         }
 
-        impl $crate::actix::dev::Handler<$crate::actor::GetServiceInfo> for $name {
-            type Result = $crate::actix::MessageResult<$crate::actor::GetServiceInfo>;
-
-            fn handle(
-                &mut self,
-                _: $crate::actor::GetServiceInfo,
-                _: &mut Self::Context,
-            ) -> Self::Result {
-                $crate::actix::MessageResult(self.service_info)
-            }
-        }
-
-        impl $crate::actix::dev::Handler<$crate::actor::Ping> for $name {
-            type Result = $crate::actix::MessageResult<$crate::actor::Ping>;
-
-            fn handle(&mut self, ping: $crate::actor::Ping, _: &mut Self::Context) -> Self::Result {
-                $crate::actix::MessageResult($crate::actor::Pong::from(ping))
-            }
-        }
+        $crate::__op_service_handlers! { $name }
 
         impl $crate::actix::dev::Handler<$crate::actor::GetServiceClient> for $name {
             type Result = $crate::actix::MessageResult<$crate::actor::GetServiceClient>;
@@ -213,25 +236,7 @@ macro_rules! op_actor_service {
             }
         }
 
-        impl $crate::actix::dev::Handler<$crate::actor::GetServiceInfo> for $name {
-            type Result = $crate::actix::MessageResult<$crate::actor::GetServiceInfo>;
-
-            fn handle(
-                &mut self,
-                _: $crate::actor::GetServiceInfo,
-                _: &mut Self::Context,
-            ) -> Self::Result {
-                $crate::actix::MessageResult(self.service_info)
-            }
-        }
-
-        impl $crate::actix::dev::Handler<$crate::actor::Ping> for $name {
-            type Result = $crate::actix::MessageResult<$crate::actor::Ping>;
-
-            fn handle(&mut self, ping: $crate::actor::Ping, _: &mut Self::Context) -> Self::Result {
-                $crate::actix::MessageResult($crate::actor::Pong::from(ping))
-            }
-        }
+        $crate::__op_service_handlers! { $name }
 
         impl $crate::actix::dev::Handler<$crate::actor::GetServiceClient> for $name {
             type Result = $crate::actix::MessageResult<$crate::actor::GetServiceClient>;

@@ -305,28 +305,37 @@ impl Message for GetServiceClient {
 pub struct ServiceClient {
     get_service_info: Recipient<GetServiceInfo>,
     ping: Recipient<Ping>,
+    get_arbiter_name: Recipient<GetArbiterName>,
 }
 
 impl ServiceClient {
     /// constructor for an Actor Service
     pub fn for_service<A>(service: Addr<A>) -> ServiceClient
     where
-        A: Service + actix::Handler<GetServiceInfo> + actix::Handler<Ping>,
+        A: Service
+            + actix::Handler<GetServiceInfo>
+            + actix::Handler<Ping>
+            + actix::Handler<GetArbiterName>,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
-            ping: service.recipient(),
+            ping: service.clone().recipient(),
+            get_arbiter_name: service.recipient(),
         }
     }
 
     /// constructor for an Actor AppService
     pub fn for_app_service<A>(service: Addr<A>) -> ServiceClient
     where
-        A: AppService + actix::Handler<GetServiceInfo> + actix::Handler<Ping>,
+        A: AppService
+            + actix::Handler<GetServiceInfo>
+            + actix::Handler<Ping>
+            + actix::Handler<GetArbiterName>,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
-            ping: service.recipient(),
+            ping: service.clone().recipient(),
+            get_arbiter_name: service.recipient(),
         }
     }
 
@@ -353,11 +362,59 @@ impl ServiceClient {
             None => self.ping.send(Ping::new()),
         }
     }
+
+    /// Returns a future that will return ServiceInfo.
+    /// - MailboxError should never happen
+    pub fn arbiter_name(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = ArbiterName, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self.get_arbiter_name.send(GetArbiterName).timeout(duration),
+            None => self.get_arbiter_name.send(GetArbiterName),
+        }
+    }
 }
 
 impl fmt::Debug for ServiceClient {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("ServiceClient")
+    }
+}
+
+/// GetArbiterName Message request
+#[derive(Debug, Clone, Copy)]
+pub struct GetArbiterName;
+
+impl Message for GetArbiterName {
+    type Result = ArbiterName;
+}
+
+/// ArbiterName
+#[derive(Debug, Clone)]
+pub struct ArbiterName(String);
+
+impl ArbiterName {
+    /// constructor
+    pub fn new<T: fmt::Display>(name: T) -> ArbiterName {
+        ArbiterName(name.to_string())
+    }
+
+    /// name getter
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&'static str> for ArbiterName {
+    fn from(name: &'static str) -> ArbiterName {
+        ArbiterName(name.to_string())
+    }
+}
+
+impl fmt::Display for ArbiterName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.name())
     }
 }
 
@@ -533,11 +590,20 @@ mod tests {
                     .send(GetServiceClient)
                     .then(|client| {
                         let client = client.unwrap();
-                        client.ping(None)
-                    }).then(|pong| {
-                        let pong = pong.unwrap();
-                        info!("{}", pong);
-                        future::ok::<(), ()>(())
+                        let ping = client.ping(None);
+                        let service_info = client.get_service_info(Some(Duration::from_millis(10)));
+                        let arbiter_name = client.arbiter_name(None);
+
+                        ping.then(move |pong| {
+                            info!("{}", pong.unwrap());
+                            service_info
+                        }).then(|service_info| {
+                            info!("{}", service_info.unwrap());
+                            arbiter_name
+                        }).then(|arbiter_name| {
+                            info!("arbiter: {}", arbiter_name.unwrap());
+                            future::ok::<_, ()>(())
+                        })
                     }).then(|_| {
                         System::current().stop();
                         future::ok::<_, ()>(())
