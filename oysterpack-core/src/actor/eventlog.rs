@@ -14,7 +14,7 @@
 
 //! Event logging Actor service
 
-use actor::{Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle, ServiceInfo};
+use actor::{AppService, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle, ServiceInfo};
 
 use actix::dev::{Actor, Addr, Context, Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
@@ -39,7 +39,7 @@ impl LifeCycle for EventLog {}
 impl Default for EventLog {
     fn default() -> EventLog {
         EventLog {
-            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID),
+            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
         }
     }
 }

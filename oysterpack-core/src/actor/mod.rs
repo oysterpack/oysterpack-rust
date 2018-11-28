@@ -76,6 +76,9 @@ pub fn spawn_task(future: impl Future + 'static) {
 
 /// Service is an ArbiterService, which means a new instance is created per Arbiter.
 pub trait Service: ArbiterService + LifeCycle {
+    /// ServiceType
+    const TYPE: ServiceType = ServiceType::ArbiterService;
+
     /// Each Service is assigned an Id
     fn id(&self) -> Id;
 
@@ -86,6 +89,9 @@ pub trait Service: ArbiterService + LifeCycle {
 /// AppService is a SystemService, which means there is only 1 instance per actor system.
 /// An actor system maps to an application, thus the name.
 pub trait AppService: SystemService + LifeCycle {
+    /// ServiceType
+    const TYPE: ServiceType = ServiceType::SystemService;
+
     /// Each Service is assigned an Id
     fn id(&self) -> Id;
 
@@ -96,6 +102,15 @@ pub trait AppService: SystemService + LifeCycle {
     fn created_on(&self) -> DateTime<Utc> {
         self.instance_id().ulid().datetime()
     }
+}
+
+/// ServiceType
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum ServiceType {
+    /// Actor is an ArbiterService
+    ArbiterService,
+    /// Actor is a SystemService
+    SystemService,
 }
 
 /// Service lifecycle
@@ -153,6 +168,7 @@ pub type InstanceId = TypedULID<ServiceActor>;
 pub struct ServiceInfo {
     id: Id,
     instance_id: InstanceId,
+    service_type: ServiceType,
 }
 
 impl fmt::Display for ServiceInfo {
@@ -163,10 +179,11 @@ impl fmt::Display for ServiceInfo {
 
 impl ServiceInfo {
     /// constructor which is meant to be used for new Actor instances.
-    pub fn for_new_actor_instance(id: Id) -> ServiceInfo {
+    pub fn for_new_actor_instance(id: Id, service_type: ServiceType) -> ServiceInfo {
         ServiceInfo {
             id,
             instance_id: InstanceId::generate(),
+            service_type,
         }
     }
 
@@ -183,15 +200,6 @@ impl ServiceInfo {
     /// When the actor was created
     pub fn created_on(&self) -> DateTime<Utc> {
         self.instance_id.ulid().datetime()
-    }
-}
-
-impl<T: Service> From<T> for ServiceInfo {
-    fn from(service: T) -> Self {
-        ServiceInfo {
-            id: service.id(),
-            instance_id: service.instance_id(),
-        }
     }
 }
 
@@ -447,7 +455,10 @@ mod tests {
         impl Default for Foo {
             fn default() -> Self {
                 Foo {
-                    service_info: ServiceInfo::for_new_actor_instance(FOO_ID),
+                    service_info: ServiceInfo::for_new_actor_instance(
+                        FOO_ID,
+                        ServiceType::ArbiterService,
+                    ),
                 }
             }
         }

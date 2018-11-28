@@ -96,7 +96,7 @@ impl Default for Arbiters {
     fn default() -> Self {
         Arbiters {
             arbiters: HashMap::new(),
-            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID),
+            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
         }
     }
 }
@@ -197,6 +197,7 @@ mod tests {
         registry::SystemRegistry,
         spawn,
     };
+    use actor::Service;
     use futures::{future, prelude::*};
     use tests::run_test;
 
@@ -439,7 +440,7 @@ mod tests {
     impl Default for Bar {
         fn default() -> Self {
             Bar {
-                service_info: ServiceInfo::for_new_actor_instance(BAR_ID),
+                service_info: ServiceInfo::for_new_actor_instance(BAR_ID, Self::TYPE),
             }
         }
     }

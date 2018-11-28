@@ -24,7 +24,7 @@ use oysterpack_uid::TypedULID;
 
 use actor::{
     eventlog::{EventLog, LogEvent},
-    events, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
+    events, AppService, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo,
 };
 
 use actix::dev::{Handler, Message, MessageResult, System};
@@ -51,7 +51,7 @@ impl Default for App {
         App {
             instance_id: TypedULID::generate(),
             build: None,
-            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID),
+            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
         }
     }
 }

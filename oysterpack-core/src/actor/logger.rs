@@ -39,7 +39,7 @@ pub struct Logger {
 impl Default for Logger {
     fn default() -> Self {
         Logger {
-            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID),
+            service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
         }
     }
 }
