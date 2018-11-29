@@ -16,7 +16,7 @@
 
 use super::*;
 use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
-use oysterpack_uid::{Domain, DomainULID};
+use oysterpack_uid::{Domain, DomainULID, ULID};
 use std::fmt;
 
 /// Actor Service lifecycle event
@@ -169,7 +169,7 @@ impl Eventful for ServiceLifeCycleEvent {
     }
 
     fn new_event(self, mod_src: ModuleSource) -> Event<Self> {
-        Event::new(self, mod_src).with_tag_id(&Self::domain_ulid())
+        Event::new(self, mod_src).with_tag_id(Self::domain_ulid())
     }
 }
 
@@ -222,12 +222,12 @@ impl AppLifeCycleEvent {
     /// constructor
     pub fn new(
         package_id: PackageId,
-        instance_id: TypedULID<crate::actor::app::App>,
+        instance_id: ULID,
         state: AppLifeCycle,
     ) -> AppLifeCycleEvent {
         AppLifeCycleEvent {
             package_id,
-            instance_id: instance_id.ulid(),
+            instance_id: instance_id,
             state,
         }
     }
@@ -235,7 +235,7 @@ impl AppLifeCycleEvent {
     /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Started
     pub fn started(
         package_id: PackageId,
-        instance_id: TypedULID<crate::actor::app::App>,
+        instance_id: ULID,
     ) -> AppLifeCycleEvent {
         AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Started)
     }
@@ -243,7 +243,7 @@ impl AppLifeCycleEvent {
     /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Stopped
     pub fn stopped(
         package_id: PackageId,
-        instance_id: TypedULID<crate::actor::app::App>,
+        instance_id: ULID,
     ) -> AppLifeCycleEvent {
         AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Stopped)
     }
@@ -254,8 +254,8 @@ impl AppLifeCycleEvent {
     }
 
     /// Instance id getter
-    pub fn instance_id(&self) -> TypedULID<crate::actor::app::App> {
-        TypedULID::from(self.instance_id)
+    pub fn instance_id(&self) -> ULID {
+        self.instance_id
     }
 
     /// AppLifeCycle state getter

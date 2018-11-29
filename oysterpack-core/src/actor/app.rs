@@ -20,7 +20,7 @@
 use oysterpack_app_metadata::{Build, PackageId};
 use oysterpack_events::Eventful;
 use oysterpack_log::{self, LogConfig};
-use oysterpack_uid::TypedULID;
+use oysterpack_uid::ULID;
 
 use actor::{
     eventlog::{EventLog, LogEvent},
@@ -40,7 +40,7 @@ pub const SERVICE_ID: ServiceId = ServiceId(186555895525892237512021671578869946
 /// App represents an application instance.
 #[derive(Debug)]
 pub struct App {
-    instance_id: TypedULID<App>,
+    instance_id: ULID,
     build: Option<Build>,
     service_info: ServiceInfo,
     service_registry: HashMap<ServiceInfo,ServiceClient>
@@ -53,7 +53,7 @@ op_actor_service! {
 impl Default for App {
     fn default() -> App {
         App {
-            instance_id: TypedULID::generate(),
+            instance_id: ULID::generate(),
             build: None,
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
             service_registry: HashMap::new()
@@ -179,7 +179,7 @@ impl Handler<StopApp> for App {
 pub struct GetInstanceId;
 
 impl Message for GetInstanceId {
-    type Result = TypedULID<App>;
+    type Result = ULID;
 }
 
 impl Handler<GetInstanceId> for App {
@@ -199,7 +199,7 @@ pub struct GetAppInstanceInfo;
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct AppInstanceInfo {
     package_id: PackageId,
-    instance_id: TypedULID<App>,
+    instance_id: ULID,
 }
 
 impl AppInstanceInfo {
@@ -209,7 +209,7 @@ impl AppInstanceInfo {
     }
 
     /// App instance id getter
-    pub fn instance_id(&self) -> TypedULID<App> {
+    pub fn instance_id(&self) -> ULID {
         self.instance_id
     }
 }
@@ -372,7 +372,7 @@ mod tests {
                 let app = System::current().registry().get::<App>();
                 app.send(GetAppInstanceInfo)
             }).then(|app_instance_info| {
-                info!("app_instance_id = {}", app_instance_info.unwrap());
+                info!("app_instance_info = {}", app_instance_info.unwrap());
                 let app = System::current().registry().get::<App>();
                 app.send(GetLogConfig)
             }).then(|logconfig| {

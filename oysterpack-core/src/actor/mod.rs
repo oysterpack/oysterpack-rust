@@ -414,7 +414,7 @@ impl ServiceClient {
     }
 
     /// Service name getter
-    pub fn name(&self) -> &'static str {
+    pub fn service_name(&self) -> &'static str {
         self.name
     }
 }

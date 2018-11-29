@@ -29,5 +29,3 @@ macro_rules! op_event {
         $event.new_event($crate::op_module_source!())
     }};
 }
-
-

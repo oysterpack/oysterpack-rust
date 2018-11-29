@@ -127,14 +127,28 @@ fn event_threadsafety() {
 
 #[test]
 fn event_tags() {
+    run_test("event_tags with dups", || {
+        let app_id = AppId(1863291903828500526079298022856535457);
+        let service_id = ServiceId(1863291948359469739082252902144828404);
+        let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!())
+            .with_tag_id(app_id.into())
+            .with_tag_id(app_id.into())
+            .with_tag_id(service_id.into())
+            .with_tag_id(service_id.into());
+
+        foo_event.log();
+        let tags = foo_event.tag_ids().unwrap();
+        assert_eq!(tags.len(), 2);
+        assert!(tags.contains(&app_id.into()));
+        assert!(tags.contains(&service_id.into()));
+    });
+
     run_test("event_tags", || {
         let app_id = AppId(1863291903828500526079298022856535457);
         let service_id = ServiceId(1863291948359469739082252902144828404);
         let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!())
-            .with_tag_id(&app_id.into())
-            .with_tag_id(&app_id.into())
-            .with_tag_id(&service_id.into())
-            .with_tag_id(&service_id.into());
+            .with_tag_id(app_id.into())
+            .with_tag_id(service_id.into());
 
         foo_event.log();
         let tags = foo_event.tag_ids().unwrap();

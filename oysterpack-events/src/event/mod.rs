@@ -15,8 +15,8 @@
 //! Provides event standardization
 
 use chrono::{DateTime, Utc};
-use oysterpack_uid::{DomainULID, TypedULID, ULID};
 use oysterpack_log;
+use oysterpack_uid::{Domain, DomainULID, TypedULID, ULID};
 use serde::Serialize;
 use serde_json;
 use std::collections::HashSet;
@@ -48,6 +48,18 @@ op_newtype!{
     /// event Id(s) as constants.
     #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
     pub Id(pub u128)
+}
+
+impl From<ULID> for Id {
+    fn from(ulid: ULID) -> Id {
+        Id(ulid.into())
+    }
+}
+
+impl From<DomainULID> for Id {
+    fn from(ulid: DomainULID) -> Id {
+        Id(ulid.ulid().into())
+    }
 }
 
 impl Into<ULID> for Id {
@@ -137,16 +149,18 @@ where
     }
 
     /// Tags the event. DomainULID(s) are used to tag the Event.
-    pub fn with_tag_id(mut self, tag_id: &DomainULID) -> Event<Data> {
-        if self.tag_ids.is_none() {
-            self.tag_ids = Some(HashSet::new())
+    pub fn with_tag_id(self, tag_id: DomainULID) -> Event<Data> {
+        let mut event = self;
+        if event.tag_ids.is_none() {
+            event.tag_ids = Some(HashSet::new())
         }
 
-        for mut tag_ids in self.tag_ids.iter_mut() {
-            tag_ids.insert(tag_id.clone());
+        {
+            let tag_ids = event.tag_ids.iter_mut().next().unwrap();
+            tag_ids.insert(tag_id);
         }
 
-        self
+        event
     }
 
     /// Logs the event. The log target will take the form: `op_event::<event-id>`,
@@ -228,6 +242,11 @@ where
     pub fn tag_ids(&self) -> Option<&HashSet<DomainULID>> {
         self.tag_ids.as_ref()
     }
+
+    /// tags the event as unregistered
+    pub fn unregistered(self) -> Self {
+        self.with_tag_id(unregistered_event_domain_ulid())
+    }
 }
 
 impl<Data> std::fmt::Display for Event<Data>
@@ -282,12 +301,12 @@ impl std::fmt::Display for ModuleSource {
     }
 }
 
-/// Class is used to define the event class.
+// TODO: currently not used
+/// Event class
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Class {
-    id: Id,
+    id: DomainULID,
     level: Level,
-    name: Name,
     description: Description,
     category_ids: HashSet<DomainULID>,
 }
@@ -353,4 +372,23 @@ op_newtype! {
     /// Description
     #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
     pub Description(String)
+}
+
+/// Domain for unregistered events.
+///
+/// All possible Event(s) that can be produced by the App should be pre-registered.
+/// This enables one to know and beware of the kinds of events that an App can produce.
+/// This makes it easier to support the application.
+pub const UNREGISTERED_EVENT_DOMAIN: Domain = Domain("UnregisteredEvent");
+/// ULID(01CXE7Q2CYC0ZT2YSZGBBKV757)
+const UNREGISTERED_EVENT_DOMAIN_ULID: u128 = 1865910341552439472821557183186312359;
+
+/// DomainULID for unregistered events.
+///
+/// This is meant to be used to tag Events that are not registered, i.e., unknown.
+pub fn unregistered_event_domain_ulid() -> DomainULID {
+    DomainULID::from_ulid(
+        &UNREGISTERED_EVENT_DOMAIN,
+        UNREGISTERED_EVENT_DOMAIN_ULID.into(),
+    )
 }
