@@ -42,16 +42,19 @@
 use actix::{
     self,
     dev::{
-        Actor, Addr, ArbiterService, Context, Handler, MailboxError, Message, MessageResponse,
-        Recipient, ResponseChannel, System, SystemService,
+        Actor, Addr, Arbiter, ArbiterService, Context, Handler, MailboxError, Message,
+        MessageResponse, Recipient, ResponseChannel, System, SystemService,
     },
     sync::SyncContext,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::Future;
+use oysterpack_app_metadata::Build;
 use oysterpack_errors::Error;
+use oysterpack_events::Id as EventId;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
 use std::{
+    collections::{HashMap, HashSet},
     fmt,
     hash::{Hash, Hasher},
     time,
@@ -471,6 +474,193 @@ pub mod eventlog;
 pub mod events;
 pub mod logger;
 
+/// AppClient
+#[derive(Clone)]
+pub struct AppClient {
+    get_build: Recipient<app::GetBuild>,
+    get_app_instance_id: Recipient<app::GetInstanceId>,
+    get_app_instance_info: Recipient<app::GetAppInstanceInfo>,
+    get_log_config: Recipient<app::GetLogConfig>,
+    get_registered_services: Recipient<app::GetRegisteredServices>,
+
+    get_arbiter_names: Recipient<arbiters::GetArbiterNames>,
+    get_arbiter: Recipient<arbiters::GetArbiter>,
+
+    get_registered_events: Recipient<eventlog::GetRegisteredEvents>,
+    get_unregistered_events: Recipient<eventlog::GetUnregisteredEvents>,
+}
+
+impl AppClient {
+    /// constructor
+    ///
+    /// # Panics
+    /// if created outside the context of an actor System
+    pub fn get() -> AppClient {
+        let app = System::current().registry().get::<app::App>();
+        let aribiters = System::current().registry().get::<arbiters::Arbiters>();
+        let eventlog = System::current().registry().get::<eventlog::EventLog>();
+
+        AppClient {
+            get_build: app.clone().recipient(),
+            get_app_instance_id: app.clone().recipient(),
+            get_app_instance_info: app.clone().recipient(),
+            get_log_config: app.clone().recipient(),
+            get_registered_services: app.clone().recipient(),
+
+            get_arbiter_names: aribiters.clone().recipient(),
+            get_arbiter: aribiters.clone().recipient(),
+
+            get_registered_events: eventlog.clone().recipient(),
+            get_unregistered_events: eventlog.clone().recipient(),
+        }
+    }
+
+    /// Returns a future that will return the app Build.
+    /// - MailboxError should never happen
+    pub fn get_registered_events(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Vec<EventId>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_registered_events
+                .send(eventlog::GetRegisteredEvents)
+                .timeout(duration),
+            None => self
+                .get_registered_events
+                .send(eventlog::GetRegisteredEvents),
+        }
+    }
+
+    /// Returns a future that will return the app Build.
+    /// - MailboxError should never happen
+    pub fn get_unregistered_events(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Vec<EventId>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_unregistered_events
+                .send(eventlog::GetUnregisteredEvents)
+                .timeout(duration),
+            None => self
+                .get_unregistered_events
+                .send(eventlog::GetUnregisteredEvents),
+        }
+    }
+
+    /// Returns a future that will return the app Build.
+    /// - MailboxError should never happen
+    pub fn get_build(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Option<Build>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self.get_build.send(app::GetBuild).timeout(duration),
+            None => self.get_build.send(app::GetBuild),
+        }
+    }
+
+    /// Returns a future that will return App instance id ULID.
+    /// - MailboxError should never happen
+    pub fn get_app_instance_id(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = ULID, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_app_instance_id
+                .send(app::GetInstanceId)
+                .timeout(duration),
+            None => self.get_app_instance_id.send(app::GetInstanceId),
+        }
+    }
+
+    /// Returns a future that will return App instance info.
+    /// - MailboxError should never happen
+    pub fn get_app_instance_info(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = app::AppInstanceInfo, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_app_instance_info
+                .send(app::GetAppInstanceInfo)
+                .timeout(duration),
+            None => self.get_app_instance_info.send(app::GetAppInstanceInfo),
+        }
+    }
+
+    /// Returns a future that will return App LogConfig.
+    /// - MailboxError should never happen
+    pub fn get_log_config(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Option<&'static oysterpack_log::LogConfig>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_log_config
+                .send(app::GetLogConfig)
+                .timeout(duration),
+            None => self.get_log_config.send(app::GetLogConfig),
+        }
+    }
+
+    /// Returns a future that will return application registered services.
+    /// - MailboxError should never happen
+    pub fn get_registered_services(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = HashMap<ServiceInfo, ServiceClient>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_registered_services
+                .send(app::GetRegisteredServices)
+                .timeout(duration),
+            None => self
+                .get_registered_services
+                .send(app::GetRegisteredServices),
+        }
+    }
+
+    /// Returns a future that will return names of Arbiters that have been started
+    /// - MailboxError should never happen
+    pub fn get_arbiter_names(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Option<Vec<arbiters::Name>>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_arbiter_names
+                .send(arbiters::GetArbiterNames)
+                .timeout(duration),
+            None => self.get_arbiter_names.send(arbiters::GetArbiterNames),
+        }
+    }
+
+    /// Returns a future that will return names of Arbiters that have been started
+    /// - MailboxError should never happen
+    pub fn get_arbiter(
+        &self,
+        name: arbiters::Name,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Addr<Arbiter>, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self
+                .get_arbiter
+                .send(arbiters::GetArbiter::from(name))
+                .timeout(duration),
+            None => self.get_arbiter.send(arbiters::GetArbiter::from(name)),
+        }
+    }
+}
+
+impl fmt::Debug for AppClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("AppClient")
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -668,5 +858,60 @@ mod tests {
                 spawn_task(task);
             });
         });
+    }
+
+    #[test]
+    fn app_client() {
+        let log_config =
+            oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build();
+        app::App::run(
+            ::build::get(),
+            log_config,
+            future::lazy(|| {
+                let app_client = AppClient::get();
+
+                let get_app_instance_id = app_client.get_app_instance_id(None);
+                let get_app_instance_info = app_client.get_app_instance_info(None);
+                let get_build = app_client.get_build(None);
+                let get_log_config = app_client.get_log_config(None);
+                let get_registered_services = app_client.get_registered_services(None);
+
+                let get_arbiter_names = app_client.get_arbiter_names(None);
+                let get_arbiter = app_client.get_arbiter(arbiters::Name("FOO"), None);
+
+                let get_registered_events = app_client.get_registered_events(None);
+                let get_unregistered_events = app_client.get_unregistered_events(None);
+
+                get_app_instance_id
+                    .then(|app_instance_id| {
+                        info!("app_instance_id: {:?}", app_instance_id.unwrap());
+                        get_app_instance_info
+                    }).then(|app_instance_info| {
+                        info!("app_instance_info: {:?}", app_instance_info.unwrap());
+                        get_build
+                    }).then(|build| {
+                        info!("build: {:?}", build.unwrap().unwrap().package().id());
+                        get_log_config
+                    }).then(|log_config| {
+                        info!("log_config: {:?}", log_config.unwrap());
+                        get_registered_services
+                    }).then(|registered_services| {
+                        info!("registered_services: {:?}", registered_services.unwrap());
+                        get_arbiter_names
+                    }).then(|arbiter_names| {
+                        info!("arbiter_names: {:?}", arbiter_names.unwrap());
+                        get_arbiter
+                    }).then(|arbiter| {
+                        info!("arbiter: {:?}", arbiter.unwrap());
+                        get_registered_events
+                    }).then(|registered_events| {
+                        info!("registered_events: {:?}", registered_events.unwrap());
+                        get_unregistered_events
+                    }).then(|unregistered_events| {
+                        info!("unregistered_events: {:?}", unregistered_events.unwrap());
+                        future::ok::<(), ()>(())
+                    })
+            }),
+        );
     }
 }
