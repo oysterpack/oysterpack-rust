@@ -15,6 +15,7 @@
 //! Actor Events
 
 use super::*;
+use actor::Id as ServiceId;
 use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
 use oysterpack_uid::{Domain, DomainULID, ULID};
 use std::fmt;
@@ -91,13 +92,6 @@ impl fmt::Display for Scope {
 impl ServiceLifeCycleEvent {
     /// Service lifecycle domain is used to tag Service lifecycle events
     pub const DOMAIN: Domain = Domain("ServiceLifeCycle");
-    /// Service lifecycle domain ULID (01CX33EAT3VHNRQ4WNMBS9YH9Q)
-    const DOMAIN_ULID: u128 = 1865458711825091376828104373373453623;
-
-    /// Service lifecycle domain ULID
-    pub fn domain_ulid() -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into())
-    }
 
     /// Service started EventId (01CX32ZXWW6Z5NKPHMFXB0Y9SV)
     pub const SERVICE_STARTED: EventId = EventId(1865458141241550241048255441954350907);
@@ -157,7 +151,7 @@ impl ServiceLifeCycleEvent {
 impl Eventful for ServiceLifeCycleEvent {
     /// Event Id
     fn event_id(&self) -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, self.id)
+        DomainULID::from_ulid(&Self::DOMAIN, ULID::from(self.state.event_id().0))
     }
 
     /// Event severity level
@@ -166,10 +160,6 @@ impl Eventful for ServiceLifeCycleEvent {
             ServiceLifeCycle::Restarting => Level::Warning,
             _ => Level::Info,
         }
-    }
-
-    fn new_event(self, mod_src: ModuleSource) -> Event<Self> {
-        Event::new(self, mod_src).with_tag_id(Self::domain_ulid())
     }
 }
 
@@ -185,7 +175,9 @@ impl fmt::Display for ServiceLifeCycleEvent {
 
 use oysterpack_app_metadata::PackageId;
 
-/// Actor Service lifecycle event
+/// Actor Service lifecycle event maps to multiple events, i.e., one for each app lifecyle state:
+/// - STARTED
+/// - STOPPED
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct AppLifeCycleEvent {
     package_id: PackageId,
@@ -204,15 +196,8 @@ impl fmt::Display for AppLifeCycleEvent {
 }
 
 impl AppLifeCycleEvent {
-    /// Service lifecycle domain is used to tag Service lifecycle events
+    /// App lifecycle domain is used to tag App lifecycle events
     pub const DOMAIN: Domain = Domain("AppLifeCycle");
-    /// Service lifecycle domain ULID (01CX5XA422P1MWPCRN7459PP04)
-    const DOMAIN_ULID: u128 = 1865572633565274881515421221332408324;
-
-    /// App lifecycle domain ULID
-    pub fn domain_ulid() -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, Self::DOMAIN_ULID.into())
-    }
 
     /// App started EventId (01CX5XBDTGPKT502WY42EVKD42)
     pub const STARTED: EventId = EventId(1865572685266217927843817693478761602);
@@ -220,31 +205,21 @@ impl AppLifeCycleEvent {
     pub const STOPPED: EventId = EventId(1865572700528146015116120354537759267);
 
     /// constructor
-    pub fn new(
-        package_id: PackageId,
-        instance_id: ULID,
-        state: AppLifeCycle,
-    ) -> AppLifeCycleEvent {
+    pub fn new(package_id: PackageId, instance_id: ULID, state: AppLifeCycle) -> AppLifeCycleEvent {
         AppLifeCycleEvent {
             package_id,
-            instance_id: instance_id,
+            instance_id,
             state,
         }
     }
 
     /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Started
-    pub fn started(
-        package_id: PackageId,
-        instance_id: ULID,
-    ) -> AppLifeCycleEvent {
+    pub fn started(package_id: PackageId, instance_id: ULID) -> AppLifeCycleEvent {
         AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Started)
     }
 
     /// Constructs a new AppLifeCycleEvent for AppLifeCycle::Stopped
-    pub fn stopped(
-        package_id: PackageId,
-        instance_id: ULID,
-    ) -> AppLifeCycleEvent {
+    pub fn stopped(package_id: PackageId, instance_id: ULID) -> AppLifeCycleEvent {
         AppLifeCycleEvent::new(package_id, instance_id, AppLifeCycle::Stopped)
     }
 
@@ -269,7 +244,6 @@ impl Eventful for AppLifeCycleEvent {
         DomainULID::from_ulid(&Self::DOMAIN, ULID::from(self.state.event_id().0))
     }
 
-    /// Event severity level
     fn event_level(&self) -> Level {
         Level::Info
     }

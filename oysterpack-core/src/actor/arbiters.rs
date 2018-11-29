@@ -59,7 +59,7 @@ use actix::{
     msgs::Execute, registry::SystemService, Actor, Addr, Arbiter, Context, Handler, MailboxError,
     Message, MessageResult, Supervised, System,
 };
-use actor::{self, events, AppService, GetServiceInfo, ServiceInfo, DisplayName};
+use actor::{self, events, AppService, DisplayName, GetServiceInfo, ServiceInfo};
 use futures::prelude::*;
 use oysterpack_events::Eventful;
 use std::{collections::HashMap, fmt};
@@ -108,7 +108,9 @@ op_actor_service! {
 impl crate::actor::LifeCycle for Arbiters {}
 
 impl DisplayName for Arbiters {
-    fn name() -> &'static str {"Arbiters"}
+    fn name() -> &'static str {
+        "Arbiters"
+    }
 }
 
 /// Arbiter name
@@ -456,7 +458,9 @@ mod tests {
     impl actor::LifeCycle for Bar {}
 
     impl DisplayName for Bar {
-        fn name() -> &'static str {"Bar"}
+        fn name() -> &'static str {
+            "Bar"
+        }
     }
 
     #[test]

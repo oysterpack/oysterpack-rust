@@ -32,21 +32,17 @@
 //! - AppLifeCycleEvent::STARTED
 //! - AppLifeCycleEvent::STOPPED
 
-use actor::{AppService, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle, ServiceInfo, DisplayName,
-events::{
-    ServiceLifeCycleEvent, AppLifeCycleEvent
-}};
+use actor::{
+    events::{AppLifeCycleEvent, ServiceLifeCycleEvent},
+    AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle,
+    ServiceInfo,
+};
 
 use actix::dev::{Actor, Addr, Context, Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
 use oysterpack_events::{Event, Eventful, Id as EventId};
-use oysterpack_uid::ULID;
-use std::{
-    iter::FromIterator,
-    collections::{
-        HashSet
-    }
-};
+use oysterpack_uid::{DomainULID, ULID};
+use std::{collections::HashSet, iter::FromIterator};
 
 /// ServiceId (01CX6MMENHAXCTZ8WQ0ACEJAAF)
 pub const SERVICE_ID: ServiceId = ServiceId(1865602198802033292836235027287714127);
@@ -56,7 +52,8 @@ pub const SERVICE_ID: ServiceId = ServiceId(186560219880203329283623502728771412
 #[derive(Debug, Clone)]
 pub struct EventLog {
     service_info: ServiceInfo,
-    registered_events: HashSet<EventId>
+    registered_events: HashSet<EventId>,
+    unregistered_events: HashSet<EventId>,
 }
 
 op_actor_service! {
@@ -66,7 +63,9 @@ op_actor_service! {
 impl LifeCycle for EventLog {}
 
 impl DisplayName for EventLog {
-    fn name() -> &'static str {"EventLog"}
+    fn name() -> &'static str {
+        "EventLog"
+    }
 }
 
 impl Default for EventLog {
@@ -77,13 +76,13 @@ impl Default for EventLog {
             ServiceLifeCycleEvent::STOPPING,
             ServiceLifeCycleEvent::STOPPED,
             ServiceLifeCycleEvent::RESTARTING,
-
             AppLifeCycleEvent::STARTED,
             AppLifeCycleEvent::STOPPED,
         ];
         EventLog {
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
-            registered_events: HashSet::from_iter(event_ids)
+            registered_events: HashSet::from_iter(event_ids),
+            unregistered_events: HashSet::new(),
         }
     }
 }
@@ -111,9 +110,11 @@ where
     type Result = MessageResult<LogEvent<T>>;
 
     fn handle(&mut self, msg: LogEvent<T>, _: &mut Self::Context) -> Self::Result {
-        let event = if self.registered_events.contains(&msg.0.id().into()) {
+        let event_id: EventId = msg.0.id().into();
+        let event = if self.registered_events.contains(&event_id) {
             msg.0
         } else {
+            self.unregistered_events.insert(event_id);
             msg.0.unregistered()
         };
 
@@ -142,37 +143,51 @@ impl<EventIds: IntoIterator<Item = EventId>> Handler<RegisterEvents<EventIds>> f
     }
 }
 
-/// GetRegisteredEvents Request message
+/// GetRegisteredEvents request message
 #[derive(Debug, Clone)]
 pub struct GetRegisteredEvents;
 
 impl Message for GetRegisteredEvents {
-    type Result = HashSet<EventId>;
+    type Result = Vec<EventId>;
 }
 
 impl Handler<GetRegisteredEvents> for EventLog {
     type Result = MessageResult<GetRegisteredEvents>;
 
     fn handle(&mut self, _: GetRegisteredEvents, _: &mut Self::Context) -> Self::Result {
-        MessageResult(self.registered_events.clone())
+        MessageResult(self.registered_events.iter().cloned().collect())
+    }
+}
+
+/// GetUnregisteredEvents request message
+#[derive(Debug, Clone)]
+pub struct GetUnregisteredEvents;
+
+impl Message for GetUnregisteredEvents {
+    type Result = Vec<EventId>;
+}
+
+impl Handler<GetUnregisteredEvents> for EventLog {
+    type Result = MessageResult<GetUnregisteredEvents>;
+
+    fn handle(&mut self, _: GetUnregisteredEvents, _: &mut Self::Context) -> Self::Result {
+        MessageResult(self.unregistered_events.iter().cloned().collect())
     }
 }
 
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
-    use super::{EventLog, LogEvent, RegisterEvents, GetRegisteredEvents};
-    use crate::actor::{app::App, events::{
-    self, *
-    }};
+    use super::{EventLog, GetRegisteredEvents, GetUnregisteredEvents, LogEvent, RegisterEvents};
+    use crate::actor::{
+        app::App,
+        events::{self, *},
+    };
     use oysterpack_events::{
         Eventful, Id as EventId, InstanceId as EventInstanceId, Level as EventLevel,
     };
     use oysterpack_uid::{Domain, DomainULID, HasDomain, ULID};
-    use std::{
-        collections::HashSet,
-        fmt
-    };
+    use std::{collections::HashSet, fmt, iter::*};
 
     use actix::dev::System;
     use crate::actor::logger::init_logging;
@@ -244,19 +259,22 @@ mod tests {
             ::build::get(),
             log_config(),
             future::lazy(|| {
-
-
                 let eventlog = System::current().registry().get::<EventLog>();
                 let register_foo_event = eventlog.send(RegisterEvents(vec![Foo::EVENT_ID]));
                 let log_foo_event = eventlog.send(LogEvent(op_event!(Foo)));
                 let log_bar_event = eventlog.send(LogEvent(op_event!(Bar)));
                 let get_registered_events = eventlog.send(GetRegisteredEvents);
+                let get_unregistered_events = eventlog.send(GetUnregisteredEvents);
                 register_foo_event
                     .then(|_| log_foo_event)
                     .then(|_| log_bar_event)
                     .then(|_| get_registered_events)
                     .then(|registered_events| {
                         let registered_events = registered_events.unwrap();
+                        let mut event_ids = HashSet::new();
+                        for event_id in registered_events.iter() {
+                            event_ids.insert(*event_id);
+                        }
 
                         vec![
                             ServiceLifeCycleEvent::SERVICE_STARTED,
@@ -264,15 +282,27 @@ mod tests {
                             ServiceLifeCycleEvent::STOPPING,
                             ServiceLifeCycleEvent::STOPPED,
                             ServiceLifeCycleEvent::RESTARTING,
-
                             AppLifeCycleEvent::STARTED,
                             AppLifeCycleEvent::STOPPED,
+                            Foo::EVENT_ID,
+                        ].iter()
+                        .for_each(|event_id| {
+                            assert!(
+                                event_ids.contains(event_id),
+                                "{:?} DOES NOT CONTAIN {:?}",
+                                registered_events,
+                                event_id
+                            )
+                        });
 
-                            Foo::EVENT_ID
-                        ].iter().for_each(|event_id| assert!(registered_events.contains(event_id)));
+                        assert!(!event_ids.contains(&Bar::EVENT_ID));
 
-                        assert!(!registered_events.contains(&Bar::EVENT_ID));
-
+                        get_unregistered_events
+                    }).then(|unregistered_events| {
+                        let unregistered_events = unregistered_events.unwrap();
+                        info!("unregistered_events: {:?}", unregistered_events);
+                        assert_eq!(unregistered_events.len(), 1);
+                        assert_eq!(*unregistered_events.get(0).unwrap(), Bar::EVENT_ID);
                         future::ok::<(), ()>(())
                     })
             }),

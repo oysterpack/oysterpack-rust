@@ -51,9 +51,11 @@ use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 use oysterpack_errors::Error;
 use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
-use std::{fmt, time, hash::{
-    Hash, Hasher
-}};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    time,
+};
 
 /// Returns the Actor Address for the specified AppService.
 pub fn app_service<A>() -> Addr<A>
@@ -172,17 +174,11 @@ pub struct ServiceActor;
 pub type InstanceId = TypedULID<ServiceActor>;
 
 /// Service info
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct ServiceInfo {
     id: Id,
     instance_id: InstanceId,
     service_type: ServiceType,
-}
-
-impl Hash for ServiceInfo {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.instance_id.hash(state);
-    }
 }
 
 impl fmt::Display for ServiceInfo {
@@ -217,7 +213,9 @@ impl ServiceInfo {
     }
 
     /// ServiceType getter
-    pub fn service_type(&self) -> ServiceType {self.service_type}
+    pub fn service_type(&self) -> ServiceType {
+        self.service_type
+    }
 }
 
 impl<A, M> MessageResponse<A, M> for ServiceInfo
@@ -339,7 +337,7 @@ pub struct ServiceClient {
     get_service_info: Recipient<GetServiceInfo>,
     ping: Recipient<Ping>,
     get_arbiter_name: Recipient<GetArbiterName>,
-    name: &'static str
+    name: &'static str,
 }
 
 impl ServiceClient {
@@ -356,7 +354,7 @@ impl ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
-            name: <A as DisplayName>::name()
+            name: <A as DisplayName>::name(),
         }
     }
 
@@ -373,7 +371,7 @@ impl ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
-            name: <A as DisplayName>::name()
+            name: <A as DisplayName>::name(),
         }
     }
 
@@ -511,7 +509,9 @@ mod tests {
         impl LifeCycle for Foo {}
 
         impl DisplayName for Foo {
-            fn name() -> &'static str {"FOO"}
+            fn name() -> &'static str {
+                "FOO"
+            }
         }
 
         run_test("GetServiceInfo", || {

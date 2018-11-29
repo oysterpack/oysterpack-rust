@@ -87,7 +87,11 @@ macro_rules! __op_service_handlers {
         impl $crate::actix::dev::Handler<$crate::actor::GetDisplayName> for $name {
             type Result = $crate::actix::MessageResult<$crate::actor::GetDisplayName>;
 
-            fn handle(&mut self, _: $crate::actor::GetDisplayName, _: &mut Self::Context) -> Self::Result {
+            fn handle(
+                &mut self,
+                _: $crate::actor::GetDisplayName,
+                _: &mut Self::Context,
+            ) -> Self::Result {
                 $crate::actix::MessageResult(<Self as $crate::actor::DisplayName>::name())
             }
         }

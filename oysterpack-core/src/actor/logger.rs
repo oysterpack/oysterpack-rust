@@ -15,7 +15,7 @@
 //! Actor Logging Service for async logging.
 
 use actix::prelude::*;
-use actor::{self, events, GetServiceInfo, Service, ServiceInfo, DisplayName};
+use actor::{self, events, DisplayName, GetServiceInfo, Service, ServiceInfo};
 use chrono::prelude::*;
 use futures::{prelude::*, sync::oneshot};
 use oysterpack_events::{event::ModuleSource, Eventful};
@@ -51,7 +51,9 @@ op_actor_service! {
 impl crate::actor::LifeCycle for Logger {}
 
 impl DisplayName for Logger {
-    fn name() -> &'static str {"Logger"}
+    fn name() -> &'static str {
+        "Logger"
+    }
 }
 
 /// LogRecord is a threadsafe version of log::Record, i.e., it implements Send + Sync

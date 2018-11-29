@@ -24,15 +24,13 @@ use oysterpack_uid::ULID;
 
 use actor::{
     eventlog::{EventLog, LogEvent},
-    events, AppService, Id as ServiceId, InstanceId as ServiceInstanceId, ServiceInfo, ServiceClient, DisplayName,
+    events, AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId,
+    ServiceClient, ServiceInfo,
 };
 
 use actix::dev::{Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
-use std::{
-    fmt,
-    collections::HashMap
-};
+use std::{collections::HashMap, fmt};
 
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
@@ -43,7 +41,7 @@ pub struct App {
     instance_id: ULID,
     build: Option<Build>,
     service_info: ServiceInfo,
-    service_registry: HashMap<ServiceInfo,ServiceClient>
+    service_registry: HashMap<ServiceInfo, ServiceClient>,
 }
 
 op_actor_service! {
@@ -56,7 +54,7 @@ impl Default for App {
             instance_id: ULID::generate(),
             build: None,
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
-            service_registry: HashMap::new()
+            service_registry: HashMap::new(),
         }
     }
 }
@@ -111,7 +109,9 @@ impl App {
 impl crate::actor::LifeCycle for App {}
 
 impl DisplayName for App {
-    fn name() -> &'static str {"App"}
+    fn name() -> &'static str {
+        "App"
+    }
 }
 
 /// SetBuild Request
@@ -262,7 +262,7 @@ impl Handler<GetLogConfig> for App {
 #[derive(Debug, Clone)]
 pub struct RegisterService {
     key: ServiceInfo,
-    service_client: ServiceClient
+    service_client: ServiceClient,
 }
 
 impl Message for RegisterService {
@@ -272,7 +272,10 @@ impl Message for RegisterService {
 impl RegisterService {
     /// constructor
     pub fn new(key: ServiceInfo, service_client: ServiceClient) -> RegisterService {
-        RegisterService{key, service_client}
+        RegisterService {
+            key,
+            service_client,
+        }
     }
 }
 
