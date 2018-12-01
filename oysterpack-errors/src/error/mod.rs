@@ -56,8 +56,9 @@ macro_rules! op_error_event {
 /// ```rust
 /// # #[macro_use]
 /// # extern crate oysterpack_errors;
+/// # extern crate oysterpack_events;
 /// # use oysterpack_errors::*;
-/// # use oysterpack_errors::oysterpack_events::{ Event, Eventful, event::ModuleSource };
+/// # use oysterpack_events::{ Event, Eventful, event::ModuleSource };
 ///
 /// # fn main() {
 /// pub const FOO_ERR: (Id, Level) = (Id(1863702216415833425137248269790651577), Level::Error);
@@ -69,8 +70,9 @@ macro_rules! op_error_event {
 /// ```rust
 /// # #[macro_use]
 /// # extern crate oysterpack_errors;
+/// # extern crate oysterpack_events;
 /// # use oysterpack_errors::*;
-/// # use oysterpack_errors::oysterpack_events::{ Event, Eventful, event::ModuleSource };
+/// # use oysterpack_events::{ Event, Eventful, event::ModuleSource };
 ///
 /// # fn main() {
 /// pub const FOO_ERR: (Id, Level) = (Id(1863702216415833425137248269790651577), Level::Error);

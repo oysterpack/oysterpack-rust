@@ -38,7 +38,7 @@ use oysterpack_id::Id;
 pub struct Message {
     id: MessageId,
     timestamp: TimestampMillis,
-    deadline: Deadline,
+    deadline: Option<Deadline>,
 
     correlation_id: Option<MessageId>,
     topic: Topic,
@@ -62,7 +62,7 @@ impl Message {
     ///
     /// If the deadline is exceeded, then stop processing the message.
     /// The deadline is relative to the message timestamp.
-    pub fn deadline(&self) -> Deadline {
+    pub fn deadline(&self) -> Option<Deadline> {
         self.deadline
     }
 
@@ -153,7 +153,7 @@ impl Builder {
     /// Set deadline
     pub fn deadline(&self, deadline: Deadline) -> &Builder {
         let mut msg = self.msg.borrow_mut();
-        msg.deadline = deadline;
+        msg.deadline = Some(deadline);
         self
     }
 
@@ -186,18 +186,10 @@ impl Topic {
 /// Deadline
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum Deadline {
-    /// No Deadline - default value
-    None,
     /// Max time allowed for the message to process
     ProcessingTimeoutMillis(u64),
     /// Message timeout is relative to the message timestamp
     MessageTimeoutMillis(u64),
-}
-
-impl Default for Deadline {
-    fn default() -> Deadline {
-        Deadline::None
-    }
 }
 
 /// Data
@@ -323,6 +315,7 @@ mod test {
         }
     }
 
+    // by exchanging Public Keys, 2 peers can securely send encrypted messages to each other
     fn encrypt_decrypt(format: &str, bytes: &[u8]) {
         let (ourpk, oursk) = box_::gen_keypair();
         let (theirpk, theirsk) = box_::gen_keypair();

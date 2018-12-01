@@ -43,12 +43,12 @@ use actix::{
     self,
     dev::{
         Actor, Addr, Arbiter, ArbiterService, Context, Handler, MailboxError, Message,
-        MessageResponse, Recipient, ResponseChannel, System, SystemService,
+        MessageResponse, Recipient, Request, ResponseChannel, SendError, System, SystemService,
     },
     sync::SyncContext,
 };
 use chrono::{DateTime, Duration, Utc};
-use futures::Future;
+use futures::{Async, Future, Poll};
 use oysterpack_app_metadata::Build;
 use oysterpack_errors::Error;
 use oysterpack_events::Id as EventId;
@@ -241,6 +241,18 @@ impl Message for GetServiceInfo {
     type Result = ServiceInfo;
 }
 
+/// Heartbeat request message that simply responds with a Heartbeat.
+///
+/// # Use Case
+/// This is meant to send to be used to test how fast an Actor can reply to a message with absolutely
+/// no overhead.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Heartbeat;
+
+impl Message for Heartbeat {
+    type Result = Heartbeat;
+}
+
 /// Ping is used as a heartbeat.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Ping(DateTime<Utc>);
@@ -339,6 +351,7 @@ impl Message for GetDisplayName {
 pub struct ServiceClient {
     get_service_info: Recipient<GetServiceInfo>,
     ping: Recipient<Ping>,
+    heartbeat: Recipient<Heartbeat>,
     get_arbiter_name: Recipient<GetArbiterName>,
     name: &'static str,
 }
@@ -351,11 +364,13 @@ impl ServiceClient {
             + actix::Handler<GetServiceInfo>
             + actix::Handler<Ping>
             + actix::Handler<GetArbiterName>
+            + actix::Handler<Heartbeat>
             + DisplayName,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
+            heartbeat: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
             name: <A as DisplayName>::name(),
         }
@@ -368,11 +383,13 @@ impl ServiceClient {
             + actix::Handler<GetServiceInfo>
             + actix::Handler<Ping>
             + actix::Handler<GetArbiterName>
+            + actix::Handler<Heartbeat>
             + DisplayName,
     {
         ServiceClient {
             get_service_info: service.clone().recipient(),
             ping: service.clone().recipient(),
+            heartbeat: service.clone().recipient(),
             get_arbiter_name: service.recipient(),
             name: <A as DisplayName>::name(),
         }
@@ -390,7 +407,7 @@ impl ServiceClient {
         }
     }
 
-    /// Returns a future that will return ServiceInfo.
+    /// Returns a future that pings the service Actor.
     /// - MailboxError should never happen
     pub fn ping(
         &self,
@@ -402,7 +419,19 @@ impl ServiceClient {
         }
     }
 
-    /// Returns a future that will return ServiceInfo.
+    /// Returns a future that sends a heartbeat message to the service Actor.
+    /// - MailboxError should never happen
+    pub fn heartbeat(
+        &self,
+        timeout: Option<time::Duration>,
+    ) -> impl Future<Item = Heartbeat, Error = MailboxError> {
+        match timeout {
+            Some(duration) => self.heartbeat.send(Heartbeat).timeout(duration),
+            None => self.heartbeat.send(Heartbeat),
+        }
+    }
+
+    /// Returns a future that will return the name of the Aribter that the service Actor is running in..
     /// - MailboxError should never happen
     pub fn arbiter_name(
         &self,
@@ -474,7 +503,7 @@ pub mod eventlog;
 pub mod events;
 pub mod logger;
 
-/// AppClient
+/// AppClient provides a 1 stop shop to work with the App.
 #[derive(Clone)]
 pub struct AppClient {
     get_build: Recipient<app::GetBuild>,
@@ -674,7 +703,7 @@ mod tests {
     use tests::run_test;
 
     #[test]
-    fn service() {
+    fn actor_service() {
         const FOO_ID: Id = Id(1864734280873114327279151769208160280);
 
         struct Foo {
@@ -769,20 +798,13 @@ mod tests {
             });
         });
 
-        run_test("GetServiceInfo - 1024 tasks", || {
+        run_test("GetServiceInfo - 256 tasks", || {
             System::run(|| {
                 fn join_tasks(task_count: usize) -> impl Future {
                     let foo = Arbiter::registry().get::<Foo>();
                     let mut tasks = Vec::with_capacity(task_count);
                     for _ in 0..task_count {
-                        let task = foo
-                            .send(GetServiceInfo)
-                            .timeout(Duration::from_millis(10))
-                            .then(|_| {
-                                System::current().stop();
-                                future::ok::<_, ()>(())
-                            });
-                        tasks.push(task);
+                        tasks.push(foo.send(GetServiceInfo));
                     }
                     future::join_all(tasks)
                 }
@@ -798,12 +820,7 @@ mod tests {
                 // i.e., it panics if there are more than 256 msgs queued in the mailbox, then a panic is triggered
                 const TASK_BUCKET_COUNT: usize = 256;
 
-                let task = join_tasks(TASK_BUCKET_COUNT)
-                    .then(|_| join_tasks(TASK_BUCKET_COUNT))
-                    .then(|_| join_tasks(TASK_BUCKET_COUNT))
-                    .then(|_| join_tasks(TASK_BUCKET_COUNT));
-
-                Arbiter::spawn(task.then(|_| {
+                Arbiter::spawn(join_tasks(TASK_BUCKET_COUNT).then(|_| {
                     System::current().stop();
                     future::ok::<_, ()>(())
                 }));
@@ -837,6 +854,7 @@ mod tests {
                     .then(|client| {
                         let client = client.unwrap();
                         let ping = client.ping(None);
+                        let heartbeat = client.heartbeat(None);
                         let service_info = client.get_service_info(Some(Duration::from_millis(10)));
                         let arbiter_name = client.arbiter_name(None);
 
@@ -845,6 +863,9 @@ mod tests {
                             service_info
                         }).then(|service_info| {
                             info!("{}", service_info.unwrap());
+                            heartbeat
+                        }).then(|heartbeat| {
+                            info!("{:?}", heartbeat.unwrap());
                             arbiter_name
                         }).then(|arbiter_name| {
                             info!("arbiter: {}", arbiter_name.unwrap());

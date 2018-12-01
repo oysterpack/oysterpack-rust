@@ -95,6 +95,18 @@ macro_rules! __op_service_handlers {
                 $crate::actix::MessageResult(<Self as $crate::actor::DisplayName>::name())
             }
         }
+
+        impl $crate::actix::dev::Handler<$crate::actor::Heartbeat> for $name {
+            type Result = $crate::actix::MessageResult<$crate::actor::Heartbeat>;
+
+            fn handle(
+                &mut self,
+                _: $crate::actor::Heartbeat,
+                _: &mut Self::Context,
+            ) -> Self::Result {
+                $crate::actix::MessageResult($crate::actor::Heartbeat)
+            }
+        }
     };
 }
 

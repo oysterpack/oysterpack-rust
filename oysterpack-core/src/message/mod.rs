@@ -14,8 +14,15 @@
 
 //! Message package
 
+use bincode;
 use chrono::{DateTime, Duration, Utc};
+use oysterpack_errors::{Error, Id as ErrorId, IsError, Level as ErrorLevel};
 use oysterpack_uid::ULID;
+use rmp_serde;
+use serde;
+use serde_cbor;
+use serde_json;
+use std::{error, fmt};
 
 /// Message
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,14 +55,74 @@ pub enum Deadline {
 /// Data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Data {
-    data_type: ULID,
-    message_format: MessageFormat,
+    type_id: ULID,
+    encoding: Encoding,
     data: Vec<u8>,
 }
 
-/// SerializationFormat
+impl Data {
+    /// constructor
+    pub fn new(type_id: ULID, encoding: Encoding, data: Vec<u8>) -> Data {
+        Data {
+            type_id,
+            encoding,
+            data,
+        }
+    }
+
+    /// data type id getter
+    pub fn type_id(&self) -> ULID {
+        self.type_id
+    }
+
+    /// encoding getter
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
+    /// data getter
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
+    }
+
+    /// deserialize the data using the specified encoding
+    /// - [SerializationError](struct.SerializationError.html) defines the Error Id and Level constants
+    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, Error> {
+        match self.encoding {
+            Encoding::MessagePack => rmp_serde::from_slice(self.data())
+                .map_err(|err| op_error!(DeserializationError::new(Encoding::MessagePack, err))),
+            Encoding::Bincode => bincode::deserialize(self.data())
+                .map_err(|err| op_error!(DeserializationError::new(Encoding::MessagePack, err))),
+            Encoding::CBOR => serde_cbor::from_slice(self.data())
+                .map_err(|err| op_error!(DeserializationError::new(Encoding::MessagePack, err))),
+            Encoding::JSON => serde_json::from_slice(self.data())
+                .map_err(|err| op_error!(DeserializationError::new(Encoding::MessagePack, err))),
+        }
+    }
+
+    /// constructor which serializes the data using the specified encoding
+    /// - [DeserializationError](struct.DeserializationError.html) defines the Error Id and Level constants
+    pub fn serialize<T: serde::Serialize>(
+        type_id: ULID,
+        encoding: Encoding,
+        data: &T,
+    ) -> Result<Data, Error> {
+        match encoding {
+            Encoding::MessagePack => rmp_serde::to_vec(data)
+                .map_err(|err| op_error!(SerializationError::new(Encoding::MessagePack, err))),
+            Encoding::Bincode => bincode::serialize(data)
+                .map_err(|err| op_error!(SerializationError::new(Encoding::Bincode, err))),
+            Encoding::CBOR => serde_cbor::to_vec(data)
+                .map_err(|err| op_error!(SerializationError::new(Encoding::CBOR, err))),
+            Encoding::JSON => serde_json::to_vec(data)
+                .map_err(|err| op_error!(SerializationError::new(Encoding::JSON, err))),
+        }.map(|data| Data::new(type_id, encoding, data))
+    }
+}
+
+/// Message encoding format
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub enum MessageFormat {
+pub enum Encoding {
     /// [MessagePack](https://msgpack.org/) - default
     MessagePack,
     /// [Bincode](https://github.com/TyOverby/bincode)
@@ -64,6 +131,130 @@ pub enum MessageFormat {
     CBOR,
     /// [JSON](https://www.json.org/)
     JSON,
-    /// The message data is treated simply as bytes - it's up to the message producer / consumer
-    BYTES,
+}
+
+impl fmt::Display for Encoding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Encoding::MessagePack => f.write_str("MessagePack"),
+            Encoding::Bincode => f.write_str("Bincode"),
+            Encoding::CBOR => f.write_str("CBOR"),
+            Encoding::JSON => f.write_str("JSON"),
+        }
+    }
+}
+
+/// SerializationError
+#[derive(Debug)]
+pub struct SerializationError {
+    encoding: Encoding,
+    err_msg: String,
+}
+
+impl SerializationError {
+    /// Error Id(01CXMQQXSBYCJWWS916JDJN136)
+    pub const ERROR_ID: ErrorId = ErrorId(1866174046782305267123345584340763750);
+    /// Level::Error
+    pub const ERROR_LEVEL: ErrorLevel = ErrorLevel::Error;
+
+    fn new<Msg: fmt::Display>(encoding: Encoding, err_msg: Msg) -> SerializationError {
+        SerializationError {
+            encoding,
+            err_msg: err_msg.to_string(),
+        }
+    }
+}
+
+impl IsError for SerializationError {
+    fn error_id(&self) -> ErrorId {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> ErrorLevel {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for SerializationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} serialization failed: {}",
+            self.encoding, self.err_msg
+        )
+    }
+}
+
+/// DeserializationError
+#[derive(Debug)]
+pub struct DeserializationError {
+    encoding: Encoding,
+    err_msg: String,
+}
+
+impl DeserializationError {
+    /// Error Id(01CXMRB1X1K091BFNN6X37DVDF)
+    pub const ERROR_ID: ErrorId = ErrorId(1866174804543832457347080642119527855);
+    /// Level::Error
+    pub const ERROR_LEVEL: ErrorLevel = ErrorLevel::Error;
+
+    fn new<Msg: fmt::Display>(encoding: Encoding, err_msg: Msg) -> DeserializationError {
+        DeserializationError {
+            encoding,
+            err_msg: err_msg.to_string(),
+        }
+    }
+}
+
+impl IsError for DeserializationError {
+    fn error_id(&self) -> ErrorId {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> ErrorLevel {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for DeserializationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} deserialization failed: {}",
+            self.encoding, self.err_msg
+        )
+    }
+}
+
+#[allow(warnings)]
+#[cfg(test)]
+mod test {
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Person {
+        fname: String,
+        lname: String,
+    }
+
+    #[test]
+    fn deserialize_byte_stream_using_rmp_serde() {
+        let p1 = Person {
+            fname: "Alfio".to_string(),
+            lname: "Zappala".to_string(),
+        };
+        let p2 = Person {
+            fname: "Andreas".to_string(),
+            lname: "Antonopoulos".to_string(),
+        };
+
+        let mut p1_bytes = rmp_serde::to_vec(&p1).map_err(|_| ()).unwrap();
+        let mut p2_bytes = rmp_serde::to_vec(&p2).map_err(|_| ()).unwrap();
+        let p1_bytes_len = p1_bytes.len();
+        p1_bytes.append(&mut p2_bytes);
+        let bytes = p1_bytes.as_slice();
+        let p1: Person = rmp_serde::from_read(bytes).unwrap();
+        println!("p1: {:?}", p1);
+        let p2: Person = rmp_serde::from_read(&bytes[p1_bytes_len..]).unwrap();
+        println!("p2: {:?}", p2);
+    }
 }

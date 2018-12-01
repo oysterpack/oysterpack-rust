@@ -50,14 +50,19 @@ extern crate tokio_threadpool;
 #[macro_use]
 extern crate crossbeam_channel;
 
+extern crate bincode;
+extern crate rmp_serde;
+extern crate serde_cbor;
+extern crate serde_json;
+
+extern crate exonum_sodiumoxide;
+
 #[macro_use]
 #[cfg(test)]
 extern crate oysterpack_testing;
 #[macro_use]
 #[cfg(test)]
 extern crate oysterpack_app_metadata_macros;
-#[cfg(test)]
-extern crate serde_json;
 
 #[macro_use]
 mod macros;
