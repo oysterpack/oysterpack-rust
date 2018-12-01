@@ -47,6 +47,10 @@ use std::{collections::HashSet, iter::FromIterator};
 /// ServiceId (01CX6MMENHAXCTZ8WQ0ACEJAAF)
 pub const SERVICE_ID: ServiceId = ServiceId(1865602198802033292836235027287714127);
 
+// TODO: the event log should be designed to run within its own dedicated thread.
+// - in case the EventLog mailbox is backed up, we don't want it to overwhelm the system Arbiter.
+// - one design is to have an event log worker that runs in a dedicated Arbiter. The EventLog system
+//   service would simply relay messages to the worker.
 /// EventLog App Service
 /// - for now simply logs the event - long term we need centralized event logging
 #[derive(Debug, Clone)]
