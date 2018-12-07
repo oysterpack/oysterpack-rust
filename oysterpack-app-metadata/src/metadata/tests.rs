@@ -86,7 +86,8 @@ fn parsing_dependencies_graphviz_dot_into_package_ids() {
                     tokens.get(0).unwrap().to_string(),
                     semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
                 )
-            }).collect();
+            })
+            .collect();
         package_ids.sort();
         let package_ids: Vec<String> = package_ids.iter().map(|id| id.to_string()).collect();
         info!("package_ids : {}", package_ids.join("\n"));
@@ -99,8 +100,9 @@ fn crate_package_id() {
         let package_id = PackageId::for_this_crate();
         info!("package_id = {}", package_id);
         assert_eq!(package_id.name(), env!("CARGO_PKG_NAME"));
-        assert_eq!(*package_id.version(), semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap());
+        assert_eq!(
+            *package_id.version(),
+            semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
+        );
     })
-
-
 }

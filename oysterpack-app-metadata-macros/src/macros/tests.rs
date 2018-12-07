@@ -10,10 +10,10 @@
 
 #![allow(warnings)]
 
+use crate::tests::run_test;
 use oysterpack_app_metadata::{Build, ContinuousIntegrationPlatform, PackageId};
 use semver;
 use serde_json;
-use tests::run_test;
 
 #[test]
 fn build_on_ci_platform() {
@@ -52,10 +52,8 @@ fn build_multi_authors() {
         let authors = build_md.package().authors();
         assert_eq!(authors.len(), 2);
         assert!(authors.contains(&"Alfio Zappala <oysterpack.inc@gmail.com>".to_string()));
-        assert!(
-            authors
-                .contains(&"Roman Alexander Zappala <roman.a.zappala@oysterpack.com>".to_string())
-        );
+        assert!(authors
+            .contains(&"Roman Alexander Zappala <roman.a.zappala@oysterpack.com>".to_string()));
     });
 }
 

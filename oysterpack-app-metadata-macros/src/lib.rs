@@ -19,17 +19,15 @@
 //! is used to generate the application build netadata.
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata_macros/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata_macros/0.1.1")]
 
+pub extern crate chrono;
 pub extern crate oysterpack_app_metadata;
 pub extern crate semver;
-pub extern crate chrono;
 
 #[cfg(test)]
 #[macro_use]
 extern crate oysterpack_testing;
-#[cfg(test)]
-extern crate serde_json;
 
 #[macro_use]
 mod macros;

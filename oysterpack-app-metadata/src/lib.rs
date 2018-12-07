@@ -23,10 +23,7 @@
 //! ![uml](ml.svg)
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.3.1")]
-
-#[macro_use]
-extern crate serde_derive;
+#![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.3.2")]
 
 #[cfg(test)]
 #[macro_use]

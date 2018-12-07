@@ -186,21 +186,21 @@ macro_rules! op_build_mod {
             /// Collects the build-time info to construct a new Build instance
             pub fn get() -> $crate::oysterpack_app_metadata::Build {
                 fn package_dependencies() -> Vec<$crate::oysterpack_app_metadata::PackageId> {
-                    let mut dependencies: Vec<
-                        $crate::oysterpack_app_metadata::PackageId,
-                    > = DEPENDENCIES_GRAPHVIZ_DOT
-                        .lines()
-                        .filter(|line| !line.contains("->") && line.contains("["))
-                        .skip(1)
-                        .map(|line| {
-                            let line = &line[line.find('"').unwrap() + 1..];
-                            let line = &line[..line.find('"').unwrap()];
-                            let tokens: Vec<&str> = line.split("=").collect();
-                            $crate::oysterpack_app_metadata::PackageId::new(
-                                tokens.get(0).unwrap().to_string(),
-                                $crate::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
-                            )
-                        }).collect();
+                    let mut dependencies: Vec<$crate::oysterpack_app_metadata::PackageId> =
+                        DEPENDENCIES_GRAPHVIZ_DOT
+                            .lines()
+                            .filter(|line| !line.contains("->") && line.contains("["))
+                            .skip(1)
+                            .map(|line| {
+                                let line = &line[line.find('"').unwrap() + 1..];
+                                let line = &line[..line.find('"').unwrap()];
+                                let tokens: Vec<&str> = line.split("=").collect();
+                                $crate::oysterpack_app_metadata::PackageId::new(
+                                    tokens.get(0).unwrap().to_string(),
+                                    $crate::semver::Version::parse(tokens.get(1).unwrap()).unwrap(),
+                                )
+                            })
+                            .collect();
                     dependencies.sort();
                     dependencies
                 }

@@ -16,6 +16,7 @@
 
 use chrono::{DateTime, Utc};
 use semver;
+use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 
 /// Build provides a consolidated view of the crate's build-time metadata.
@@ -346,7 +347,7 @@ op_tuple_struct_string! {
     BuildProfile
 }
 
-op_tuple_struct_copy!{
+op_tuple_struct_copy! {
     /// Value of OPT_LEVEL for the profile used during compilation.
     CompileOptLevel(u8)
 }
@@ -441,8 +442,8 @@ impl PackageId {
     /// If version fails to be parsed as semver format
     pub fn for_this_crate() -> PackageId {
         PackageId {
-            name : env!("CARGO_PKG_NAME").to_string(),
-            version: semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
+            name: env!("CARGO_PKG_NAME").to_string(),
+            version: semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap(),
         }
     }
 

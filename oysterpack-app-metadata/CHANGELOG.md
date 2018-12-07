@@ -6,8 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.3.2\] 2018-12-07
+
 ## Changed
 - implement Default on BuildBuilder
+- upgraded to rust 2018 edition
 
 ## \[0.3.1\] 2018-10-20
 
