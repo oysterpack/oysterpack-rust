@@ -12,7 +12,7 @@ readme = "README.md"
 chrono = { version = "0.4.2", features = ["serde"] }
 serde = "1.0.37"
 serde_derive = "1.0.37"
-exonum_sodiumoxide = "0.0.16"
+exonum_sodiumoxide = "0.0.20"
 
 oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
 

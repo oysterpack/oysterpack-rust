@@ -104,7 +104,7 @@ impl Default for Message {
             id: MessageId::new(),
             timestamp: TimestampMillis::new(),
             correlation_id: None,
-            deadline: Deadline::default(),
+            deadline: None,
             data: None,
             topic: Topic("".to_string()),
             reply_to: None,

@@ -13,6 +13,8 @@
 // limitations under the License.
 
 //! Message package
+//!
+//! The message stream is compressed.
 
 use bincode;
 use chrono::{DateTime, Duration, Utc};
@@ -24,15 +26,87 @@ use serde_cbor;
 use serde_json;
 use std::{error, fmt};
 
+/// A private message that is signed and encrypted.
+/// - the message is signed by the sender
+/// - the message is encrypted
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PrivateMessage {
+    header: PrivateMessageHeader,
+    msg_header: BinaryData,
+    msg_data: BinaryData
+}
+
+/// PrivateMessage header contains the following info
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PrivateMessageHeader {
+    from: ULID,
+    to: ULID,
+    session: ULID,
+    nonce: ULID,
+    encryption: EncryptionMode,
+    signature: Vec<u8>,
+}
+
+/// Binary data
+/// - can be compressed
+/// - always has a hash to ensure the data integrity
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BinaryData {
+    compression: Option<CompressionMode>,
+    hash: Vec<u8>,
+    data: Vec<u8>
+}
+
+/// Encryption mode indicates how the message was encrypted
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum EncryptionMode {
+    /// The message is encrypted using the Private Key corresponding to the specified Public Key
+    PrivateKey {
+        /// ULID that references a Public Key
+        pub_key_ref: ULID
+    },
+    /// The message is encrypted using a shared key that is identified by the specified ULID, which is
+    /// known by the sending and receiving parties.
+    SharedKey(ULID)
+}
+
+/// Compression mode
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum CompressionMode {
+    /// deflate
+    Deflate,
+    /// zlib
+    Zlib,
+    /// gzip
+    Gzip,
+    /// snappy
+    Snappy,
+    /// LZ4
+    Lz4
+}
+
 /// Message
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message<T> {
+    header: MessageHeader,
+    data: T,
+}
+
+/// Message header contains the following info:
+/// - the message ID, which identifies the message type. The message ID is used to parse the the message data.
+/// - instance ID, which identifies each message instance. This can be used as a nonce to provide replay
+///   protection on the network
+/// - optional deadline, which specifies that client requires the message to be processed by the specified deadline.
+///   - if the message is received after the deadline, then drop the message
+///   - message processing can be cancelled once the deadline is reached
+///     - the error response can indicate what progress was made back to the client
+///     - depending on the use case, this may mean the message processing transaction was rolled back
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MessageHeader {
     id: Id,
     instance_id: ULID,
-    timestamp: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     deadline: Option<Deadline>,
-    data: T,
 }
 
 op_newtype! {
@@ -41,6 +115,30 @@ op_newtype! {
     /// a different processor and have different semantics.
     #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
     pub Id(pub u128)
+}
+
+impl MessageHeader {
+
+    /// Each message type is identified by an Id
+    pub fn id(&self) -> Id {
+        self.id
+    }
+
+    /// Each message instance is assigned a unique ULID. This can be used as a nonce for replay protection
+    /// on the network.
+    pub fn instance_id(&self) -> ULID {
+        self.instance_id
+    }
+
+    /// When the message was created. This is derived from the message instance ID.
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.instance_id.datetime()
+    }
+
+    /// A message can specify that it must be processed by the specified deadline.
+    pub fn deadline(&self) -> Option<Deadline> {
+        self.deadline
+    }
 }
 
 /// Deadline

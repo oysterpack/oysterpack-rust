@@ -89,8 +89,8 @@ pub fn format(record: &Record) -> String {
     if let (Some(module_path), Some(line)) = (record.module_path(), record.line()) {
         format!(
             "[{}][{}][{}][{}:{}] {}",
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.level(),
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.target(),
             module_path,
             line,
@@ -99,8 +99,8 @@ pub fn format(record: &Record) -> String {
     } else {
         format!(
             "[{}][{}][{}] {}",
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.level(),
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.target(),
             record.args()
         )

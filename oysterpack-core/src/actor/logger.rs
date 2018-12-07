@@ -134,16 +134,16 @@ impl Handler<LogRecord> for Logger {
         match request.module_source() {
             Some(module_source) => eprintln!(
                 "[{}][{}][{}][{}] {}",
-                now,
                 request.level(),
+                now,
                 request.target(),
                 module_source,
                 request.message()
             ),
             None => eprintln!(
                 "[{}][{}][{}] {}",
-                now,
                 request.level(),
+                now,
                 request.target(),
                 request.message()
             ),

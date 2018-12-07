@@ -81,8 +81,8 @@ macro_rules! op_tests_mod {
                         .chain($crate::fern::Output::call(move |record| {
                             println!(
                                 "[{}][{}][{}][{}:{}] {}",
-                                $crate::chrono::Local::now().format("%H:%M:%S%.3f"),
                                 record.level(),
+                                $crate::chrono::Local::now().format("%H:%M:%S%.3f"),
                                 record.target(),
                                 record.module_path().unwrap(),
                                 record.line().unwrap(),
