@@ -10,6 +10,7 @@ documentation = "https://docs.rs/oysterpack_app_metadata"
 readme = "README.md"
 build = "build.rs"
 keywords = ["metadata"]
+edition = "2018"
 
 [dependencies]
 semver = {version = "0.9", features = ["serde"]}
