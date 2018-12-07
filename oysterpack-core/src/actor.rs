@@ -694,13 +694,13 @@ impl fmt::Debug for AppClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::run_test;
     use actix::{
         msgs::{Execute, StartActor},
         spawn, Arbiter, Supervised, System,
     };
     use futures::{future, prelude::*};
     use std::time::Duration;
-    use tests::run_test;
 
     #[test]
     fn actor_service() {
@@ -750,7 +750,8 @@ mod tests {
                                 Err(err) => panic!("GetServiceInfo failed: {:?}", err),
                             }
                             future::ok::<_, ()>(())
-                        }).then(move |_| {
+                        })
+                        .then(move |_| {
                             frontend.send(Execute::new(|| -> Result<(), ()> {
                                 let future = Arbiter::registry()
                                     .get::<Foo>()
@@ -770,7 +771,8 @@ mod tests {
                                 spawn(future);
                                 Ok(())
                             }))
-                        }).then(move |_| {
+                        })
+                        .then(move |_| {
                             frontend2.send(Execute::new(|| -> Result<(), ()> {
                                 let future = Arbiter::registry()
                                     .get::<Foo>()
@@ -790,7 +792,8 @@ mod tests {
                                 spawn(future);
                                 Ok(())
                             }))
-                        }).then(|_| {
+                        })
+                        .then(|_| {
                             System::current().stop();
                             future::ok::<_, ()>(())
                         }),
@@ -837,7 +840,8 @@ mod tests {
                         let pong = pong.unwrap();
                         info!("{}", pong);
                         future::ok::<(), ()>(())
-                    }).then(|_| {
+                    })
+                    .then(|_| {
                         System::current().stop();
                         future::ok::<_, ()>(())
                     });
@@ -861,17 +865,21 @@ mod tests {
                         ping.then(move |pong| {
                             info!("{}", pong.unwrap());
                             service_info
-                        }).then(|service_info| {
+                        })
+                        .then(|service_info| {
                             info!("{}", service_info.unwrap());
                             heartbeat
-                        }).then(|heartbeat| {
+                        })
+                        .then(|heartbeat| {
                             info!("{:?}", heartbeat.unwrap());
                             arbiter_name
-                        }).then(|arbiter_name| {
+                        })
+                        .then(|arbiter_name| {
                             info!("arbiter: {}", arbiter_name.unwrap());
                             future::ok::<_, ()>(())
                         })
-                    }).then(|_| {
+                    })
+                    .then(|_| {
                         System::current().stop();
                         future::ok::<_, ()>(())
                     });
@@ -886,7 +894,7 @@ mod tests {
         let log_config =
             oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build();
         app::App::run(
-            ::build::get(),
+            crate::build::get(),
             log_config,
             future::lazy(|| {
                 let app_client = AppClient::get();
@@ -907,28 +915,36 @@ mod tests {
                     .then(|app_instance_id| {
                         info!("app_instance_id: {:?}", app_instance_id.unwrap());
                         get_app_instance_info
-                    }).then(|app_instance_info| {
+                    })
+                    .then(|app_instance_info| {
                         info!("app_instance_info: {:?}", app_instance_info.unwrap());
                         get_build
-                    }).then(|build| {
+                    })
+                    .then(|build| {
                         info!("build: {:?}", build.unwrap().unwrap().package().id());
                         get_log_config
-                    }).then(|log_config| {
+                    })
+                    .then(|log_config| {
                         info!("log_config: {:?}", log_config.unwrap());
                         get_registered_services
-                    }).then(|registered_services| {
+                    })
+                    .then(|registered_services| {
                         info!("registered_services: {:?}", registered_services.unwrap());
                         get_arbiter_names
-                    }).then(|arbiter_names| {
+                    })
+                    .then(|arbiter_names| {
                         info!("arbiter_names: {:?}", arbiter_names.unwrap());
                         get_arbiter
-                    }).then(|arbiter| {
+                    })
+                    .then(|arbiter| {
                         info!("arbiter: {:?}", arbiter.unwrap());
                         get_registered_events
-                    }).then(|registered_events| {
+                    })
+                    .then(|registered_events| {
                         info!("registered_events: {:?}", registered_events.unwrap());
                         get_unregistered_events
-                    }).then(|unregistered_events| {
+                    })
+                    .then(|unregistered_events| {
                         info!("unregistered_events: {:?}", unregistered_events.unwrap());
                         future::ok::<(), ()>(())
                     })

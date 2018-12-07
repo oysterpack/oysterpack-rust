@@ -32,7 +32,7 @@
 //! - AppLifeCycleEvent::STARTED
 //! - AppLifeCycleEvent::STOPPED
 
-use actor::{
+use crate::actor::{
     events::{AppLifeCycleEvent, ServiceLifeCycleEvent},
     AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId, LifeCycle,
     ServiceInfo,
@@ -193,8 +193,8 @@ mod tests {
     use oysterpack_uid::{Domain, DomainULID, HasDomain, ULID};
     use std::{collections::HashSet, fmt, iter::*};
 
-    use actix::dev::System;
     use crate::actor::logger::init_logging;
+    use actix::dev::System;
     use futures::{future, prelude::*};
 
     fn log_config() -> oysterpack_log::LogConfig {
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn eventlog() {
         App::run(
-            ::build::get(),
+            crate::build::get(),
             log_config(),
             future::lazy(|| {
                 let eventlog = System::current().registry().get::<EventLog>();
@@ -289,7 +289,8 @@ mod tests {
                             AppLifeCycleEvent::STARTED,
                             AppLifeCycleEvent::STOPPED,
                             Foo::EVENT_ID,
-                        ].iter()
+                        ]
+                        .iter()
                         .for_each(|event_id| {
                             assert!(
                                 event_ids.contains(event_id),
@@ -302,7 +303,8 @@ mod tests {
                         assert!(!event_ids.contains(&Bar::EVENT_ID));
 
                         get_unregistered_events
-                    }).then(|unregistered_events| {
+                    })
+                    .then(|unregistered_events| {
                         let unregistered_events = unregistered_events.unwrap();
                         info!("unregistered_events: {:?}", unregistered_events);
                         assert_eq!(unregistered_events.len(), 1);

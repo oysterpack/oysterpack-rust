@@ -136,10 +136,14 @@ macro_rules! op_actor_service {
                     $crate::actor::events::ServiceLifeCycle::Started
                 );
 
-                let app: $crate::actix::Addr<$crate::actor::app::App> = $crate::actor::app_service();
+                let app: $crate::actix::Addr<$crate::actor::app::App> =
+                    $crate::actor::app_service();
                 use $crate::actix::prelude::AsyncContext;
                 let service_client = $crate::actor::ServiceClient::for_service(c.address());
-                let register_service = app.send($crate::actor::app::RegisterService::new(self.service_info, service_client));
+                let register_service = app.send($crate::actor::app::RegisterService::new(
+                    self.service_info,
+                    service_client,
+                ));
                 $crate::actor::spawn_task(register_service);
 
                 use $crate::actor::LifeCycle;
@@ -219,10 +223,14 @@ macro_rules! op_actor_service {
                 );
 
                 if self.service_info.id() != $crate::actor::app::SERVICE_ID {
-                    let app: $crate::actix::Addr<$crate::actor::app::App> = $crate::actor::app_service();
+                    let app: $crate::actix::Addr<$crate::actor::app::App> =
+                        $crate::actor::app_service();
                     use $crate::actix::prelude::AsyncContext;
                     let service_client = $crate::actor::ServiceClient::for_app_service(c.address());
-                    let register_service = app.send($crate::actor::app::RegisterService::new(self.service_info, service_client));
+                    let register_service = app.send($crate::actor::app::RegisterService::new(
+                        self.service_info,
+                        service_client,
+                    ));
                     $crate::actor::spawn_task(register_service);
                 }
 

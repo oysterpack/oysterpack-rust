@@ -124,7 +124,7 @@ macro_rules! op_tests_mod {
         }
 
         #[cfg(test)]
-        pub use tests::run_test;
+        pub use crate::tests::run_test;
     };
 }
 
@@ -159,7 +159,7 @@ macro_rules! op_test {
     ) => {
         #[test]
         fn $Name() {
-            ::tests::run_test(stringify!($Name), || $Fn);
+            crate::tests::run_test(stringify!($Name), || $Fn);
         }
     };
 }
@@ -167,7 +167,7 @@ macro_rules! op_test {
 #[cfg(test)]
 mod tests {
 
-    use tests::run_test;
+    use crate::tests::run_test;
 
     #[test]
     fn tests_op_test() {

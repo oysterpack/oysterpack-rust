@@ -14,15 +14,10 @@
 
 //! This module is the anchor point for configuring and initializing the [log](https://crates.io/crates/log) system.
 
-use config::{
-    LogConfig,
-    Target
-};
+use crate::config::{LogConfig, Target};
 use fern::Output;
 use log::Record;
-use std::{
-    sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT},
-};
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 const LOG_NOT_INITIALIZED: usize = 0;
 const LOG_INITIALIZING: usize = 1;
@@ -75,7 +70,7 @@ pub fn init<F: RecordLogger>(config: LogConfig, logger: F) {
 }
 
 /// Logs the record
-pub trait RecordLogger: Send + Sync + 'static{
+pub trait RecordLogger: Send + Sync + 'static {
     /// log the record
     fn log(&self, record: &Record);
 }

@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_macros"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Macros"
 license = "MIT/Apache-2.0"
@@ -9,9 +9,10 @@ homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-macr
 documentation = "https://docs.rs/oysterpack_macros"
 readme = "README.md"
 keywords = ["macros"]
+edition = "2018"
 
 [dev-dependencies]
-version-sync = "0.5"
+version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 serde = "1.0.80"
 serde_derive = "1.0.80"

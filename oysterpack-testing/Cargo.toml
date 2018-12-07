@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_testing"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "Standardizes logging for the OysterPack platform"
 license = "MIT/Apache-2.0"
@@ -9,6 +9,7 @@ homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-test
 documentation = "https://docs.rs/oysterpack_testing"
 readme = "README.md"
 keywords = ["log"]
+edition = "2018"
 
 [dependencies]
 log = "0.4"
@@ -17,7 +18,7 @@ fern = {version = "0.5"}
 chrono = { version = "0.4", features = ["serde"]}
 
 [dev-dependencies]
-version-sync = "0.5"
+version-sync = "0.6"
 
 [badges]
 maintenance = {status = "actively-developed"}

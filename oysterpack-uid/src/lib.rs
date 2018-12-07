@@ -76,24 +76,15 @@
 //! - ULID is the clear winner in terms of encoding the identifier as a String
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.1")]
-
-extern crate chrono;
-extern crate rusty_ulid;
-#[macro_use]
-extern crate serde;
+#![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.2")]
 
 #[cfg(test)]
 #[macro_use]
 extern crate oysterpack_testing;
-#[cfg(test)]
-extern crate serde_json;
-#[cfg(test)]
-extern crate uuid;
 
 pub mod ulid;
 
-pub use ulid::{Domain, DomainULID, HasDomain, TypedULID, ULID};
+pub use crate::ulid::{Domain, DomainULID, HasDomain, TypedULID, ULID};
 
 #[cfg(test)]
 op_tests_mod!();

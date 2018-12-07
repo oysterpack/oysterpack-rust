@@ -16,9 +16,9 @@
 #![allow(warnings)]
 
 use super::*;
+use crate::tests::run_test;
 use serde_json;
 use std::{cmp::Ordering, str::FromStr};
-use tests::run_test;
 
 #[derive(Debug)]
 struct User;
@@ -268,7 +268,7 @@ fn ulid_default() {
 fn domain() {
     run_test("domain", || {
         const USERS: Domain = Domain("users");
-        assert_eq!(USERS.as_ref(),"users");
-        assert_eq!(USERS.as_ref(),USERS.name());
+        assert_eq!(USERS.as_ref(), "users");
+        assert_eq!(USERS.as_ref(), USERS.name());
     });
 }

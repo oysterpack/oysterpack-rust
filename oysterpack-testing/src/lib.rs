@@ -87,7 +87,7 @@
 //!   them makes the macros self-contained.
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_testing/0.1.3")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_testing/0.1.4")]
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -97,15 +97,7 @@ pub extern crate chrono;
 pub extern crate fern;
 
 /// re-export the log macros
-pub use log::{
-    trace,
-    debug,
-    info,
-    warn,
-    error,
-    log,
-    log_enabled
-};
+pub use log::{debug, error, info, log, log_enabled, trace, warn};
 
 #[macro_use]
 mod macros;

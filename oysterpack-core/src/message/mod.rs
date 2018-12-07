@@ -33,7 +33,7 @@ use std::{error, fmt};
 pub struct PrivateMessage {
     header: PrivateMessageHeader,
     msg_header: BinaryData,
-    msg_data: BinaryData
+    msg_data: BinaryData,
 }
 
 /// PrivateMessage header contains the following info
@@ -54,7 +54,7 @@ pub struct PrivateMessageHeader {
 pub struct BinaryData {
     compression: Option<CompressionMode>,
     hash: Vec<u8>,
-    data: Vec<u8>
+    data: Vec<u8>,
 }
 
 /// Encryption mode indicates how the message was encrypted
@@ -63,11 +63,11 @@ pub enum EncryptionMode {
     /// The message is encrypted using the Private Key corresponding to the specified Public Key
     PrivateKey {
         /// ULID that references a Public Key
-        pub_key_ref: ULID
+        pub_key_ref: ULID,
     },
     /// The message is encrypted using a shared key that is identified by the specified ULID, which is
     /// known by the sending and receiving parties.
-    SharedKey(ULID)
+    SharedKey(ULID),
 }
 
 /// Compression mode
@@ -82,7 +82,7 @@ pub enum CompressionMode {
     /// snappy
     Snappy,
     /// LZ4
-    Lz4
+    Lz4,
 }
 
 /// Message
@@ -118,7 +118,6 @@ op_newtype! {
 }
 
 impl MessageHeader {
-
     /// Each message type is identified by an Id
     pub fn id(&self) -> Id {
         self.id
@@ -214,7 +213,8 @@ impl Data {
                 .map_err(|err| op_error!(SerializationError::new(Encoding::CBOR, err))),
             Encoding::JSON => serde_json::to_vec(data)
                 .map_err(|err| op_error!(SerializationError::new(Encoding::JSON, err))),
-        }.map(|data| Data::new(type_id, encoding, data))
+        }
+        .map(|data| Data::new(type_id, encoding, data))
     }
 }
 

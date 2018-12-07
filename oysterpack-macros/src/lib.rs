@@ -26,7 +26,7 @@
 //! - [op_tt_as_stmt](macro.op_tt_as_stmt.html)
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_macros/0.1.2")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_macros/0.1.3")]
 
 #[cfg(test)]
 #[macro_use]

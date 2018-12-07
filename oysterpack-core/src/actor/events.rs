@@ -15,7 +15,7 @@
 //! Actor Events
 
 use super::*;
-use actor::Id as ServiceId;
+use crate::actor::Id as ServiceId;
 use oysterpack_events::{event::ModuleSource, Event, Eventful, Id as EventId, Level};
 use oysterpack_uid::{Domain, DomainULID, ULID};
 use std::fmt;

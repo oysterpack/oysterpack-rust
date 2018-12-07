@@ -55,7 +55,8 @@ fn async_stderr_logger_benchmark(c: &mut Criterion) {
                         info!("LOG MSG #{}", i);
                     }
                     Ok(())
-                }).then(move |_| {
+                })
+                .then(move |_| {
                     let _ = tx.send(System::current());
                     future::ok::<(), ()>(())
                 });

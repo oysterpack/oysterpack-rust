@@ -115,29 +115,29 @@ macro_rules! op_newtype {
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
+    use crate::tests;
     use serde_json;
-    use tests;
 
     #[test]
     fn newtype_private() {
         pub mod foo {
-            op_newtype!{
+            op_newtype! {
                 /// A is private
                 A(u128)
             }
 
-            op_newtype!{
+            op_newtype! {
                 /// B is public
                 pub B(u128)
             }
 
-            op_newtype!{
+            op_newtype! {
                 /// C and the underlying value are public
                 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
                 pub C(pub u128)
             }
 
-            op_newtype!{
+            op_newtype! {
                 pub Name(String)
             }
         }

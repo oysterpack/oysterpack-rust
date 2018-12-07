@@ -40,7 +40,8 @@ fn init_logging() {
                     info!("LOG MSG #{}", i);
                 }
                 Ok(())
-            }).then(|_| {
+            })
+            .then(|_| {
                 // Not all log messages may have been processed. Queued messages will simply get dropped.
                 info!("STOPPING ACTOR SYSTEM");
                 System::current().stop();

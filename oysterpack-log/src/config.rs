@@ -15,10 +15,7 @@
 //! Log config
 
 use log::Level;
-use std::{
-    fmt,
-    collections::BTreeMap
-};
+use std::{collections::BTreeMap, fmt};
 
 /// Log config
 #[derive(Debug, Serialize, Deserialize)]
@@ -145,7 +142,6 @@ impl AsRef<str> for Target {
 }
 
 impl fmt::Display for Target {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.0.as_str())
     }
@@ -159,7 +155,7 @@ mod tests {
 
     #[test]
     fn root_log_level_configured() {
-        ::run_test("root_log_level_configured", || {
+        crate::run_test("root_log_level_configured", || {
             let config = LogConfigBuilder::new(Level::Info).build();
             info!("{}", serde_json::to_string(&config).unwrap());
             assert_eq!(config.root_level(), Level::Info);
@@ -168,7 +164,7 @@ mod tests {
 
     #[test]
     fn default_log_config() {
-        ::run_test("default_log_config", || {
+        crate::run_test("default_log_config", || {
             let config: LogConfig = Default::default();
             info!("{}", serde_json::to_string(&config).unwrap());
             assert_eq!(config.root_level(), Level::Warn);
@@ -179,7 +175,7 @@ mod tests {
 
     #[test]
     fn log_config_with_all_fields_configured() {
-        ::run_test("default_log_config", || {
+        crate::run_test("default_log_config", || {
             let config = LogConfigBuilder::new(Level::Info)
                 .crate_level(Level::Info)
                 .target_level("a".into(), Level::Info)
@@ -202,7 +198,7 @@ mod tests {
 
     #[test]
     fn for_crate() {
-        ::run_test("for_crate", || {
+        crate::run_test("for_crate", || {
             assert_eq!(Target::from("oysterpack_log"), Target::for_crate());
             assert_eq!(
                 Target::from("oysterpack_log::foo"),

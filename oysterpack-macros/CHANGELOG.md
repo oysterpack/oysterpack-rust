@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
+## \[0.1.3\] 2018-12-07
+
+### Changed
+- upgraded to rust edition 2018
+
 ## \[0.1.2\] 2018-10-31
 
 ### Changed

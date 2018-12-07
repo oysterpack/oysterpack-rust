@@ -10,13 +10,15 @@ documentation = "https://docs.rs/oysterpack_XXX"
 readme = "README.md"
 keywords = []
 categories = []
+edition = "2018"
+publish = false
 
 [dependencies]
 oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 failure = "0.1.3"
 
 [dev-dependencies]
-version-sync = "0.5"
+version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 
 [build-dependencies]

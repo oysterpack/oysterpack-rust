@@ -14,8 +14,8 @@
 
 //! Actor Logging Service for async logging.
 
-use actix::prelude::*;
-use actor::{self, events, DisplayName, GetServiceInfo, Service, ServiceInfo};
+use crate::actor::{self, events, DisplayName, GetServiceInfo, Service, ServiceInfo};
+use ::actix::prelude::*;
 use chrono::prelude::*;
 use futures::{prelude::*, sync::oneshot};
 use oysterpack_events::{event::ModuleSource, Eventful};
@@ -180,7 +180,8 @@ pub fn init_logging(config: oysterpack_log::LogConfig) -> impl Future<Item = (),
     let task = arbiters_addr
         .send(actor::arbiters::GetArbiter::from(
             LogRecordSender::DEFAULT_ARBITER,
-        )).and_then(|arbiter| {
+        ))
+        .and_then(|arbiter| {
             arbiter.send(actix::msgs::Execute::new(move || -> Result<(), ()> {
                 let logger = Arbiter::registry().get::<Logger>();
                 oysterpack_log::init(config, LogRecordSender::new(logger));
@@ -200,8 +201,8 @@ impl RecordLogger for LogRecordSender {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::{dev::*, Arbiter, System};
-    use actor::{app_service, arbiters};
+    use crate::actor::{app_service, arbiters};
+    use ::actix::{dev::*, Arbiter, System};
     use futures::{future, prelude::*};
 
     fn stop_system() {
@@ -234,7 +235,8 @@ mod tests {
             Some(ModuleSource::new(
                 record.module_path().unwrap(),
                 record.line().unwrap()
-            )).as_ref()
+            ))
+            .as_ref()
         );
     }
 
@@ -260,7 +262,8 @@ mod tests {
                         actor::spawn_task(logger.send(record));
                         Ok(())
                     }))
-                }).then(|_| {
+                })
+                .then(|_| {
                     System::current().stop();
                     future::ok::<(), ()>(())
                 });
@@ -285,7 +288,8 @@ mod tests {
                         info!("LOG MSG #{}", i);
                     }
                     Ok(())
-                }).then(|_| {
+                })
+                .then(|_| {
                     // Not all log messages may have been processed. Queued messages will simply get dropped.
                     info!("STOPPING ACTOR SYSTEM");
                     System::current().stop();

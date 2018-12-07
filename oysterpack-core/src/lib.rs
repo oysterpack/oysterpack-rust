@@ -23,7 +23,7 @@
 // #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![allow(unused_imports, dead_code)]
 #![deny(missing_docs, missing_debug_implementations)]
-#![cfg_attr(feature = "cargo-clippy", allow(unreadable_literal))]
+#![allow(clippy::unreadable_literal)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_core/0.1.0")]
 
 #[macro_use]
@@ -34,28 +34,17 @@ extern crate oysterpack_events;
 extern crate oysterpack_macros;
 #[macro_use]
 extern crate oysterpack_errors;
-extern crate actix;
-extern crate oysterpack_app_metadata;
-extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;
-extern crate chrono;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate futures;
-extern crate tokio;
-extern crate tokio_threadpool;
 #[macro_use]
 extern crate crossbeam_channel;
 
-extern crate bincode;
-extern crate rmp_serde;
-extern crate serde_cbor;
-extern crate serde_json;
-
-extern crate exonum_sodiumoxide;
+extern crate actix;
 
 #[macro_use]
 #[cfg(test)]

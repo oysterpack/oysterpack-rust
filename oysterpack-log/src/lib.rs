@@ -41,17 +41,14 @@
 
 #[macro_use]
 pub extern crate log;
-extern crate fern;
-extern crate chrono;
 #[macro_use]
 extern crate serde;
-extern crate serde_json;
 
 #[allow(missing_docs)]
 pub mod config;
 pub mod manager;
 
-pub use config::LogConfig;
+pub use crate::config::LogConfig;
 
 pub use log::{
     // re-export the log macros
@@ -67,8 +64,7 @@ pub use log::{
     LevelFilter,
 };
 
-pub use manager::{config, init, RecordLogger, StdoutLogger, StderrLogger};
-
+pub use crate::manager::{config, init, RecordLogger, StderrLogger, StdoutLogger};
 
 #[cfg(test)]
 mod tests {
@@ -76,10 +72,10 @@ mod tests {
     /// - ensures logging is configured and initialized
     /// - collects test execution time and logs it
     pub fn run_test<F: FnOnce() -> ()>(name: &str, test: F) {
-        let log_config = ::config::LogConfigBuilder::new(log::Level::Warn)
+        let log_config = crate::config::LogConfigBuilder::new(log::Level::Warn)
             .crate_level(log::Level::Debug)
             .build();
-        ::manager::init(log_config, ::manager::StdoutLogger);
+        crate::manager::init(log_config, crate::manager::StdoutLogger);
         let before = std::time::Instant::now();
         test();
         let after = std::time::Instant::now();
@@ -97,4 +93,4 @@ mod tests {
 }
 
 #[cfg(test)]
-pub use tests::run_test;
+pub use crate::tests::run_test;

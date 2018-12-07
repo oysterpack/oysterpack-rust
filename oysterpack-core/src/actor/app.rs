@@ -22,7 +22,7 @@ use oysterpack_events::Eventful;
 use oysterpack_log::{self, LogConfig};
 use oysterpack_uid::ULID;
 
-use actor::{
+use crate::actor::{
     eventlog::{EventLog, LogEvent},
     events, AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId,
     ServiceClient, ServiceInfo,
@@ -79,7 +79,8 @@ impl App {
                     let app = System::current().registry().get::<App>();
                     app.send(SetBuild(build))
                         .then(move |_| app.send(GetAppInstanceInfo))
-                }).then(|appinstance_info| {
+                })
+                .then(|appinstance_info| {
                     let appinstance_info = appinstance_info.unwrap();
                     let eventlog = System::current().registry().get::<EventLog>();
                     let event = events::AppLifeCycleEvent::started(
@@ -87,7 +88,8 @@ impl App {
                         appinstance_info.instance_id(),
                     );
                     eventlog.send(LogEvent(op_event!(event)))
-                }).then(|_| f)
+                })
+                .then(|_| f)
                 .then(|_| {
                     let app = System::current().registry().get::<App>();
                     app.send(GetAppInstanceInfo)
@@ -99,7 +101,8 @@ impl App {
                                 appinstance_info.instance_id(),
                             );
                             eventlog.send(LogEvent(op_event!(event)))
-                        }).then(move |_| app.send(StopApp))
+                        })
+                        .then(move |_| app.send(StopApp))
                 });
             crate::actor::spawn_task(task);
         })
@@ -309,8 +312,8 @@ impl Handler<GetRegisteredServices> for App {
 mod tests {
 
     use super::*;
-    use actix::dev::System;
     use crate::actor::logger::init_logging;
+    use actix::dev::System;
     use futures::{future, prelude::*};
 
     use oysterpack_log;
@@ -334,7 +337,7 @@ mod tests {
                     panic!("There should be no Build set");
                 }
                 let app = System::current().registry().get::<App>();
-                app.send(SetBuild(::build::get()))
+                app.send(SetBuild(crate::build::get()))
             });
             let task = task.then(|_| {
                 let app = System::current().registry().get::<App>();
@@ -364,25 +367,29 @@ mod tests {
     #[test]
     fn app_run() {
         App::run(
-            ::build::get(),
+            crate::build::get(),
             log_config(),
             future::lazy(|| {
                 info!("The next wave is blockchain ...");
                 let app = System::current().registry().get::<App>();
                 app.send(GetInstanceId)
-            }).then(|app_instance_id| {
+            })
+            .then(|app_instance_id| {
                 info!("app_instance_id = {}", app_instance_id.unwrap());
                 let app = System::current().registry().get::<App>();
                 app.send(GetAppInstanceInfo)
-            }).then(|app_instance_info| {
+            })
+            .then(|app_instance_info| {
                 info!("app_instance_info = {}", app_instance_info.unwrap());
                 let app = System::current().registry().get::<App>();
                 app.send(GetLogConfig)
-            }).then(|logconfig| {
+            })
+            .then(|logconfig| {
                 info!("logconfig = {}", logconfig.unwrap().unwrap());
                 let app = System::current().registry().get::<App>();
                 app.send(GetRegisteredServices)
-            }).then(|registered_services| {
+            })
+            .then(|registered_services| {
                 info!("registered_services = {:?}", registered_services.unwrap());
                 future::ok::<(), ()>(())
             }),

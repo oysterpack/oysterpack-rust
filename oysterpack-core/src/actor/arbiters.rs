@@ -20,11 +20,8 @@
 //! - [GetArbiterNames](struct.GetArbiterNames.html)
 //!
 //! ```rust
-//! # extern crate oysterpack_core;
-//! # extern crate actix;
-//! # extern crate futures;
 //! # use oysterpack_core::actor::arbiters::*;
-//! # use actix::{msgs::{Execute, StartActor}, prelude::*, registry::SystemRegistry,spawn,};
+//! # use ::actix::{msgs::{Execute, StartActor}, prelude::*, registry::SystemRegistry,spawn,};
 //! # use futures::{future, prelude::*};
 //! System::run(|| {
 //!   let arbiters = System::current().registry().get::<Arbiters>();
@@ -55,11 +52,11 @@
 //! });
 //! ```
 
+use crate::actor::{self, events, AppService, DisplayName, GetServiceInfo, ServiceInfo};
 use actix::{
     msgs::Execute, registry::SystemService, Actor, Addr, Arbiter, Context, Handler, MailboxError,
     Message, MessageResult, Supervised, System,
 };
-use actor::{self, events, AppService, DisplayName, GetServiceInfo, ServiceInfo};
 use futures::prelude::*;
 use oysterpack_events::Eventful;
 use std::{collections::HashMap, fmt};
@@ -81,7 +78,8 @@ pub fn service<A: actor::Service>(
             arbiter
                 .send(Execute::new(|| -> Result<Addr<A>, ()> {
                     Ok(Arbiter::registry().get::<A>())
-                })).map(|service| service.unwrap())
+                }))
+                .map(|service| service.unwrap())
         })
 }
 
@@ -197,15 +195,15 @@ impl Handler<GetArbiterNames> for Arbiters {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix::{
+    use crate::actor::Service;
+    use crate::tests::run_test;
+    use ::actix::{
         msgs::{Execute, StartActor},
         prelude::*,
         registry::SystemRegistry,
         spawn,
     };
-    use actor::Service;
     use futures::{future, prelude::*};
-    use tests::run_test;
 
     fn into_task(f: impl Future) -> impl Future<Item = (), Error = ()> {
         f.map(|_| ()).map_err(|_| ())
@@ -260,7 +258,8 @@ mod tests {
                         assert!(names.is_none());
                         let arbiters = System::current().registry().get::<Arbiters>();
                         arbiters.send(GetArbiter::from("WEB"))
-                    }).and_then(|arbiter_addr| {
+                    })
+                    .and_then(|arbiter_addr| {
                         arbiter_addr.send(actix::msgs::Execute::new(|| -> Result<(), ()> {
                             let arbiters = System::current().registry().get::<Arbiters>();
                             let future = arbiters.send(GetArbiterNames).then(|result| {
@@ -270,10 +269,12 @@ mod tests {
                             spawn(future);
                             Ok(())
                         }))
-                    }).and_then(|_| {
+                    })
+                    .and_then(|_| {
                         System::current().stop();
                         Ok(())
-                    }).map_err(|_| ());
+                    })
+                    .map_err(|_| ());
                 spawn(future);
             });
         });
@@ -292,7 +293,8 @@ mod tests {
                             Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
                         }
                         future::ok::<(), ()>(())
-                    }).then(|_| {
+                    })
+                    .then(|_| {
                         stop_system();
                         future::ok::<(), ()>(())
                     });
@@ -308,7 +310,8 @@ mod tests {
                     .then(|result| match result {
                         Ok(arbiter_addr) => arbiter_addr.send(StartActor::new(|_| Foo)),
                         Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
-                    }).then(|result| {
+                    })
+                    .then(|result| {
                         match result {
                             Ok(foo_addr) => {
                                 let addr = foo_addr.clone();
@@ -324,7 +327,8 @@ mod tests {
                             }
                             Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
                         }
-                    }).then(move |_| arbiters.send(GetArbiterNames))
+                    })
+                    .then(move |_| arbiters.send(GetArbiterNames))
                     .then(|result| {
                         match result {
                             Ok(None) => panic!("Arbiters should be registered"),
@@ -332,7 +336,8 @@ mod tests {
                             Err(e) => panic!("SHOULD NEVER HAPPEN: {}", e),
                         }
                         future::ok::<(), ()>(())
-                    }).then(|_| {
+                    })
+                    .then(|_| {
                         stop_system();
                         future::ok::<(), ()>(())
                     });
