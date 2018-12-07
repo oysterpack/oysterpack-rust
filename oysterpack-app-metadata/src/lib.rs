@@ -25,10 +25,6 @@
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_app_metadata/0.3.1")]
 
-extern crate chrono;
-extern crate semver;
-
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
@@ -41,22 +37,22 @@ mod macros;
 
 pub mod metadata;
 
-pub use metadata::Build;
-pub use metadata::BuildProfile;
-pub use metadata::Compilation;
-pub use metadata::CompileOptLevel;
-pub use metadata::ContinuousIntegrationPlatform;
-pub use metadata::Endian;
-pub use metadata::GitVersion;
-pub use metadata::Package;
-pub use metadata::PackageId;
-pub use metadata::PointerWidth;
-pub use metadata::RustcVersion;
-pub use metadata::Target;
-pub use metadata::TargetArchitecture;
-pub use metadata::TargetEnv;
-pub use metadata::TargetOperatingSystem;
-pub use metadata::TargetTriple;
+pub use crate::metadata::Build;
+pub use crate::metadata::BuildProfile;
+pub use crate::metadata::Compilation;
+pub use crate::metadata::CompileOptLevel;
+pub use crate::metadata::ContinuousIntegrationPlatform;
+pub use crate::metadata::Endian;
+pub use crate::metadata::GitVersion;
+pub use crate::metadata::Package;
+pub use crate::metadata::PackageId;
+pub use crate::metadata::PointerWidth;
+pub use crate::metadata::RustcVersion;
+pub use crate::metadata::Target;
+pub use crate::metadata::TargetArchitecture;
+pub use crate::metadata::TargetEnv;
+pub use crate::metadata::TargetOperatingSystem;
+pub use crate::metadata::TargetTriple;
 
 #[cfg(test)]
 op_tests_mod!();

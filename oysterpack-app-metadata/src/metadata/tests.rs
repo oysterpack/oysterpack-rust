@@ -11,7 +11,7 @@
 use semver;
 
 use super::PackageId;
-use tests::run_test;
+use crate::tests::run_test;
 
 #[test]
 fn parsing_dependencies_graphviz_dot_into_package_ids() {
