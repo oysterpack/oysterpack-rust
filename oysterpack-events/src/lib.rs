@@ -17,21 +17,17 @@
 //! ![uml](ml.svg)
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![cfg_attr(feature = "cargo-clippy", allow(unreadable_literal))]
+#![allow(clippy::unreadable_literal)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_events/0.1.0")]
 
 #[macro_use]
 extern crate oysterpack_macros;
-extern crate oysterpack_app_metadata;
-extern crate oysterpack_uid;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate oysterpack_log;
 
 #[macro_use]
 extern crate serde;
-extern crate chrono;
-extern crate serde_json;
 #[cfg(test)]
 #[macro_use]
 extern crate failure;
@@ -40,8 +36,8 @@ extern crate failure;
 mod macros;
 pub mod event;
 
-pub use event::{Event, Eventful, Id, InstanceId, Level};
-pub use macros::*;
+pub use crate::event::{Event, Eventful, Id, InstanceId, Level};
+pub use crate::macros::*;
 
 #[cfg(test)]
 #[macro_use]

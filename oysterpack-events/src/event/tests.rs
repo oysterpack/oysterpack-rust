@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use super::*;
+use crate::tests::run_test;
 use oysterpack_uid::{Domain, DomainULID, HasDomain, ULID};
 use serde_json;
 use std::fmt::{self, Display, Formatter};
 use std::sync::mpsc;
 use std::thread;
-use tests::run_test;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 struct Foo(String);

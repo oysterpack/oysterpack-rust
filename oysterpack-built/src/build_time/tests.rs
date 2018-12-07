@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use super::{build_dependency_graph, metadata};
+use crate::tests::run_test;
 use petgraph::{
     dot::{Config, Dot},
     Graph,
 };
 use serde_json;
-use tests::run_test;
 
 #[test]
 fn test_build_dependency_graph() {

@@ -39,7 +39,7 @@ pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     }
 }
 
-op_newtype!{
+op_newtype! {
     /// EventId(s) are defined as constants. They uniquely identify the event class, i.e., the logical
     /// event.
     ///

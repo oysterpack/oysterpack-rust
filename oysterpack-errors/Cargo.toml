@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack_errors"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Errors"
 license = "MIT/Apache-2.0"
@@ -8,8 +8,7 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack/tree/master/oysterpack-errors"
 documentation = "https://docs.rs/oysterpack_errors"
 readme = "README.md"
-keywords = []
-categories = []
+edition = "2018"
 
 [dependencies]
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
@@ -22,7 +21,7 @@ chrono = "0.4.6"
 serde = {version = "1", features = ["derive"] }
 
 [dev-dependencies]
-version-sync = "0.5"
+version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 
 [badges]

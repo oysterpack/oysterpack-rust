@@ -48,7 +48,7 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack/0.2.2")]
+#![doc(html_root_url = "https://docs.rs/oysterpack/0.2.3")]
 
 pub extern crate oysterpack_app_metadata as app_metadata;
 pub extern crate oysterpack_app_metadata_macros;

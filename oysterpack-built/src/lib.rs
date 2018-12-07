@@ -113,30 +113,18 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.2")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_built/0.3.3")]
 
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-extern crate chrono;
-extern crate semver;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-
-extern crate built;
-extern crate cargo;
-extern crate failure;
-extern crate petgraph;
 
 #[macro_use]
 #[cfg(test)]
 extern crate oysterpack_testing;
-#[cfg(test)]
-extern crate serde_json;
 
 pub mod build_time;
-pub use build_time::run;
+pub use crate::build_time::run;
 
 #[cfg(test)]
 op_tests_mod!();

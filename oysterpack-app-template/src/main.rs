@@ -22,14 +22,10 @@
 
 #[macro_use]
 extern crate oysterpack;
-extern crate serde_json;
 
 #[cfg(test)]
 #[macro_use]
 extern crate oysterpack_testing;
-
-use oysterpack::app_metadata;
-use oysterpack::log;
 
 op_build_mod!();
 
@@ -48,10 +44,10 @@ fn main() {
     info!("{}", serde_json::to_string_pretty(&app_build).unwrap(),);
 }
 
-fn configure_logging(build: &app_metadata::Build) {
+fn configure_logging(build: &oysterpack::app_metadata::Build) {
     // TODO - for now it simply logs to stdout - long term, we want to be able to centrally log
-    let log_config = oysterpack::log::config::LogConfigBuilder::new(log::Level::Warn)
-        .crate_level(log::Level::Info)
+    let log_config = oysterpack::log::config::LogConfigBuilder::new(oysterpack::log::Level::Warn)
+        .crate_level(oysterpack::log::Level::Info)
         .build();
     oysterpack::log::init(log_config, oysterpack::log::manager::StdoutLogger);
 }

@@ -124,14 +124,7 @@ macro_rules! op_error {
 /// - errors are cloneable
 /// - errors implement the Fail trait
 #[derive(Debug, Clone, Serialize, Deserialize, Fail)]
-#[fail(
-    display = "{:?}({}:{})[{}] {}",
-    level,
-    id,
-    instance_id,
-    mod_src,
-    msg
-)]
+#[fail(display = "{:?}({}:{})[{}] {}", level, id, instance_id, mod_src, msg)]
 pub struct Error {
     id: ULID,
     instance_id: InstanceId,
@@ -324,9 +317,9 @@ pub trait IsError: fmt::Display {
 mod tests {
 
     use super::*;
+    use crate::tests::run_test;
     use oysterpack_uid::ULID;
     use std::time::Duration;
-    use tests::run_test;
 
     #[test]
     fn is_error() {

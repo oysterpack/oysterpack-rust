@@ -54,7 +54,7 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_errors/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_errors/0.1.2")]
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -64,11 +64,9 @@ extern crate oysterpack_log;
 pub extern crate oysterpack_events;
 #[macro_use]
 extern crate oysterpack_macros;
-extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;
-extern crate chrono;
 #[macro_use]
 extern crate failure;
 
@@ -79,7 +77,7 @@ extern crate oysterpack_testing;
 #[macro_use]
 pub mod error;
 
-pub use error::{Error, Id, IsError, Level};
+pub use crate::error::{Error, Id, IsError, Level};
 
 #[cfg(test)]
 op_tests_mod!();

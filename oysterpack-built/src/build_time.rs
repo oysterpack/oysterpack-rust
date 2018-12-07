@@ -43,6 +43,7 @@ use std::{
 /// build metadata
 pub(crate) mod metadata {
     use semver;
+    use serde_derive::{Deserialize, Serialize};
     use std::fmt;
 
     /// Identifier for a specific version of a package.
@@ -76,6 +77,7 @@ pub(crate) mod metadata {
     }
 
     pub mod dependency {
+        use serde_derive::{Deserialize, Serialize};
         use std::fmt;
 
         /// Represents the kind of dependency
@@ -124,14 +126,15 @@ pub fn run() {
                 |_, edge| *edge,
             ),
             &[dot::Config::EdgeNoLabel],
-        ).to_string();
+        )
+        .to_string();
 
         let mut built_file = OpenOptions::new()
             .append(true)
             .open(&dst)
             .expect("Failed to open file in append mode");
 
-        replace_features_with_actual_names(&dst, features);
+        replace_features_with_actual_names(&dst, features.as_slice());
 
         writeln!(
             built_file,
@@ -149,7 +152,7 @@ pub fn run() {
 /// This replaces the features with the actual feature names.
 ///
 /// see: https://github.com/oysterpack/oysterpack/issues/6
-fn replace_features_with_actual_names(dst: &path::PathBuf, compile_features: Vec<String>) {
+fn replace_features_with_actual_names(dst: &path::PathBuf, compile_features: &[String]) {
     let file_contents = fs::read_to_string(dst).unwrap();
     let features: &str = "features";
     let features_uppercased = features.to_uppercase();
@@ -159,7 +162,8 @@ fn replace_features_with_actual_names(dst: &path::PathBuf, compile_features: Vec
             !(line.contains(features)
                 || line.contains(features_uppercased.as_str())
                 || line.starts_with("// EVERYTHING ABOVE THIS POINT"))
-        }).collect::<Vec<&str>>();
+        })
+        .collect::<Vec<&str>>();
 
     let file_contents = format!(
         r#"
@@ -182,7 +186,7 @@ fn replace_features_with_actual_names(dst: &path::PathBuf, compile_features: Vec
     );
 
     let mut file = fs::File::create(dst).unwrap();
-    writeln!(file, "{}", file_contents);
+    writeln!(file, "{}", file_contents).expect("Failed to write to file");
 }
 
 /// resolves dependencies and constructs a dependency graph for the current crate
@@ -208,7 +212,7 @@ fn build_dependency_graph() -> (
     let (packages, resolve) = resolve(&mut registry, &workspace, features_option).unwrap();
 
     let ids = packages.package_ids().cloned().collect::<Vec<_>>();
-    let packages = registry.get(&ids);
+    let packages = registry.get(&ids).unwrap();
     let rustc = cargo_config.rustc(Some(&workspace)).unwrap();
     let target = Some(rustc.host.as_str());
     let cfgs = get_cfgs(&rustc, &target.map(|s| s.to_string())).unwrap();
@@ -218,12 +222,13 @@ fn build_dependency_graph() -> (
         package.package_id(),
         target,
         cfgs.as_ref().map(|r| &**r),
-    ).unwrap();
-    (filter_dependencies(graph.graph), features)
+    )
+    .unwrap();
+    (filter_dependencies(&graph.graph), features)
 }
 
 fn filter_dependencies(
-    graph: petgraph::Graph<dependencies::Node, cargo::core::dependency::Kind>,
+    graph: &petgraph::Graph<dependencies::Node, cargo::core::dependency::Kind>,
 ) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     // convert Graph<Node, Kind> -> Graph<metadata::PackageId,metadata::dependency::Kind> in order to
     // have a graph that we can serialize/deserialize via serde
@@ -279,12 +284,12 @@ fn filter_dependencies(
         |_, edge| Some(*edge),
     );
 
-    remove_nodes_with_no_incoming_edges(graph)
+    remove_nodes_with_no_incoming_edges(&graph)
 }
 
 /// remove nodes that have no incoming edges except for the root node
 fn remove_nodes_with_no_incoming_edges(
-    graph: Graph<metadata::PackageId, metadata::dependency::Kind>,
+    graph: &Graph<metadata::PackageId, metadata::dependency::Kind>,
 ) -> Graph<metadata::PackageId, metadata::dependency::Kind> {
     let mut removed_nodes = false;
     let graph = graph.filter_map(
@@ -314,7 +319,7 @@ fn remove_nodes_with_no_incoming_edges(
     );
 
     if removed_nodes {
-        remove_nodes_with_no_incoming_edges(graph)
+        remove_nodes_with_no_incoming_edges(&graph)
     } else {
         graph
     }
@@ -396,7 +401,7 @@ fn build_graph<'a>(
 
     while let Some(pkg_id) = pending.pop() {
         let idx = graph.nodes[&pkg_id];
-        let pkg = packages.get(pkg_id)?;
+        let pkg = packages.get_one(pkg_id)?;
 
         for raw_dep_id in resolve.deps_not_replaced(pkg_id) {
             let it = pkg
@@ -485,7 +490,7 @@ mod build_env {
     pub fn features(package: &Package) -> Vec<String> {
         use std::collections::HashMap;
         let mut available_features = HashMap::new();
-        for (name, _) in package.summary().features() {
+        for name in package.summary().features().keys() {
             available_features.insert(
                 name.to_string().to_uppercase().replace("-", "_"),
                 name.to_string(),
@@ -505,7 +510,7 @@ mod build_env {
         let features: Vec<String> = features_from_cargo_env()
             .iter()
             .filter(|feature| available_features.contains_key(*feature))
-            .map(|feature| available_features.get(feature).unwrap().clone())
+            .map(|feature| available_features[feature].clone())
             .collect();
 
         if !features.is_empty() {

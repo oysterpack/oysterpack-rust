@@ -1,6 +1,6 @@
 [package]
 name = "oysterpack"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "OysterPack Rust Platform"
 license = "MIT/Apache-2.0"
@@ -8,6 +8,7 @@ repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 documentation = "https://docs.rs/oysterpack"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
 oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
