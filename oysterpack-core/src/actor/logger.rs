@@ -133,7 +133,7 @@ impl Handler<LogRecord> for Logger {
         let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         match request.module_source() {
             Some(module_source) => eprintln!(
-                "[{}][{}][{}][{}] {}",
+                "[{}][{}][{}][{}]\n{}",
                 request.level(),
                 now,
                 request.target(),
@@ -141,7 +141,7 @@ impl Handler<LogRecord> for Logger {
                 request.message()
             ),
             None => eprintln!(
-                "[{}][{}][{}] {}",
+                "[{}][{}][{}]\n{}",
                 request.level(),
                 now,
                 request.target(),

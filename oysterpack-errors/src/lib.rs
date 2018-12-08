@@ -63,7 +63,7 @@ extern crate oysterpack_log;
 #[macro_use]
 pub extern crate oysterpack_events;
 #[macro_use]
-extern crate oysterpack_macros;
+extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;

@@ -39,13 +39,29 @@ pub struct PrivateMessage {
 /// PrivateMessage header contains the following info
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PrivateMessageHeader {
-    from: ULID,
-    to: ULID,
-    session: ULID,
-    nonce: ULID,
+    from: Address,
+    to: Address,
+    session: SessionId,
+    nonce: Nonce,
     encryption: EncryptionMode,
-    signature: Vec<u8>,
+    signature: Signature,
 }
+
+/// Message address
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct Address(ULID);
+
+/// Session ID correlates to an authenticated session
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct SessionId(ULID);
+
+/// Nonce is used to protect against message replay
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct Nonce(ULID);
+
+/// Signature is used to prove authenticity
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub struct Signature(Vec<u8>);
 
 /// Binary data
 /// - can be compressed
@@ -61,14 +77,15 @@ pub struct BinaryData {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum EncryptionMode {
     /// The message is encrypted using the Private Key corresponding to the specified Public Key
-    PrivateKey {
-        /// ULID that references a Public Key
-        pub_key_ref: ULID,
-    },
-    /// The message is encrypted using a shared key that is identified by the specified ULID, which is
-    /// known by the sending and receiving parties.
-    SharedKey(ULID),
+    PrivateKey(PubKeyRef),
+    /// The message is encrypted using a shared key that is established within a connection session.
+    /// The shared key is known by the sending and receiving parties.
+    SharedKey(SessionId),
 }
+
+/// Reference to a Public Key
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct PubKeyRef(ULID);
 
 /// Compression mode
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
@@ -214,7 +231,7 @@ impl Data {
             Encoding::JSON => serde_json::to_vec(data)
                 .map_err(|err| op_error!(SerializationError::new(Encoding::JSON, err))),
         }
-        .map(|data| Data::new(type_id, encoding, data))
+            .map(|data| Data::new(type_id, encoding, data))
     }
 }
 
@@ -327,6 +344,9 @@ impl fmt::Display for DeserializationError {
 #[allow(warnings)]
 #[cfg(test)]
 mod test {
+
+    use oysterpack_uid::ULID;
+    use crate::tests::run_test;
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Person {

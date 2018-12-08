@@ -25,6 +25,8 @@ extern crate oysterpack_macros;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate oysterpack_log;
+#[macro_use]
+extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;

@@ -19,7 +19,6 @@ use oysterpack_events::{
     event::{self, ModuleSource},
     Event, Eventful,
 };
-use oysterpack_uid::ulid::ulid_u128_into_string;
 use oysterpack_uid::{Domain, DomainULID, TypedULID, ULID};
 use std::{fmt, sync::Arc};
 
@@ -228,7 +227,7 @@ impl Error {
 impl Eventful for Error {
     /// Event Id
     fn event_id(&self) -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, self.id)
+        DomainULID::from_ulid(Self::DOMAIN, self.id)
     }
 
     /// Event severity level
@@ -253,16 +252,9 @@ impl Eventful for Error {
     }
 }
 
-op_newtype! {
+op_ulid! {
     /// Error unique identifier
-    #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
-    pub Id(pub u128)
-}
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(ulid_u128_into_string(self.0).as_str())
-    }
+    pub Id
 }
 
 /// Marker type for an Error instance, which is used to define [InstanceId](type.InstanceId.html)

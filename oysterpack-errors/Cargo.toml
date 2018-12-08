@@ -12,7 +12,6 @@ edition = "2018"
 
 [dependencies]
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
-oysterpack_macros = {path = "../oysterpack-macros", version = "0.1"}
 oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 oysterpack_events = {path = "../oysterpack-events", version = "0.1"}
 

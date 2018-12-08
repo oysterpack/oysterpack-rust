@@ -80,7 +80,7 @@ macro_rules! op_tests_mod {
                         .level_for("op_event", $crate::log::LevelFilter::Debug)
                         .chain($crate::fern::Output::call(move |record| {
                             println!(
-                                "[{}][{}][{}][{}:{}] {}",
+                                "[{}][{}][{}][{}:{}]\n{}",
                                 record.level(),
                                 $crate::chrono::Local::now().format("%H:%M:%S%.3f"),
                                 record.target(),

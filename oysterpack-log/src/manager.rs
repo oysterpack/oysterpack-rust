@@ -83,7 +83,7 @@ pub trait RecordLogger: Send + Sync + 'static {
 pub fn format(record: &Record) -> String {
     if let (Some(module_path), Some(line)) = (record.module_path(), record.line()) {
         format!(
-            "[{}][{}][{}][{}:{}] {}",
+            "[{}][{}][{}][{}:{}]\n{}",
             record.level(),
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.target(),
@@ -93,7 +93,7 @@ pub fn format(record: &Record) -> String {
         )
     } else {
         format!(
-            "[{}][{}][{}] {}",
+            "[{}][{}][{}]\n{}",
             record.level(),
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             record.target(),

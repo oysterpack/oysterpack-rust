@@ -526,10 +526,10 @@ impl DomainULID {
     }
 
     /// Associates the Domain to the ULID
-    pub fn from_ulid(domain: &Domain, id: ULID) -> DomainULID {
+    pub fn from_ulid<T: Into<ULID>>(domain: Domain, id: T) -> DomainULID {
         DomainULID {
             domain: domain.to_string(),
-            id,
+            id: id.into(),
         }
     }
 
@@ -552,14 +552,55 @@ impl fmt::Display for DomainULID {
 
 impl<T: HasDomain> From<TypedULID<T>> for DomainULID {
     fn from(uid: TypedULID<T>) -> Self {
-        DomainULID::from_ulid(&T::DOMAIN, uid.id)
+        DomainULID::from_ulid(T::DOMAIN, uid.id)
+    }
+}
+
+/// Domain ID is used to define constants
+///
+/// ```rust
+/// # use oysterpack_uid::*;
+/// const FOO_ID: DomainId = DomainId(Domain("Foo"),1866919584682221951251731635731565689);
+/// let foo_id: DomainULID = FOO_ID.as_domain_ulid();
+/// ```
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct DomainId(pub Domain, pub u128);
+
+impl DomainId {
+
+    /// returns the id as a DomainULID
+    pub fn as_domain_ulid(&self) -> DomainULID {
+        crate::DomainULID::from_ulid(self.0, self.1)
+    }
+
+    /// returns the ID's ULID
+    pub fn ulid(&self) -> ULID {
+        self.1.into()
+    }
+
+    /// Domain getter
+    pub fn domain(&self) -> Domain {
+        self.0
+    }
+}
+
+impl Into<DomainULID> for DomainId {
+
+    fn into(self) -> DomainULID {
+        self.as_domain_ulid()
+    }
+}
+
+impl std::fmt::Display for DomainId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.as_domain_ulid().to_string().as_str())
     }
 }
 
 /// Models the domain used by [DomainULID](ulid/struct.DomainULID.html).
 ///
 /// Domain(s) are static and are defined as consts.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Domain(pub &'static str);
 
 impl Domain {

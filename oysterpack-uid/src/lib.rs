@@ -33,6 +33,19 @@
 //! # use oysterpack_uid::*;
 //! let id = ULID::generate();
 //! ```
+//! ### Generating ULID constants
+//! ```rust
+//! # #[macro_use]
+//! # extern crate oysterpack_uid;
+//! # use oysterpack_uid::*;
+//! op_ulid!{
+//!     /// Foo Id
+//!     FooId
+//! }
+//!
+//! const FOO_ID: FooId = FooId(1866910953065622895350834727020862173);
+//! # fn main() {}
+//! ```
 //!
 //! ### Generating TypedULID&lt;T&gt; where T is a struct
 //! ```rust
@@ -59,6 +72,13 @@
 //! let id = DomainULID::generate(&DOMAIN);
 //! ```
 //!
+//! ### Generating DomainULID constants via DomainId
+//! ```rust
+//! # use oysterpack_uid::*;
+//! pub const FOO_EVENT_ID: DomainId = DomainId(Domain("Foo"), 1866921270748045466739527680884502485);
+//! let domain_ulid = FOO_EVENT_ID.as_domain_ulid();
+//! ```
+//!
 //! ### ULID vs [UUID](https://crates.io/crates/uuid) Performance
 //! - below are the times to generate 1 million ULIDs are on my machine (Intel(R) Core(TM) i7-3770K CPU @ 3.50GHz):
 //!
@@ -78,13 +98,26 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.2")]
 
+#[allow(unused_imports)]
+#[macro_use]
+pub extern crate oysterpack_macros;
+/// re-exporting because it is required by op_ulid!
+pub extern crate rusty_ulid;
+
 #[cfg(test)]
 #[macro_use]
 extern crate oysterpack_testing;
 
+#[macro_use]
+mod macros;
 pub mod ulid;
 
-pub use crate::ulid::{Domain, DomainULID, HasDomain, TypedULID, ULID};
+pub use crate::ulid::{Domain, DomainULID, HasDomain, DomainId, TypedULID, ULID};
+
+// re-exported because it is used internally by op_ulid!
+// this makes it easier for clients to use op_ulid! without using oysterpack_macros directly, i.e.,
+// it is used behind the scenes by this crate.
+pub use oysterpack_macros::op_tt_as_item;
 
 #[cfg(test)]
 op_tests_mod!();

@@ -15,6 +15,7 @@ edition = "2018"
 rusty_ulid = "0.6"
 chrono = "0.4.6"
 serde = {version = "1", features = ["derive"]}
+oysterpack_macros = "0.1"
 
 [dev-dependencies]
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}

@@ -16,7 +16,7 @@
 
 use chrono::{DateTime, Utc};
 use oysterpack_log;
-use oysterpack_uid::{Domain, DomainULID, TypedULID, ULID};
+use oysterpack_uid::{Domain, DomainId, DomainULID, TypedULID};
 use serde::Serialize;
 use serde_json;
 use std::collections::HashSet;
@@ -39,33 +39,14 @@ pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     }
 }
 
-op_newtype! {
+op_ulid! {
     /// EventId(s) are defined as constants. They uniquely identify the event class, i.e., the logical
     /// event.
     ///
     /// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
     /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
     /// event Id(s) as constants.
-    #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
-    pub Id(pub u128)
-}
-
-impl From<ULID> for Id {
-    fn from(ulid: ULID) -> Id {
-        Id(ulid.into())
-    }
-}
-
-impl From<DomainULID> for Id {
-    fn from(ulid: DomainULID) -> Id {
-        Id(ulid.ulid().into())
-    }
-}
-
-impl Into<ULID> for Id {
-    fn into(self) -> ULID {
-        ULID::from(self.0)
-    }
+    pub Id
 }
 
 /// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
@@ -245,7 +226,7 @@ where
 
     /// tags the event as unregistered
     pub fn unregistered(self) -> Self {
-        self.with_tag_id(unregistered_event_domain_ulid())
+        self.with_tag_id(UNREGISTERED_EVENT.as_domain_ulid())
     }
 }
 
@@ -379,16 +360,9 @@ op_newtype! {
 /// All possible Event(s) that can be produced by the App should be pre-registered.
 /// This enables one to know and beware of the kinds of events that an App can produce.
 /// This makes it easier to support the application.
-pub const UNREGISTERED_EVENT_DOMAIN: Domain = Domain("UnregisteredEvent");
-/// ULID(01CXE7Q2CYC0ZT2YSZGBBKV757)
-const UNREGISTERED_EVENT_DOMAIN_ULID: u128 = 1865910341552439472821557183186312359;
-
-/// DomainULID for unregistered events.
 ///
-/// This is meant to be used to tag Events that are not registered, i.e., unknown.
-pub fn unregistered_event_domain_ulid() -> DomainULID {
-    DomainULID::from_ulid(
-        &UNREGISTERED_EVENT_DOMAIN,
-        UNREGISTERED_EVENT_DOMAIN_ULID.into(),
-    )
-}
+/// ULID(01CXE7Q2CYC0ZT2YSZGBBKV757)
+pub const UNREGISTERED_EVENT: DomainId = DomainId(
+    Domain("UnregisteredEvent"),
+    1865910341552439472821557183186312359,
+);

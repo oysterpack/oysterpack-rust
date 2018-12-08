@@ -163,7 +163,8 @@ impl Handler<GetRegisteredEvents> for EventLog {
     }
 }
 
-/// GetUnregisteredEvents request message
+/// GetUnregisteredEvents request message.
+/// If an unregistered event is received, then it is tracked.
 #[derive(Debug, Clone)]
 pub struct GetUnregisteredEvents;
 
@@ -220,7 +221,7 @@ mod tests {
 
     impl Eventful for Foo {
         fn event_id(&self) -> DomainULID {
-            DomainULID::from_ulid(&Self::DOMAIN, Self::EVENT_ID.into())
+            DomainULID::from_ulid(Self::DOMAIN, ULID::from(Self::EVENT_ID))
         }
 
         /// Event severity level
@@ -248,7 +249,7 @@ mod tests {
 
     impl Eventful for Bar {
         fn event_id(&self) -> DomainULID {
-            DomainULID::from_ulid(&Self::DOMAIN, Self::EVENT_ID.into())
+            DomainULID::from_ulid(Self::DOMAIN, Self::EVENT_ID.ulid())
         }
 
         /// Event severity level

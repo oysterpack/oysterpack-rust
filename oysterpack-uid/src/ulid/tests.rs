@@ -240,9 +240,9 @@ fn domain_uid() {
         info!("{:?} => {}", id, id);
         const DOMAIN_FOO: Domain = Domain("Foo");
         let id = FooId::generate();
-        let id: DomainULID = DomainULID::from_ulid(&DOMAIN_FOO, id.ulid());
+        let id: DomainULID = DomainULID::from_ulid(DOMAIN_FOO, id.ulid());
         info!("DomainULID: {}", serde_json::to_string_pretty(&id).unwrap());
-        let id = DomainULID::from_ulid(&User::DOMAIN, ULID::generate());
+        let id = DomainULID::from_ulid(User::DOMAIN, ULID::generate());
     })
 }
 
@@ -271,4 +271,15 @@ fn domain() {
         assert_eq!(USERS.as_ref(), "users");
         assert_eq!(USERS.as_ref(), USERS.name());
     });
+}
+
+#[test]
+fn const_ulid() {
+    op_ulid! { FooId }
+    const FOO_ID: FooId = FooId(1866907549525959787301297812082244355);
+    let id = FOO_ID.to_string();
+    let ulid: ULID = id.parse().unwrap();
+    assert_eq!(ulid, FOO_ID.ulid());
+    let foo_ulid: ULID = FOO_ID.into();
+    assert_eq!(ulid, foo_ulid);
 }

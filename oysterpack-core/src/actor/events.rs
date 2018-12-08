@@ -151,7 +151,7 @@ impl ServiceLifeCycleEvent {
 impl Eventful for ServiceLifeCycleEvent {
     /// Event Id
     fn event_id(&self) -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, ULID::from(self.state.event_id().0))
+        DomainULID::from_ulid(Self::DOMAIN, ULID::from(self.state.event_id().0))
     }
 
     /// Event severity level
@@ -241,7 +241,7 @@ impl AppLifeCycleEvent {
 
 impl Eventful for AppLifeCycleEvent {
     fn event_id(&self) -> DomainULID {
-        DomainULID::from_ulid(&Self::DOMAIN, ULID::from(self.state.event_id().0))
+        DomainULID::from_ulid(Self::DOMAIN, ULID::from(self.state.event_id().0))
     }
 
     fn event_level(&self) -> Level {
