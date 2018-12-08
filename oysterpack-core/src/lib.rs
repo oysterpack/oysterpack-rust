@@ -34,6 +34,8 @@ extern crate oysterpack_events;
 extern crate oysterpack_macros;
 #[macro_use]
 extern crate oysterpack_errors;
+#[macro_use]
+extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;

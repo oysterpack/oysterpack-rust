@@ -14,10 +14,69 @@
 
 //! Message package
 //!
-//! The message stream is compressed.
+//! Messages are processed as streams, transitioning states while being processed.
+//!
+//! - when a peer connects, the initial message is the handshake.
+//!   - each peer is identified by a public-key
+//!   - the connecting peer plays the role of `client`; the peer being connected to plays the role of
+//!     `server`
+//!   - the client initiates a connection with a server by encrypting a `Connect` message using the
+//!     server's public-key. Thus, only a specific server can decrypt the message.
+//!   - the connect message is hashed (SHA-512)
+//!     - this enables the server to check that the message was not altered
+//!   - the hash is digitally signed by the client using its private-key
+//!     - this enables the server to check that the client owns the private-key corresponding to the
+//!       client's public key
+//!   - the connect message contains a `PaymentChannel`
+//!     - the client must commit funds in order to do business with the server
+//!     - all payments are in Bitcoin
+//!   - the client establishes a payment channel using secured funds
+//!     - all payments are made via cryptocurrency
+//!       - Bitcoin will initially be supported
+//!       - payment is enforced via a smart contract
+//!         - the smart contract defines the statement of work
+//!         - funds are secured on a payment channel via a smart contract
+//!         - the server provides proof of work to collect payment
+//!         - when the connection is terminated, the server closes the contract and gets paid
+//!           - change is returned to the client
+//!     - each message contains a payment transaction
+//!     - all messages processing fees are flat rates
+//!       - a flat rate per unit of time for the connection
+//!       - a flat rate per message byte
+//!       - a flat rate for each message type
+//!   - if the server successfully authenticates the client, then the server will reply with a
+//!     `ConnectAccepted` reply
+//!     - the message contains a shared secret cipher, which will be used to encrypt all future messages
+//!       on this connection
+//!       - the cipher expires and will be renewed by the server automatically
+//!         - the server may push to the client a new cipher key. The client should switch over to using
+//!           the new cipher key effective immediately
+//!     - the message is hashed
+//!     - the hash is digitally signed by the server
+//!     - the message is encrypted using the client's private-key
+//!
+//! - when a peer comes online they register themselves with the services they provide
+//!   - this enables clients to discover peers that offer services that the client is interested in
+//!   - peers can advertise service metadata
+//!     - service price
+//!     - quality of service
+//!     - capacity
+//!     - hardware specs
+//!     - smart contract
+//!       - specifies message processing terms, prices, and payments
+//!   - realtime metrics will be collected, which can help clients choose servers
+//!   - clients can rate the server
+//! - servers can blacklist clients that are submitting invalid requests
+//! - clients can bid for services
+//!   - clients can get immediate service if they pay the service ask price
+//!   - clients can bid for a service at a lower price, sellers may choose to take the lower price
+//!   - clients can bid higher, if service supply is low, in order to get higher priority
+//!
+//!
 
 use bincode;
 use chrono::{DateTime, Duration, Utc};
+use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
 use oysterpack_errors::{Error, Id as ErrorId, IsError, Level as ErrorLevel};
 use oysterpack_uid::ULID;
 use rmp_serde;
@@ -25,6 +84,119 @@ use serde;
 use serde_cbor;
 use serde_json;
 use std::{error, fmt};
+
+/// A sealed envelope contains a private message that was encrypted using the recipient's public-key
+/// and the sender's private-key. If the recipient is able to decrypt the message, then the recipient
+/// knows it was sealed by the sender.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SealedEnvelope {
+    addresses: Addresses,
+    nonce: box_::Nonce,
+    msg: Vec<u8>
+}
+
+impl SealedEnvelope {
+
+    /// constructor
+    pub fn new(addresses: Addresses, nonce: box_::Nonce, msg: &[u8]) -> SealedEnvelope {
+        SealedEnvelope {
+            addresses,
+            nonce,
+            msg: msg.into()
+        }
+    }
+
+    // TODO: return Error
+    /// open the envelope using the specified precomputed key
+    pub fn open(self, key: &box_::PrecomputedKey) -> Result<OpenEnvelope,()> {
+        box_::open_precomputed(&self.msg, &self.nonce, key)
+            .map(|msg| {
+                OpenEnvelope {
+                    addresses:  self.addresses,
+                    msg
+                }
+            })
+    }
+
+    /// msg bytes
+    pub fn msg(&self) -> &[u8] {
+        &self.msg
+    }
+}
+
+/// Represents an envelope that is open, i.e., its message is not encrypted
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenEnvelope {
+    addresses: Addresses,
+    msg: Vec<u8>
+}
+
+impl OpenEnvelope {
+
+    /// constructor
+    pub fn new(addresses: Addresses, msg: &[u8]) -> OpenEnvelope {
+        OpenEnvelope {
+            addresses,
+            msg: msg.into()
+        }
+    }
+
+    /// seals the envelope
+    pub fn seal(self, key: &box_::PrecomputedKey) -> SealedEnvelope {
+        let nonce = box_::gen_nonce();
+        SealedEnvelope {
+            addresses: self.addresses,
+            nonce,
+            msg: box_::seal_precomputed(&self.msg, &nonce, key)
+        }
+    }
+
+    /// msg bytes
+    pub fn msg(&self) -> &[u8] {
+        &self.msg
+    }
+}
+
+/// Represents an envelope that is open, i.e., its message is not encrypted
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Addresses {
+    sender: box_::PublicKey,
+    recipient: box_::PublicKey,
+}
+
+impl Addresses {
+
+    /// constructor
+    pub fn new(sender: box_::PublicKey, recipient: box_::PublicKey) -> Addresses {
+        Addresses {
+            sender,
+            recipient
+        }
+    }
+
+    /// precompute the key that can be used to seal the envelope by the sender
+    pub fn precompute_sealing_key(&self, sender_private_key: &box_::SecretKey) -> box_::PrecomputedKey {
+        box_::precompute(&self.recipient, sender_private_key)
+    }
+
+    /// precompute the key that can be used to open the envelope by the recipient
+    pub fn precompute_opening_key(&self, recipient_private_key: &box_::SecretKey) -> box_::PrecomputedKey {
+        box_::precompute(&self.sender, recipient_private_key)
+    }
+}
+
+
+/// Message header metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Headers {
+    msg_type: MessageType,
+
+}
+
+op_ulid! {
+    /// Unique message type identifier
+    pub MessageType
+}
 
 /// A private message that is signed and encrypted.
 /// - the message is signed by the sender
@@ -126,12 +298,11 @@ pub struct MessageHeader {
     deadline: Option<Deadline>,
 }
 
-op_newtype! {
+op_ulid! {
     /// Unique Message type identifier. Messages with the same Request and Response type can have different
     /// message ids. However, a different Message Id implies that it will be potentially processed by
     /// a different processor and have different semantics.
-    #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
-    pub Id(pub u128)
+    pub Id
 }
 
 impl MessageHeader {
@@ -231,7 +402,7 @@ impl Data {
             Encoding::JSON => serde_json::to_vec(data)
                 .map_err(|err| op_error!(SerializationError::new(Encoding::JSON, err))),
         }
-            .map(|data| Data::new(type_id, encoding, data))
+        .map(|data| Data::new(type_id, encoding, data))
     }
 }
 
@@ -345,8 +516,14 @@ impl fmt::Display for DeserializationError {
 #[cfg(test)]
 mod test {
 
-    use oysterpack_uid::ULID;
     use crate::tests::run_test;
+    use oysterpack_uid::ULID;
+    use exonum_sodiumoxide::crypto::box_;
+    use super::{
+        Addresses,
+        OpenEnvelope,
+        SealedEnvelope
+    };
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Person {
@@ -375,4 +552,23 @@ mod test {
         let p2: Person = rmp_serde::from_read(&bytes[p1_bytes_len..]).unwrap();
         println!("p2: {:?}", p2);
     }
+
+    #[test]
+    fn secure_envelope() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = Addresses::new(client_pub_key, server_pub_key);
+        let opening_key = addresses.precompute_opening_key(&server_priv_key);
+        let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
+        let msg = b"some data";
+
+        let open_envelope = OpenEnvelope::new(addresses, msg);
+        let sealed_envelope = open_envelope.seal(&sealing_key);
+
+        let open_envelope_2 = sealed_envelope.open(&opening_key).unwrap();
+        assert_eq!(*open_envelope_2.msg(), *msg);
+    }
+
+
 }
