@@ -92,16 +92,18 @@ use std::{error, fmt};
 pub struct SealedEnvelope {
     addresses: Addresses,
     nonce: box_::Nonce,
+    msg_type: MessageType,
     msg: Vec<u8>
 }
 
 impl SealedEnvelope {
 
     /// constructor
-    pub fn new(addresses: Addresses, nonce: box_::Nonce, msg: &[u8]) -> SealedEnvelope {
+    pub fn new(addresses: Addresses, nonce: box_::Nonce, msg_type: MessageType, msg: &[u8]) -> SealedEnvelope {
         SealedEnvelope {
             addresses,
             nonce,
+            msg_type,
             msg: msg.into()
         }
     }
@@ -113,6 +115,7 @@ impl SealedEnvelope {
             .map(|msg| {
                 OpenEnvelope {
                     addresses:  self.addresses,
+                    msg_type: self.msg_type,
                     msg
                 }
             })
@@ -128,15 +131,17 @@ impl SealedEnvelope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenEnvelope {
     addresses: Addresses,
+    msg_type: MessageType,
     msg: Vec<u8>
 }
 
 impl OpenEnvelope {
 
     /// constructor
-    pub fn new(addresses: Addresses, msg: &[u8]) -> OpenEnvelope {
+    pub fn new(addresses: Addresses, msg_type: MessageType,msg: &[u8]) -> OpenEnvelope {
         OpenEnvelope {
             addresses,
+            msg_type,
             msg: msg.into()
         }
     }
@@ -147,6 +152,7 @@ impl OpenEnvelope {
         SealedEnvelope {
             addresses: self.addresses,
             nonce,
+            msg_type: self.msg_type,
             msg: box_::seal_precomputed(&self.msg, &nonce, key)
         }
     }
@@ -522,7 +528,8 @@ mod test {
     use super::{
         Addresses,
         OpenEnvelope,
-        SealedEnvelope
+        SealedEnvelope,
+        MessageType
     };
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -562,12 +569,25 @@ mod test {
         let opening_key = addresses.precompute_opening_key(&server_priv_key);
         let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
         let msg = b"some data";
+        const FOO: MessageType = MessageType(1866963020838464595588390333368926107);
 
-        let open_envelope = OpenEnvelope::new(addresses, msg);
-        let sealed_envelope = open_envelope.seal(&sealing_key);
+        run_test("secure_envelope", || {
+            let open_envelope = OpenEnvelope::new(addresses, FOO, msg);
+            let open_envelope_rmp = rmp_serde::to_vec(&open_envelope).unwrap();
+            info!("open_envelope_rmp len = {}", open_envelope_rmp.len());
+            let sealed_envelope = open_envelope.seal(&sealing_key);
+            let sealed_envelope_rmp = rmp_serde::to_vec(&sealed_envelope).unwrap();
+            info!("sealed_envelope_rmp len = {}", sealed_envelope_rmp.len());
+            info!("sealed_envelope json: {}", serde_json::to_string_pretty(&sealed_envelope).unwrap());
+            info!("sealed_envelope msg len: {}", sealed_envelope.msg().len());
 
-        let open_envelope_2 = sealed_envelope.open(&opening_key).unwrap();
-        assert_eq!(*open_envelope_2.msg(), *msg);
+            let open_envelope_2 = sealed_envelope.open(&opening_key).unwrap();
+            info!("open_envelope_2 json: {}", serde_json::to_string_pretty(&open_envelope_2).unwrap());
+            info!("open_envelope_2 msg len: {}", open_envelope_2.msg().len());
+            assert_eq!(*open_envelope_2.msg(), *msg);
+        });
+
+
     }
 
 
