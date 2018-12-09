@@ -79,6 +79,37 @@ macro_rules! op_error_event {
 /// let err = op_error!(id, level, "BOOM");
 /// # }
 /// ```
+///
+/// ## op_error!(error, "Error Message") - where error implements the [IsError]() trait
+/// ```rust
+/// # #[macro_use]
+/// # extern crate oysterpack_errors;
+/// # extern crate oysterpack_events;
+/// # use oysterpack_errors::*;
+/// # use oysterpack_events::{ Event, Eventful, event::ModuleSource };
+///
+/// struct InvalidCredentials;
+///
+/// impl InvalidCredentials {
+///   pub const ERR_ID: Id = Id(1865548837704866157621294180822811573);
+///   pub const ERR_LEVEL: Level = Level::Error;
+/// }
+///
+/// impl IsError for InvalidCredentials {
+///     fn error_id(&self) -> Id { Self::ERR_ID }
+///     fn error_level(&self) -> Level { Self::ERR_LEVEL }
+/// }
+///
+/// impl std::fmt::Display for InvalidCredentials {
+///     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+///         f.write_str("invalid credentials")
+///     }
+/// }
+///
+/// # fn main() {
+/// let err = op_error!(InvalidCredentials);
+/// # }
+/// ```
 #[macro_export]
 macro_rules! op_error {
     (
@@ -102,10 +133,13 @@ macro_rules! op_error {
         )
     };
     ( $error:expr ) => {
-        $error.to_error($crate::oysterpack_events::event::ModuleSource::new(
-            module_path!(),
-            line!(),
-        ))
+        {
+            use $crate::IsError;
+            $error.to_error($crate::oysterpack_events::event::ModuleSource::new(
+                module_path!(),
+                line!(),
+            ))
+        }
     };
 }
 
@@ -325,12 +359,10 @@ mod tests {
         }
 
         impl IsError for RequestTimeout {
-            /// Error Id
             fn error_id(&self) -> Id {
                 RequestTimeout::ERROR_ID
             }
 
-            /// Error Level
             fn error_level(&self) -> Level {
                 RequestTimeout::ERROR_LEVEL
             }

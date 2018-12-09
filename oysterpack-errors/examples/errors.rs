@@ -16,8 +16,6 @@
 #[macro_use]
 extern crate oysterpack_errors;
 
-use oysterpack_errors::IsError;
-
 pub mod server {
 
     pub mod errors {

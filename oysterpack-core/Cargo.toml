@@ -36,8 +36,10 @@ tokio = "0.1.11"
 tokio-threadpool = "0.1.8"
 futures = "0.1.25"
 crossbeam-channel = "0.3.0"
+bytes = "0.4.11"
 
 exonum_sodiumoxide = "0.0.20"
+bs58 = "0.2.2"
 
 [dev-dependencies]
 version-sync = "0.6"

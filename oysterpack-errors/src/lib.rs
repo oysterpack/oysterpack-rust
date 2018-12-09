@@ -38,10 +38,28 @@
 //!
 //! // centralize your errors in a dedicated error module
 //! mod errs {
-//!   use oysterpack_errors::{Level, Id};
+//!   use oysterpack_errors::{Level, Id, IsError};
 //!
 //!   pub const FOO_ERR: (Id, Level) = (Id(1863702216415833425137248269790651577), Level::Error);
 //!   pub const BAR_ERR: (Id, Level) = (Id(1863710724424640971018467695308814281), Level::Alert);
+//!
+//!   pub struct InvalidCredentials;
+//!
+//!   impl InvalidCredentials {
+//!     pub const ERR_ID: Id = Id(1865548837704866157621294180822811573);
+//!     pub const ERR_LEVEL: Level = Level::Error;
+//!   }
+//!
+//!   impl IsError for InvalidCredentials {
+//!     fn error_id(&self) -> Id { Self::ERR_ID }
+//!     fn error_level(&self) -> Level { Self::ERR_LEVEL }
+//!   }
+//!
+//!   impl std::fmt::Display for InvalidCredentials {
+//!     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//!        f.write_str("invalid credentials")
+//!     }
+//!   }
 //! }
 //!
 //! fn main() {
@@ -50,6 +68,8 @@
 //!     let err = err.with_cause(cause);
 //!     let event: Event<Error> = op_error_event!(err);
 //!     event.log();
+//!
+//!     let err = op_error!(errs::InvalidCredentials);
 //! }
 //! ```
 
