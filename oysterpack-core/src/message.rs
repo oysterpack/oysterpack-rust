@@ -83,7 +83,7 @@ use rmp_serde;
 use serde;
 use serde_cbor;
 use serde_json;
-use std::{error, fmt, io};
+use std::{cmp, error, fmt, io};
 
 use bytes::{BufMut, BytesMut};
 use tokio::codec::{Decoder, Encoder};
@@ -92,8 +92,11 @@ use tokio::prelude::*;
 pub mod base58;
 pub mod errors;
 
-/// Max message size
-pub const MAX_MSG_SIZE: usize = 1024 * 256;
+/// Max message size - 256 KB
+pub const MAX_MSG_SIZE: usize = 1000 * 256;
+
+/// Min message size for SealedEnvelope using MessagePack encoding
+pub const SEALED_ENVELOPE_MIN_SIZE: usize = 90;
 
 /// A sealed envelope contains a private message that was encrypted using the recipient's public-key
 /// and the sender's private-key. If the recipient is able to decrypt the message, then the recipient
@@ -102,8 +105,7 @@ pub const MAX_MSG_SIZE: usize = 1024 * 256;
 pub struct SealedEnvelope {
     addresses: Addresses,
     nonce: box_::Nonce,
-    /// REMOVE
-    pub msg: Vec<u8>,
+    msg: Vec<u8>,
 }
 
 impl SealedEnvelope {
@@ -260,16 +262,19 @@ op_ulid! {
     pub MessageType
 }
 
+// TODO: track connection timeouts, i.e., if receiving or sending messages takes too long.
 /// SealedEnvelope codec
 #[derive(Debug)]
 pub struct SealedEnvelopeCodec {
     max_msg_size: usize,
+    min_msg_size: usize
 }
 
 impl Default for SealedEnvelopeCodec {
     fn default() -> SealedEnvelopeCodec {
         SealedEnvelopeCodec {
             max_msg_size: MAX_MSG_SIZE,
+            min_msg_size: SEALED_ENVELOPE_MIN_SIZE
         }
     }
 }
@@ -277,7 +282,7 @@ impl Default for SealedEnvelopeCodec {
 impl SealedEnvelopeCodec {
     /// constructor
     pub fn new(max_msg_size: usize) -> SealedEnvelopeCodec {
-        SealedEnvelopeCodec { max_msg_size }
+        SealedEnvelopeCodec { max_msg_size, min_msg_size: SEALED_ENVELOPE_MIN_SIZE }
     }
 }
 
@@ -295,7 +300,7 @@ impl Encoder for SealedEnvelopeCodec {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
-                    "message size exceeded max: {} > {}",
+                    "max message size exceeded: {} > {}",
                     buf.len(),
                     self.max_msg_size
                 ),
@@ -312,7 +317,35 @@ impl Decoder for SealedEnvelopeCodec {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        unimplemented!()
+        let read_to = cmp::min(self.max_msg_size, buf.len());
+        if read_to < self.min_msg_size {
+            // message is to small - wait for more bytes
+            return Ok(None);
+        }
+
+        let mut cursor = io::Cursor::new(&buf[..read_to]);
+        match SealedEnvelope::decode(&mut cursor) {
+            Ok(sealed_envelope) => {
+                // drop the bytes that have been decoded
+                let _ = buf.split_to(cursor.position() as usize);
+                Ok(Some(sealed_envelope))
+            },
+            Err(err) => {
+                if read_to == self.max_msg_size {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!(
+                            "message failed to be decoded within max message size limit: {} : {}",
+                            self.max_msg_size,
+                            err
+                        ),
+                    ))
+                } else {
+                    // we'll try again when more bytes come in
+                    Ok(None)
+                }
+            }
+        }
     }
 }
 
@@ -320,11 +353,12 @@ impl Decoder for SealedEnvelopeCodec {
 #[cfg(test)]
 mod test {
 
-    use super::{base58, Addresses, MessageType, OpenEnvelope, SealedEnvelope};
+    use super::{base58, Addresses, MessageType, OpenEnvelope, SealedEnvelope, SealedEnvelopeCodec};
     use crate::tests::run_test;
     use exonum_sodiumoxide::crypto::box_;
     use oysterpack_uid::ULID;
     use std::io;
+    use tokio::codec::{Decoder, Encoder};
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Person {
@@ -418,7 +452,7 @@ mod test {
                 sealed_envelope_decoded.addresses()
             );
 
-            sealed_envelope.msg = b"123"[..].into();
+            sealed_envelope.msg = vec![1];
             let mut buf: io::Cursor<Vec<u8>> = io::Cursor::new(Vec::new());
             sealed_envelope.encode(&mut buf);
             info!(
@@ -443,5 +477,43 @@ mod test {
         let key_bytes = base58::decode(&key_base58).unwrap();
         let key2 = box_::SecretKey::from_slice(&key_bytes).unwrap();
         assert_eq!(priv_key, key2);
+    }
+
+    #[test]
+    fn sealed_envelope_codec() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = Addresses::new(client_pub_key, server_pub_key);
+        let opening_key = addresses.precompute_opening_key(&server_priv_key);
+        let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
+
+        run_test("sealed_envelope_codec", || {
+            let mut codec: SealedEnvelopeCodec = Default::default();
+            let mut buf = bytes::BytesMut::new();
+            for i in 0..5 {
+                let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![i as u8]);
+                let mut sealed_envelope = open_envelope.seal(&sealing_key);
+                codec.encode(sealed_envelope, &mut buf);
+            }
+
+            for i in 0..5 {
+                info!("{:?}", codec.decode(&mut buf).unwrap().unwrap())
+            }
+
+            // buf is empty
+            assert!(codec.decode(&mut buf).unwrap().is_none());
+
+            let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![1]);
+            let mut sealed_envelope = open_envelope.seal(&sealing_key);
+
+            let bytes = rmp_serde::to_vec(&sealed_envelope).unwrap();
+            let (left, right) = bytes.split_at(super::SEALED_ENVELOPE_MIN_SIZE);
+            buf.extend_from_slice(left);
+            assert!(codec.decode(&mut buf).unwrap().is_none());
+            buf.extend_from_slice(right);
+            assert!(codec.decode(&mut buf).unwrap().is_some());
+        });
+
     }
 }
