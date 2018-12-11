@@ -16,7 +16,7 @@
 
 //! message errors
 
-use super::{Addresses, SessionId};
+use super::{Address, SessionId};
 use exonum_sodiumoxide::crypto::{box_, sign};
 use oysterpack_errors::{Id, IsError, Level};
 use std::fmt;
@@ -46,8 +46,9 @@ impl fmt::Display for SealedEnvelopeOpenFailed<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Failed to open SealedEnvelope: {}, nonce: {}, msg.len: {}",
-            self.0.addresses(),
+            "Failed to open SealedEnvelope: {} -> {}, nonce: {}, msg.len: {}",
+            self.0.sender(),
+            self.0.recipient(),
             crate::message::base58::encode(&self.0.nonce().0),
             self.0.msg().len()
         )
@@ -95,19 +96,9 @@ pub enum MessageError<'a> {
         len: usize,
     },
     /// Data failed a checksum, i.e., its hash did not match
-    ChecksumFailed {
-        /// sender address
-        from: &'a sign::PublicKey,
-        /// session ID
-        session_id: SessionId,
-    },
+    ChecksumFailed(&'a sign::PublicKey),
     /// Decryption failed
-    DecryptionFailed {
-        /// sender address
-        from: &'a sign::PublicKey,
-        /// session ID
-        session_id: SessionId,
-    },
+    DecryptionFailed(&'a sign::PublicKey),
 }
 
 impl IsError for MessageError<'_> {
@@ -146,8 +137,8 @@ impl IsError for MessageError<'_> {
             MessageError::InvalidSignature(_) => Level::Alert,
             MessageError::InvalidSessionIdLength { .. } => Level::Alert,
             MessageError::InvalidDigestLength { .. } => Level::Alert,
-            MessageError::ChecksumFailed { .. } => Level::Alert,
-            MessageError::DecryptionFailed { .. } => Level::Alert,
+            MessageError::ChecksumFailed(_) => Level::Alert,
+            MessageError::DecryptionFailed(_) => Level::Alert,
             MessageError::InvalidSessionId { .. } => Level::Error,
         }
     }
@@ -200,17 +191,15 @@ impl fmt::Display for MessageError<'_> {
                 len,
                 crate::message::base58::encode(&from.0)
             ),
-            MessageError::ChecksumFailed { from, session_id } => write!(
+            MessageError::ChecksumFailed(from) => write!(
                 f,
-                "Checksum failed: from: {}, session_id: {}",
-                crate::message::base58::encode(&from.0),
-                session_id
+                "Checksum failed -  from: {}",
+                crate::message::base58::encode(&from.0)
             ),
-            MessageError::DecryptionFailed { from, session_id } => write!(
+            MessageError::DecryptionFailed(from) => write!(
                 f,
-                "Decrption failed - from: {}, session_id: {}",
+                "Decryption failed - from: {}",
                 crate::message::base58::encode(&from.0),
-                session_id
             ),
             MessageError::InvalidSessionId { from, session_id } => write!(
                 f,

@@ -1,20 +1,22 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! message codecs
 
-use crate::message::{self, SealedEnvelope};
+use crate::message::{self, Address, SealedEnvelope};
 use bytes::{BufMut, BytesMut};
 use std::{cmp, io};
 use tokio::codec::{Decoder, Encoder};
@@ -121,15 +123,17 @@ mod tests {
         let (client_pub_key, client_priv_key) = box_::gen_keypair();
         let (server_pub_key, server_priv_key) = box_::gen_keypair();
 
-        let addresses = Addresses::new(client_pub_key, server_pub_key);
-        let opening_key = addresses.precompute_opening_key(&server_priv_key);
-        let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
+        let (client_addr, server_addr) =
+            (Address::from(client_pub_key), Address::from(server_pub_key));
+        let opening_key = client_addr.precompute_opening_key(&server_priv_key);
+        let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
 
         run_test("sealed_envelope_codec", || {
             let mut codec: SealedEnvelopeCodec = Default::default();
             let mut buf = bytes::BytesMut::new();
             for i in 0..5 {
-                let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![i]);
+                let open_envelope =
+                    OpenEnvelope::new(client_addr.clone(), server_addr.clone(), &vec![i]);
                 let mut sealed_envelope = open_envelope.seal(&sealing_key);
                 codec.encode(sealed_envelope, &mut buf);
             }
@@ -148,7 +152,8 @@ mod tests {
             // buf is empty
             assert!(codec.decode(&mut buf).unwrap().is_none());
 
-            let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![1]);
+            let open_envelope =
+                OpenEnvelope::new(client_addr.clone(), server_addr.clone(), &vec![1]);
             let mut sealed_envelope = open_envelope.seal(&sealing_key);
 
             let bytes = rmp_serde::to_vec(&sealed_envelope).unwrap();
