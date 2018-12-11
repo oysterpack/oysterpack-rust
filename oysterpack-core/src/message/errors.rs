@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! message errors
 
@@ -78,6 +80,13 @@ pub enum MessageError<'a> {
         /// invalid session id length that was found in the message
         len: usize,
     },
+    /// Session ID is not valid
+    InvalidSessionId {
+        /// sender address
+        from: &'a sign::PublicKey,
+        /// session ID
+        session_id: SessionId,
+    },
     /// Hash digest should be 64 bytes - SHA-512 is used
     InvalidDigestLength {
         /// sender address
@@ -96,6 +105,8 @@ pub enum MessageError<'a> {
     DecryptionFailed {
         /// sender address
         from: &'a sign::PublicKey,
+        /// session ID
+        session_id: SessionId,
     },
 }
 
@@ -116,6 +127,7 @@ impl IsError for MessageError<'_> {
             MessageError::InvalidDigestLength { .. } => Id(1867177124319618698988963972315043675), // 01CYDF15BZPFRPVX0HG16PENTV
             MessageError::ChecksumFailed { .. } => Id(1867178063957932565585764976839329233), // 01CYDFRWD29J3TP97F47WS71EH
             MessageError::DecryptionFailed { .. } => Id(1867178498353912205043500705741562600), // 01CYDG3V9Y7D0XYEJKCH3MGRQ8
+            MessageError::InvalidSessionId { .. } => Id(1867222419281185803983256937238975084), // 01CYEJRJB9R7Q902QW2HT5TMKC
         }
     }
 
@@ -136,6 +148,7 @@ impl IsError for MessageError<'_> {
             MessageError::InvalidDigestLength { .. } => Level::Alert,
             MessageError::ChecksumFailed { .. } => Level::Alert,
             MessageError::DecryptionFailed { .. } => Level::Alert,
+            MessageError::InvalidSessionId { .. } => Level::Error,
         }
     }
 }
@@ -193,9 +206,16 @@ impl fmt::Display for MessageError<'_> {
                 crate::message::base58::encode(&from.0),
                 session_id
             ),
-            MessageError::DecryptionFailed { from } => write!(
+            MessageError::DecryptionFailed { from, session_id } => write!(
                 f,
-                "Decrption failed - from: {}",
+                "Decrption failed - from: {}, session_id: {}",
+                crate::message::base58::encode(&from.0),
+                session_id
+            ),
+            MessageError::InvalidSessionId { from, session_id } => write!(
+                f,
+                "Invalid session ID [{}] from: {}",
+                session_id,
                 crate::message::base58::encode(&from.0)
             ),
         }

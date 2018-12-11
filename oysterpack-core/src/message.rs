@@ -1,18 +1,20 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
-//! Message package
+//! Message package. Messages are designed to be highly secure.
 //!
 //! Messages are processed as streams, transitioning states while being processed.
 //!
@@ -95,9 +97,9 @@ pub const MAX_MSG_SIZE: usize = 1000 * 256;
 /// Min message size for SealedEnvelope using MessagePack encoding
 pub const SEALED_ENVELOPE_MIN_SIZE: usize = 90;
 
-/// A sealed envelope contains a private message that was encrypted using the recipient's public-key
-/// and the sender's private-key. If the recipient is able to decrypt the message, then the recipient
-/// knows it was sealed by the sender.
+/// A sealed envelope is secured via public-key authenticated encryption. It contains a private message
+/// that is encrypted using the recipient's public-key and the sender's private-key. If the recipient
+/// is able to decrypt the message, then the recipient knows it was sealed by the sender.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SealedEnvelope {
     addresses: Addresses,
@@ -222,7 +224,7 @@ impl fmt::Display for OpenEnvelope {
 }
 
 /// Represents an envelope that is open, i.e., its message is not encrypted
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct Addresses {
     sender: box_::PublicKey,
     recipient: box_::PublicKey,
@@ -273,34 +275,159 @@ impl fmt::Display for Addresses {
 }
 
 /// message data bytes that is encrypted
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct EncryptedMessageBytes(Vec<u8>);
 
+impl EncryptedMessageBytes {
+    /// returns the message bytess
+    pub fn data(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<&[u8]> for EncryptedMessageBytes {
+    fn from(bytes: &[u8]) -> EncryptedMessageBytes {
+        EncryptedMessageBytes(Vec::from(bytes))
+    }
+}
+
+impl From<Vec<u8>> for EncryptedMessageBytes {
+    fn from(bytes: Vec<u8>) -> EncryptedMessageBytes {
+        EncryptedMessageBytes(bytes)
+    }
+}
+
 /// message data bytes
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct MessageBytes(Vec<u8>);
 
-/// A SealedSignedMessage is an encrypted message that is digitally signed. It has the following properties:
+impl MessageBytes {
+    /// returns the message bytess
+    pub fn data(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// hashes the message data
+    pub fn hash(&self) -> hash::Digest {
+        hash::hash(&self.0)
+    }
+}
+
+impl From<&[u8]> for MessageBytes {
+    fn from(bytes: &[u8]) -> MessageBytes {
+        MessageBytes(Vec::from(bytes))
+    }
+}
+
+impl From<Vec<u8>> for MessageBytes {
+    fn from(bytes: Vec<u8>) -> MessageBytes {
+        MessageBytes(bytes)
+    }
+}
+
+/// A SealedSignedMessage is secured via secret-key authenticated encryption, i.e., a shared symmetric
+/// cipher is used for encryption. The encrypted message is digitally signed.
 /// - it contains a message digest that is digitally signed by the sender, i.e., using the sender's
 ///   private-key
 /// - the message is encrypted using a cipher identified by the session id
 /// - the session ID is digitally signed to ensure it has not been tampered with
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SealedSignedMessage {
-    addresses: Addresses,
+    sender: sign::PublicKey,
+    recipient: sign::PublicKey,
     session_id: SignedSessionId,
     msg_hash: EncryptedSignedHash,
     nonce: secretbox::Nonce,
     msg: EncryptedMessageBytes,
 }
 
+impl SealedSignedMessage {
+    /// verifies the sender's digital signature, and then decrypt the message and do a checksum on the message data
+    pub fn open<F>(self, cipher: F) -> Result<OpenSignedMessage, Error>
+    where
+        F: FnOnce(&SessionId) -> Option<secretbox::Key>,
+    {
+        let session_id = self.session_id.verify(&self.sender)?;
+        let key = cipher(&session_id);
+        if key.is_none() {
+            return Err(op_error!(errors::MessageError::InvalidSessionId {
+                from: &self.sender,
+                session_id: session_id
+            }));
+        }
+        let key = key.unwrap();
+        let msg_hash = self.msg_hash.verify(&key, &self.sender, session_id)?;
+        let msg = secretbox::open(self.msg.data(), &self.nonce, &key).map_err(|_| {
+            op_error!(errors::MessageError::DecryptionFailed {
+                from: &self.sender,
+                session_id: session_id
+            })
+        })?;
+        if msg_hash != hash::hash(&msg) {
+            return Err(op_error!(errors::MessageError::ChecksumFailed {
+                from: &self.sender,
+                session_id: session_id
+            }));
+        }
+
+        Ok(OpenSignedMessage {
+            sender: self.sender,
+            recipient: self.recipient,
+            session_id,
+            msg_hash,
+            msg: MessageBytes::from(msg),
+        })
+    }
+}
+
 /// SealedSignedMessage that has been opened, i.e., unencrypted and verified
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct OpenSignedMessage {
-    addresses: Addresses,
+    sender: sign::PublicKey,
+    recipient: sign::PublicKey,
     session_id: SessionId,
     msg_hash: hash::Digest,
     msg: MessageBytes,
+}
+
+impl OpenSignedMessage {
+    /// constructor
+    pub fn new(
+        sender: sign::PublicKey,
+        recipient: sign::PublicKey,
+        session_id: SessionId,
+        msg: MessageBytes,
+    ) -> OpenSignedMessage {
+        OpenSignedMessage {
+            sender,
+            recipient,
+            session_id,
+            msg_hash: msg.hash(),
+            msg,
+        }
+    }
+
+    /// sealing the message means digitally signing and encrypting
+    /// - the private-key used to sign the message must correspond to the sender's public-key that is
+    ///   specified within the addresses. Otherwise, the recipient will not be able to verify the message
+    ///   sender
+    pub fn seal(
+        self,
+        sender_key: &sign::SecretKey,
+        cipher: &secretbox::Key,
+    ) -> SealedSignedMessage {
+        let nonce = secretbox::gen_nonce();
+        let msg = EncryptedMessageBytes(secretbox::seal(&self.msg.0, &nonce, cipher));
+
+        SealedSignedMessage {
+            sender: self.sender,
+            recipient: self.recipient,
+            session_id: self.session_id.sign(sender_key),
+            msg_hash: SignedHash::sign(&self.msg_hash, sender_key).encrypt(cipher),
+            nonce,
+            msg,
+        }
+    }
 }
 
 /// Each new client connection is assigned a new SessionId
@@ -376,17 +503,17 @@ impl fmt::Display for SessionId {
 
 /// Encrypted digitally signed hash
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct EncryptedSignedHash(Vec<u8>);
+pub struct EncryptedSignedHash(Vec<u8>, secretbox::Nonce);
 
 impl EncryptedSignedHash {
     /// decrypts the signed hash and verifies the signature
     pub fn verify(
         &self,
-        nonce: &secretbox::Nonce,
         key: &secretbox::Key,
         public_key: &sign::PublicKey,
+        session_id: SessionId,
     ) -> Result<hash::Digest, Error> {
-        match secretbox::open(&self.0, nonce, key) {
+        match secretbox::open(&self.0, &self.1, key) {
             Ok(signed_hash) => match sign::verify(&signed_hash, public_key) {
                 Ok(digest) => match hash::Digest::from_slice(&digest) {
                     Some(digest) => Ok(digest),
@@ -400,17 +527,28 @@ impl EncryptedSignedHash {
                 ))),
             },
             Err(_) => Err(op_error!(errors::MessageError::DecryptionFailed {
-                from: public_key
+                from: public_key,
+                session_id
             })),
         }
+    }
+
+    /// return the nonce used to encrypt this signed hash
+    pub fn nonce(&self) -> &secretbox::Nonce {
+        &self.1
     }
 }
 
 /// A digitally signed hash
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SignedHash(Vec<u8>);
 
 impl SignedHash {
+    /// constructor - signs the hash using the specified private-key
+    pub fn sign(digest: &hash::Digest, key: &sign::SecretKey) -> SignedHash {
+        SignedHash(sign::sign(&digest.0, key))
+    }
+
     /// verifies the hash's signature against the specified PublicKey, and then verifies the message
     /// integrity by checking its hash
     pub fn verify(&self, msg: &[u8], key: &sign::PublicKey) -> Result<(), VerifyMessageError> {
@@ -430,8 +568,21 @@ impl SignedHash {
     }
 
     /// encrypt the signed hash
-    pub fn encrypt(&self, nonce: &secretbox::Nonce, key: &secretbox::Key) -> EncryptedSignedHash {
-        EncryptedSignedHash(secretbox::seal(&self.0, nonce, key))
+    pub fn encrypt(&self, key: &secretbox::Key) -> EncryptedSignedHash {
+        let nonce = secretbox::gen_nonce();
+        EncryptedSignedHash(secretbox::seal(&self.0, &nonce, key), nonce)
+    }
+}
+
+impl From<&[u8]> for SignedHash {
+    fn from(bytes: &[u8]) -> SignedHash {
+        SignedHash(Vec::from(bytes))
+    }
+}
+
+impl From<Vec<u8>> for SignedHash {
+    fn from(bytes: Vec<u8>) -> SignedHash {
+        SignedHash(bytes)
     }
 }
 
@@ -464,7 +615,7 @@ mod test {
         SealedEnvelope,
     };
     use crate::tests::run_test;
-    use exonum_sodiumoxide::crypto::{box_, sign, secretbox, hash};
+    use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
     use oysterpack_uid::ULID;
     use std::io;
 
@@ -504,7 +655,7 @@ mod test {
         let addresses = Addresses::new(client_pub_key, server_pub_key);
         let opening_key = addresses.precompute_opening_key(&server_priv_key);
         let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
-        let msg = b"some data";
+        let msg = b"data";
         const FOO: MessageType = MessageType(1866963020838464595588390333368926107);
 
         run_test("seal_open_envelope", || {
@@ -528,6 +679,19 @@ mod test {
             );
             info!("open_envelope_2 msg len: {}", open_envelope_2.msg().len());
             assert_eq!(*open_envelope_2.msg(), *msg);
+        });
+
+        let msg = &[0 as u8; 1000*256];
+        let msg = &msg[..];
+        let open_envelope = OpenEnvelope::new(addresses, msg);
+        run_test("seal_envelope", || {
+            let _ = open_envelope.seal(&sealing_key);
+        });
+
+        let open_envelope = OpenEnvelope::new(addresses, msg);
+        let sealed_envelope = open_envelope.seal(&sealing_key);
+        run_test("open_envelope", || {
+            let _ = sealed_envelope.open(&opening_key).unwrap();
         });
     }
 
@@ -613,10 +777,67 @@ mod test {
         let (client_pub_key, client_priv_key) = sign::gen_keypair();
 
         let session_id_1 = super::SessionId::generate();
-        let signed_session_id = session_id_1.sign(&client_priv_key);
+        let signed_session_id_1 = session_id_1.sign(&client_priv_key);
 
-        let session_id_2 = signed_session_id.verify(&client_pub_key).unwrap();
-        assert_eq!(session_id_1, session_id_2)
+        let session_id_2 = signed_session_id_1.verify(&client_pub_key).unwrap();
+        assert_eq!(session_id_1, session_id_2);
+
+        let signed_session_id_2 = session_id_2.sign(&client_priv_key);
+        assert_eq!(signed_session_id_1, signed_session_id_2);
+    }
+
+    #[test]
+    fn encrypted_signed_hash() {
+        let (client_pub_key, client_priv_key) = sign::gen_keypair();
+        let cipher = secretbox::gen_key();
+        let session_id = super::SessionId::generate();
+
+        let data = b"some data";
+        let data_hash = hash::hash(data);
+        let signed_hash_1 = super::SignedHash::sign(&data_hash, &client_priv_key);
+        let encrypted_signed_hash_1 = signed_hash_1.encrypt(&cipher);
+        let encrypted_signed_hash_2 = signed_hash_1.encrypt(&cipher);
+        assert_ne!(
+            encrypted_signed_hash_1.nonce(),
+            encrypted_signed_hash_2.nonce(),
+            "A new nonce should be used each time the signed session id is encrypted"
+        );
+        let digest_1 = encrypted_signed_hash_1
+            .verify(&cipher, &client_pub_key, session_id)
+            .unwrap();
+        let digest_2 = encrypted_signed_hash_2
+            .verify(&cipher, &client_pub_key, session_id)
+            .unwrap();
+        assert_eq!(digest_1, digest_2);
+        assert_eq!(digest_1, data_hash);
+    }
+
+    #[test]
+    fn sealed_signed_message() {
+        let (client_pub_key, client_priv_key) = sign::gen_keypair();
+        let (server_pub_key, _) = sign::gen_keypair();
+        let cipher = secretbox::gen_key();
+
+        let session_id = super::SessionId::generate();
+        let data = super::MessageBytes::from(&[0 as u8;1000*256][..]);
+
+        let open_signed_msg =
+            super::OpenSignedMessage::new(client_pub_key, server_pub_key, session_id, data);
+
+        let open_signed_msg_2 = open_signed_msg.clone();
+        run_test("seal_signed_message",  || {
+            let sealed_signed_msg = open_signed_msg_2.seal(&client_priv_key, &cipher);
+        });
+
+        let open_signed_msg_2 = open_signed_msg.clone();
+        let sealed_signed_msg = open_signed_msg_2.seal(&client_priv_key, &cipher);
+        run_test("open_signed_message",  || {
+            let open_signed_msg_2 = sealed_signed_msg.open(|_| Some((&cipher).clone())).unwrap();
+        });
+
+        let sealed_signed_msg = open_signed_msg.clone().seal(&client_priv_key, &cipher);
+        let open_signed_msg_2 = sealed_signed_msg.open(|_| Some(cipher)).unwrap();
+        assert_eq!(open_signed_msg, open_signed_msg_2);
     }
 
 }
