@@ -85,11 +85,8 @@ use serde_cbor;
 use serde_json;
 use std::{cmp, error, fmt, io};
 
-use bytes::{BufMut, BytesMut};
-use tokio::codec::{Decoder, Encoder};
-use tokio::prelude::*;
-
 pub mod base58;
+pub mod codec;
 pub mod errors;
 
 /// Max message size - 256 KB
@@ -105,7 +102,7 @@ pub const SEALED_ENVELOPE_MIN_SIZE: usize = 90;
 pub struct SealedEnvelope {
     addresses: Addresses,
     nonce: box_::Nonce,
-    msg: Vec<u8>,
+    msg: EncryptedMessageBytes,
 }
 
 impl SealedEnvelope {
@@ -138,23 +135,24 @@ impl SealedEnvelope {
         SealedEnvelope {
             addresses,
             nonce,
-            msg: msg.into(),
+            msg: EncryptedMessageBytes(msg.into()),
         }
     }
 
     /// open the envelope using the specified precomputed key
     pub fn open(self, key: &box_::PrecomputedKey) -> Result<OpenEnvelope, Error> {
-        box_::open_precomputed(&self.msg, &self.nonce, key)
-            .map(|msg| OpenEnvelope {
-                addresses: self.addresses.clone(),
-                msg,
-            })
-            .map_err(|_| op_error!(errors::SealedEnvelopeOpenFailed(&self)))
+        match box_::open_precomputed(&self.msg.0, &self.nonce, key) {
+            Ok(msg) => Ok(OpenEnvelope {
+                addresses: self.addresses,
+                msg: MessageBytes(msg),
+            }),
+            Err(_) => Err(op_error!(errors::SealedEnvelopeOpenFailed(&self))),
+        }
     }
 
     /// msg bytes
     pub fn msg(&self) -> &[u8] {
-        &self.msg
+        &self.msg.0
     }
 
     /// returns the addresses
@@ -168,11 +166,23 @@ impl SealedEnvelope {
     }
 }
 
+impl fmt::Display for SealedEnvelope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "addresses: {}, nonce: {}, msg.len: {}",
+            self.addresses,
+            base58::encode(&self.nonce.0),
+            self.msg.0.len()
+        )
+    }
+}
+
 /// Represents an envelope that is open, i.e., its message is not encrypted
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenEnvelope {
     addresses: Addresses,
-    msg: Vec<u8>,
+    msg: MessageBytes,
 }
 
 impl OpenEnvelope {
@@ -180,7 +190,7 @@ impl OpenEnvelope {
     pub fn new(addresses: Addresses, msg: &[u8]) -> OpenEnvelope {
         OpenEnvelope {
             addresses,
-            msg: msg.into(),
+            msg: MessageBytes(msg.into()),
         }
     }
 
@@ -190,13 +200,24 @@ impl OpenEnvelope {
         SealedEnvelope {
             addresses: self.addresses,
             nonce,
-            msg: box_::seal_precomputed(&self.msg, &nonce, key),
+            msg: EncryptedMessageBytes(box_::seal_precomputed(&self.msg.0, &nonce, key)),
         }
     }
 
     /// msg bytes
     pub fn msg(&self) -> &[u8] {
-        &self.msg
+        &self.msg.0
+    }
+}
+
+impl fmt::Display for OpenEnvelope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "addresses: {}, msg.len: {}",
+            self.addresses,
+            self.msg.0.len()
+        )
     }
 }
 
@@ -251,9 +272,181 @@ impl fmt::Display for Addresses {
     }
 }
 
+/// message data bytes that is encrypted
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedMessageBytes(Vec<u8>);
+
+/// message data bytes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageBytes(Vec<u8>);
+
+/// A SealedSignedMessage is an encrypted message that is digitally signed. It has the following properties:
+/// - it contains a message digest that is digitally signed by the sender, i.e., using the sender's
+///   private-key
+/// - the message is encrypted using a cipher identified by the session id
+/// - the session ID is digitally signed to ensure it has not been tampered with
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SealedSignedMessage {
+    addresses: Addresses,
+    session_id: SignedSessionId,
+    msg_hash: EncryptedSignedHash,
+    nonce: secretbox::Nonce,
+    msg: EncryptedMessageBytes,
+}
+
+/// SealedSignedMessage that has been opened, i.e., unencrypted and verified
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenSignedMessage {
+    addresses: Addresses,
+    session_id: SessionId,
+    msg_hash: hash::Digest,
+    msg: MessageBytes,
+}
+
+/// Each new client connection is assigned a new SessionId
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct SignedSessionId(Vec<u8>);
+
+impl SignedSessionId {
+    /// constructor
+    pub fn generate(private_key: &sign::SecretKey) -> SignedSessionId {
+        let ulid = ULID::generate();
+        let ulid_bytes: [u8; 16] = ulid.to_bytes();
+        SignedSessionId(sign::sign(&ulid_bytes, private_key))
+    }
+
+    /// constructor
+    pub fn from_session_id(
+        session_id: SessionId,
+        private_key: &sign::SecretKey,
+    ) -> SignedSessionId {
+        let ulid_bytes: [u8; 16] = session_id.ulid().to_bytes();
+        SignedSessionId(sign::sign(&ulid_bytes, private_key))
+    }
+
+    /// verify the signature. If the signature is valid, then the SessionId is returned.
+    pub fn verify(&self, public_key: &sign::PublicKey) -> Result<SessionId, Error> {
+        let session_id_bytes = sign::verify(&self.0, public_key)
+            .map_err(|_| op_error!(errors::MessageError::InvalidSignature(public_key)))?;
+        if session_id_bytes.len() != 16 {
+            return Err(op_error!(errors::MessageError::InvalidSessionIdLength {
+                from: public_key,
+                len: session_id_bytes.len()
+            }));
+        }
+
+        let mut session_id_bytes_array: [u8; 16] = Default::default();
+        session_id_bytes_array.copy_from_slice(&session_id_bytes);
+        Ok(SessionId(ULID::from(session_id_bytes_array)))
+    }
+}
+
+/// Each new client connection is assigned a new SessionId
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct SessionId(ULID);
+
+impl SessionId {
+    /// constructor
+    pub fn generate() -> SessionId {
+        SessionId(ULID::generate())
+    }
+
+    /// session ULID
+    pub fn ulid(&self) -> ULID {
+        self.0
+    }
+
+    /// sign the session id to create a new SignedSessionId
+    pub fn sign(&self, private_key: &sign::SecretKey) -> SignedSessionId {
+        SignedSessionId::from_session_id(*self, private_key)
+    }
+}
+
+impl From<ULID> for SessionId {
+    fn from(ulid: ULID) -> SessionId {
+        SessionId(ulid)
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Encrypted digitally signed hash
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct EncryptedSignedHash(Vec<u8>);
+
+impl EncryptedSignedHash {
+    /// decrypts the signed hash and verifies the signature
+    pub fn verify(
+        &self,
+        nonce: &secretbox::Nonce,
+        key: &secretbox::Key,
+        public_key: &sign::PublicKey,
+    ) -> Result<hash::Digest, Error> {
+        match secretbox::open(&self.0, nonce, key) {
+            Ok(signed_hash) => match sign::verify(&signed_hash, public_key) {
+                Ok(digest) => match hash::Digest::from_slice(&digest) {
+                    Some(digest) => Ok(digest),
+                    None => Err(op_error!(errors::MessageError::InvalidDigestLength {
+                        from: public_key,
+                        len: digest.len()
+                    })),
+                },
+                Err(_) => Err(op_error!(errors::MessageError::InvalidSignature(
+                    public_key
+                ))),
+            },
+            Err(_) => Err(op_error!(errors::MessageError::DecryptionFailed {
+                from: public_key
+            })),
+        }
+    }
+}
+
+/// A digitally signed hash
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SignedHash(Vec<u8>);
+
+impl SignedHash {
+    /// verifies the hash's signature against the specified PublicKey, and then verifies the message
+    /// integrity by checking its hash
+    pub fn verify(&self, msg: &[u8], key: &sign::PublicKey) -> Result<(), VerifyMessageError> {
+        let digest =
+            sign::verify(&self.0, key).map_err(|_| VerifyMessageError::InvalidSignature)?;
+        match hash::Digest::from_slice(&digest) {
+            Some(digest) => {
+                let msg_digest = hash::hash(msg);
+                if msg_digest == digest {
+                    Ok(())
+                } else {
+                    Err(VerifyMessageError::InvalidHash)
+                }
+            }
+            None => Err(VerifyMessageError::InvalidHash),
+        }
+    }
+
+    /// encrypt the signed hash
+    pub fn encrypt(&self, nonce: &secretbox::Nonce, key: &secretbox::Key) -> EncryptedSignedHash {
+        EncryptedSignedHash(secretbox::seal(&self.0, nonce, key))
+    }
+}
+
+/// Message verification errors
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum VerifyMessageError {
+    /// The signature did not match
+    InvalidSignature,
+    /// The message hash did not match
+    InvalidHash,
+}
+
 /// Message header metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Headers {
+pub struct MessageHeader {
     msg_type: MessageType,
 }
 
@@ -262,103 +455,18 @@ op_ulid! {
     pub MessageType
 }
 
-// TODO: track connection timeouts, i.e., if receiving or sending messages takes too long.
-/// SealedEnvelope codec
-#[derive(Debug)]
-pub struct SealedEnvelopeCodec {
-    max_msg_size: usize,
-    min_msg_size: usize
-}
-
-impl Default for SealedEnvelopeCodec {
-    fn default() -> SealedEnvelopeCodec {
-        SealedEnvelopeCodec {
-            max_msg_size: MAX_MSG_SIZE,
-            min_msg_size: SEALED_ENVELOPE_MIN_SIZE
-        }
-    }
-}
-
-impl SealedEnvelopeCodec {
-    /// constructor
-    pub fn new(max_msg_size: usize) -> SealedEnvelopeCodec {
-        SealedEnvelopeCodec { max_msg_size, min_msg_size: SEALED_ENVELOPE_MIN_SIZE }
-    }
-}
-
-impl Encoder for SealedEnvelopeCodec {
-    type Item = SealedEnvelope;
-
-    type Error = io::Error;
-
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let mut buf = Vec::with_capacity(item.msg().len() + 256);
-        let _ = item
-            .encode(&mut buf)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string().as_str()))?;
-        if buf.len() > self.max_msg_size {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "max message size exceeded: {} > {}",
-                    buf.len(),
-                    self.max_msg_size
-                ),
-            ));
-        }
-        dst.extend_from_slice(&buf);
-        Ok(())
-    }
-}
-
-impl Decoder for SealedEnvelopeCodec {
-    type Item = SealedEnvelope;
-
-    type Error = io::Error;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let read_to = cmp::min(self.max_msg_size, buf.len());
-        if read_to < self.min_msg_size {
-            // message is to small - wait for more bytes
-            return Ok(None);
-        }
-
-        let mut cursor = io::Cursor::new(&buf[..read_to]);
-        match SealedEnvelope::decode(&mut cursor) {
-            Ok(sealed_envelope) => {
-                // drop the bytes that have been decoded
-                let _ = buf.split_to(cursor.position() as usize);
-                Ok(Some(sealed_envelope))
-            },
-            Err(err) => {
-                if read_to == self.max_msg_size {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "message failed to be decoded within max message size limit: {} : {}",
-                            self.max_msg_size,
-                            err
-                        ),
-                    ))
-                } else {
-                    // we'll try again when more bytes come in
-                    Ok(None)
-                }
-            }
-        }
-    }
-}
-
 #[allow(warnings)]
 #[cfg(test)]
 mod test {
 
-    use super::{base58, Addresses, MessageType, OpenEnvelope, SealedEnvelope, SealedEnvelopeCodec};
+    use super::{
+        base58, Addresses, EncryptedMessageBytes, MessageBytes, MessageType, OpenEnvelope,
+        SealedEnvelope,
+    };
     use crate::tests::run_test;
-    use exonum_sodiumoxide::crypto::box_;
+    use exonum_sodiumoxide::crypto::{box_, sign, secretbox, hash};
     use oysterpack_uid::ULID;
     use std::io;
-    use tokio::codec::{Decoder, Encoder};
 
     #[derive(Debug, Serialize, Deserialize)]
     struct Person {
@@ -389,7 +497,7 @@ mod test {
     }
 
     #[test]
-    fn secure_envelope() {
+    fn seal_open_envelope() {
         let (client_pub_key, client_priv_key) = box_::gen_keypair();
         let (server_pub_key, server_priv_key) = box_::gen_keypair();
 
@@ -399,7 +507,7 @@ mod test {
         let msg = b"some data";
         const FOO: MessageType = MessageType(1866963020838464595588390333368926107);
 
-        run_test("secure_envelope", || {
+        run_test("seal_open_envelope", || {
             info!("addresses: {}", addresses);
             let open_envelope = OpenEnvelope::new(addresses, msg);
             let open_envelope_rmp = rmp_serde::to_vec(&open_envelope).unwrap();
@@ -452,7 +560,7 @@ mod test {
                 sealed_envelope_decoded.addresses()
             );
 
-            sealed_envelope.msg = vec![1];
+            sealed_envelope.msg = EncryptedMessageBytes(vec![1]);
             let mut buf: io::Cursor<Vec<u8>> = io::Cursor::new(Vec::new());
             sealed_envelope.encode(&mut buf);
             info!(
@@ -480,40 +588,35 @@ mod test {
     }
 
     #[test]
-    fn sealed_envelope_codec() {
-        let (client_pub_key, client_priv_key) = box_::gen_keypair();
-        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+    fn ulid_msg_pack_size() {
+        op_ulid! {
+            Foo
+        }
 
-        let addresses = Addresses::new(client_pub_key, server_pub_key);
-        let opening_key = addresses.precompute_opening_key(&server_priv_key);
-        let sealing_key = addresses.precompute_sealing_key(&client_priv_key);
-
-        run_test("sealed_envelope_codec", || {
-            let mut codec: SealedEnvelopeCodec = Default::default();
-            let mut buf = bytes::BytesMut::new();
-            for i in 0..5 {
-                let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![i as u8]);
-                let mut sealed_envelope = open_envelope.seal(&sealing_key);
-                codec.encode(sealed_envelope, &mut buf);
-            }
-
-            for i in 0..5 {
-                info!("{:?}", codec.decode(&mut buf).unwrap().unwrap())
-            }
-
-            // buf is empty
-            assert!(codec.decode(&mut buf).unwrap().is_none());
-
-            let open_envelope = OpenEnvelope::new(addresses.clone(), &vec![1]);
-            let mut sealed_envelope = open_envelope.seal(&sealing_key);
-
-            let bytes = rmp_serde::to_vec(&sealed_envelope).unwrap();
-            let (left, right) = bytes.split_at(super::SEALED_ENVELOPE_MIN_SIZE);
-            buf.extend_from_slice(left);
-            assert!(codec.decode(&mut buf).unwrap().is_none());
-            buf.extend_from_slice(right);
-            assert!(codec.decode(&mut buf).unwrap().is_some());
-        });
-
+        let ulid = oysterpack_uid::ULID::generate();
+        let foo = Foo(ulid.into());
+        let ulid_bytes = rmp_serde::to_vec(&ulid).unwrap();
+        let foo_bytes = rmp_serde::to_vec(&foo).unwrap();
+        println!(
+            "foo_bytes.len = {}, ulid_bytes.len = {}",
+            foo_bytes.len(),
+            ulid_bytes.len()
+        ); // foo_bytes.len = 19, ulid_bytes.len = 27
+        assert!(
+            foo_bytes.len() < ulid_bytes.len(),
+            "in binary form, (u64,u64) should be smaller than a 27 char ULID"
+        );
     }
+
+    #[test]
+    fn signed_session_id() {
+        let (client_pub_key, client_priv_key) = sign::gen_keypair();
+
+        let session_id_1 = super::SessionId::generate();
+        let signed_session_id = session_id_1.sign(&client_priv_key);
+
+        let session_id_2 = signed_session_id.verify(&client_pub_key).unwrap();
+        assert_eq!(session_id_1, session_id_2)
+    }
+
 }

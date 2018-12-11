@@ -14,8 +14,8 @@
 
 //! message errors
 
-use super::Addresses;
-use exonum_sodiumoxide::crypto::box_;
+use super::{Addresses, SessionId};
+use exonum_sodiumoxide::crypto::{box_, sign};
 use oysterpack_errors::{Id, IsError, Level};
 use std::fmt;
 
@@ -69,6 +69,34 @@ pub enum MessageError<'a> {
     DecodingError(DecodingError),
     /// Encoding error
     EncodingError(EncodingError),
+    /// Invalid signature
+    InvalidSignature(&'a sign::PublicKey),
+    /// The session ID length was not 16 bytes, i.e., 128 bits
+    InvalidSessionIdLength {
+        /// sender address
+        from: &'a sign::PublicKey,
+        /// invalid session id length that was found in the message
+        len: usize,
+    },
+    /// Hash digest should be 64 bytes - SHA-512 is used
+    InvalidDigestLength {
+        /// sender address
+        from: &'a sign::PublicKey,
+        /// invalid hash digest length that was found in the message
+        len: usize,
+    },
+    /// Data failed a checksum, i.e., its hash did not match
+    ChecksumFailed {
+        /// sender address
+        from: &'a sign::PublicKey,
+        /// session ID
+        session_id: SessionId,
+    },
+    /// Decryption failed
+    DecryptionFailed {
+        /// sender address
+        from: &'a sign::PublicKey,
+    },
 }
 
 impl IsError for MessageError<'_> {
@@ -81,14 +109,21 @@ impl IsError for MessageError<'_> {
             MessageError::SenderPaymentRequired(_) => Id(1867022032677743826660887081515750864), // 01CY9MP3B0BZZPHD16AW96R5EG
             MessageError::DecodingError(_) => Id(1867031190663367090363230915571813628), // 01CY9VX93CH1C1BJKRAV2T237W
             MessageError::EncodingError(_) => Id(1867031212491238890411696131253995837), // 01CY9VXTQM3ZYPE2JXFF83829X
+            MessageError::InvalidSignature(_) => Id(1867172076936046708942329759845274008), // 01CYDB1R45VRVQF03RHZZ2PMCR
+            MessageError::InvalidSessionIdLength { .. } => {
+                Id(1867172923315771044142605233334059560)
+            } // 01CYDBQ3TJRH8GZSXKT4C0T0H8
+            MessageError::InvalidDigestLength { .. } => Id(1867177124319618698988963972315043675), // 01CYDF15BZPFRPVX0HG16PENTV
+            MessageError::ChecksumFailed { .. } => Id(1867178063957932565585764976839329233), // 01CYDFRWD29J3TP97F47WS71EH
+            MessageError::DecryptionFailed { .. } => Id(1867178498353912205043500705741562600), // 01CYDG3V9Y7D0XYEJKCH3MGRQ8
         }
     }
 
+    /// trigger an Alert, for anything security related
     fn error_level(&self) -> Level {
         match self {
             MessageError::InvalidAddress(_) => Level::Error,
             MessageError::UnknownSender(_) => Level::Error,
-            // trigger an Alert, because this is security related
             MessageError::ForbiddenSender(_) => Level::Alert,
             MessageError::UnknownRecipient(_) => Level::Error,
             // trigger an Alert because sender did not send payment
@@ -96,6 +131,11 @@ impl IsError for MessageError<'_> {
             MessageError::DecodingError(_) => Level::Error,
             // Mark this as critical because encoding should never fail besides IO errors
             MessageError::EncodingError(_) => Level::Critical,
+            MessageError::InvalidSignature(_) => Level::Alert,
+            MessageError::InvalidSessionIdLength { .. } => Level::Alert,
+            MessageError::InvalidDigestLength { .. } => Level::Alert,
+            MessageError::ChecksumFailed { .. } => Level::Alert,
+            MessageError::DecryptionFailed { .. } => Level::Alert,
         }
     }
 }
@@ -130,6 +170,34 @@ impl fmt::Display for MessageError<'_> {
             ),
             MessageError::DecodingError(err) => write!(f, "Failed to decode: {}", err),
             MessageError::EncodingError(err) => write!(f, "Failed to encode: {}", err),
+            MessageError::InvalidSignature(address) => write!(
+                f,
+                "Invalid signature from: {}",
+                crate::message::base58::encode(&address.0)
+            ),
+            MessageError::InvalidSessionIdLength { from, len } => write!(
+                f,
+                "Session ID len should be 16 but was ({}) - from: {}",
+                len,
+                crate::message::base58::encode(&from.0)
+            ),
+            MessageError::InvalidDigestLength { from, len } => write!(
+                f,
+                "Digest len should be 64 but was ({}) - from: {}",
+                len,
+                crate::message::base58::encode(&from.0)
+            ),
+            MessageError::ChecksumFailed { from, session_id } => write!(
+                f,
+                "Checksum failed: from: {}, session_id: {}",
+                crate::message::base58::encode(&from.0),
+                session_id
+            ),
+            MessageError::DecryptionFailed { from } => write!(
+                f,
+                "Decrption failed - from: {}",
+                crate::message::base58::encode(&from.0)
+            ),
         }
     }
 }
@@ -139,6 +207,8 @@ impl fmt::Display for MessageError<'_> {
 pub enum DecodingError {
     /// SealedEnvelope failed to be decoded
     InvalidSealedEnvelope(rmp_serde::decode::Error),
+    /// SealedSignedMessage failed to be decoded
+    InvalidSealedSignedMessage(rmp_serde::decode::Error),
 }
 
 impl fmt::Display for DecodingError {
@@ -154,6 +224,8 @@ impl fmt::Display for DecodingError {
 pub enum EncodingError {
     /// SealedEnvelope failed to be encoded
     InvalidSealedEnvelope(rmp_serde::encode::Error),
+    /// SealedSignedMessage failed to be encoded
+    InvalidSealedSignedMessage(rmp_serde::encode::Error),
 }
 
 impl fmt::Display for EncodingError {

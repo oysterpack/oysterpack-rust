@@ -112,7 +112,7 @@ extern crate oysterpack_testing;
 mod macros;
 pub mod ulid;
 
-pub use crate::ulid::{Domain, DomainULID, HasDomain, DomainId, TypedULID, ULID};
+pub use crate::ulid::{Domain, DomainId, DomainULID, HasDomain, TypedULID, ULID};
 
 // re-exported because it is used internally by op_ulid!
 // this makes it easier for clients to use op_ulid! without using oysterpack_macros directly, i.e.,

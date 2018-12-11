@@ -27,6 +27,7 @@ use std::{
     marker::PhantomData,
     str::FromStr,
 };
+use byteorder::ByteOrder;
 
 /// Returns a new ULID encoded as a String.
 pub fn ulid_str() -> String {
@@ -90,11 +91,20 @@ impl ULID {
     pub fn datetime(&self) -> DateTime<Utc> {
         self.0.datetime()
     }
+
+    /// encodes itself as bytes in big-endian order, i.e., network byte order
+    pub fn to_bytes(&self) -> [u8; 16] {
+        let (left, right): (u64, u64) = self.0.into();
+        let id = [left, right];
+        let mut bytes: [u8; 16] = [0; 16];
+        byteorder::NetworkEndian::write_u64_into(&id, &mut bytes);
+        bytes
+    }
 }
 
 impl fmt::Display for ULID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.0.to_string())
+        self.0.fmt(f)
     }
 }
 
@@ -108,12 +118,6 @@ impl FromStr for ULID {
     }
 }
 
-impl From<[u8; 16]> for ULID {
-    fn from(bytes: [u8; 16]) -> Self {
-        ULID(Ulid::from(bytes))
-    }
-}
-
 impl From<u128> for ULID {
     fn from(id: u128) -> Self {
         ULID(Ulid::from(id))
@@ -122,6 +126,12 @@ impl From<u128> for ULID {
 
 impl From<(u64, u64)> for ULID {
     fn from(id: (u64, u64)) -> Self {
+        ULID(Ulid::from(id))
+    }
+}
+
+impl From<[u8; 16]> for ULID {
+    fn from(id: [u8; 16]) -> Self {
         ULID(Ulid::from(id))
     }
 }
@@ -352,7 +362,7 @@ impl<'de, T: 'static> Deserialize<'de> for TypedULID<T> {
 
 impl<T: 'static + ?Sized> fmt::Display for TypedULID<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(&self.id.to_string())
+        self.id.fmt(f)
     }
 }
 
@@ -567,7 +577,6 @@ impl<T: HasDomain> From<TypedULID<T>> for DomainULID {
 pub struct DomainId(pub Domain, pub u128);
 
 impl DomainId {
-
     /// returns the id as a DomainULID
     pub fn as_domain_ulid(&self) -> DomainULID {
         crate::DomainULID::from_ulid(self.0, self.1)
@@ -585,7 +594,6 @@ impl DomainId {
 }
 
 impl Into<DomainULID> for DomainId {
-
     fn into(self) -> DomainULID {
         self.as_domain_ulid()
     }
@@ -593,7 +601,7 @@ impl Into<DomainULID> for DomainId {
 
 impl std::fmt::Display for DomainId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(self.as_domain_ulid().to_string().as_str())
+        self.as_domain_ulid().fmt(f)
     }
 }
 

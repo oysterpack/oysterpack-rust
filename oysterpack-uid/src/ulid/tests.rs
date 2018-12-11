@@ -282,4 +282,16 @@ fn const_ulid() {
     assert_eq!(ulid, FOO_ID.ulid());
     let foo_ulid: ULID = FOO_ID.into();
     assert_eq!(ulid, foo_ulid);
+    run_test("const_ulid", || {
+        info!("{}", serde_json::to_string(&FOO_ID).unwrap());
+    })
+}
+
+#[test]
+fn to_bytes() {
+    let ulid1 = ULID::generate();
+    let bytes = ulid1.to_bytes();
+    let ulid2 = ULID::from(bytes);
+    println!("ulid1({}) ulid2({})", ulid1, ulid2);
+    assert_eq!(ulid1, ulid2);
 }

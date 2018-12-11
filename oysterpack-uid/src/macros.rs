@@ -16,6 +16,11 @@
 
 /// Used to define ULID constants in a type safe manner.
 ///
+/// The new type implements : Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize
+///
+/// For portability purposes, when the u128 ID is serialized as [u64; 2] because most serializer / deserializers
+/// don't natively support u128, e.g., JSON, MessagePack.
+///
 /// ```rust
 ///  #[macro_use]
 ///  extern crate oysterpack_uid;
@@ -108,7 +113,12 @@ macro_rules! op_ulid {
                 where
                     S: serde::Serializer,
                 {
-                    serializer.serialize_str(self.to_string().as_str())
+                    use serde::ser::SerializeTuple;
+                    let mut tup = serializer.serialize_tuple(2)?;
+                    let (v1,v2) = ((self.0 >> 64) as u64, (self.0 & 0xFFFF_FFFF_FFFF_FFFF) as u64);
+                    tup.serialize_element(&v1)?;
+                    tup.serialize_element(&v2)?;
+                    tup.end()
                 }
             }
         }
@@ -128,50 +138,14 @@ macro_rules! op_ulid {
                             formatter.write_str(stringify!($Name))
                         }
 
-                        #[inline]
-                        fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            Ok($Name(u128::from(value)))
-                        }
-
-                        #[inline]
-                        fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            Ok($Name(u128::from(value)))
-                        }
-
-                        #[inline]
-                        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            Ok($Name(u128::from(value)))
-                        }
-
-                        #[inline]
-                        fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            Ok($Name(value))
-                        }
-
-                        #[inline]
-                        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-                        where
-                            E: serde::de::Error,
-                        {
-                            value
-                                .parse()
-                                .map_err(|_| serde::de::Error::invalid_type(serde::de::Unexpected::Str(value), &stringify!($Name)))
+                        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                        where A: serde::de::SeqAccess<'de>{
+                            let (v1, v2): (u64, u64) = (seq.next_element().unwrap().unwrap(), seq.next_element().unwrap().unwrap());
+                            Ok($Name(u128::from(v1) << 64 | u128::from(v2)))
                         }
                     }
 
-                    deserializer.deserialize_str(ULIDVisitor)
+                    deserializer.deserialize_seq(ULIDVisitor)
                 }
             }
 

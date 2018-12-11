@@ -12,10 +12,11 @@ keywords = ["ulid"]
 edition = "2018"
 
 [dependencies]
-rusty_ulid = "0.6"
+rusty_ulid = "0.7"
 chrono = "0.4.6"
 serde = {version = "1", features = ["derive"]}
 oysterpack_macros = "0.1"
+byteorder = "1.2.7"
 
 [dev-dependencies]
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
