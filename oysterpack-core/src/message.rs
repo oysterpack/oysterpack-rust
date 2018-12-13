@@ -78,13 +78,17 @@
 use bincode;
 use chrono::{DateTime, Duration, Utc};
 use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
+use flate2::bufread;
 use oysterpack_errors::{Error, Id as ErrorId, IsError, Level as ErrorLevel};
 use oysterpack_uid::ULID;
 use rmp_serde;
 use serde;
 use serde_cbor;
 use serde_json;
-use std::{cmp, error, fmt, io};
+use std::{
+    cmp, error, fmt,
+    io::{self, Read, Write},
+};
 
 pub mod base58;
 pub mod codec;
@@ -239,7 +243,7 @@ impl OpenEnvelope {
 
     /// parses the message data into an encoded message
     pub fn encoded_message(self) -> Result<EncodedMessage, Error> {
-        let msg: Message = rmp_serde::from_slice(self.msg()).map_err(|err| {
+        let msg: Message<MessageBytes> = rmp_serde::from_slice(self.msg()).map_err(|err| {
             op_error!(errors::MessageError::MessageDataDeserializationFailed(
                 &self.sender,
                 errors::ErrorInfo(err.to_string())
@@ -435,6 +439,75 @@ pub enum Compression {
     Lz4,
 }
 
+impl Compression {
+    /// compress the data
+    pub fn compress(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        match self {
+            Compression::Deflate => {
+                let mut deflater = bufread::DeflateEncoder::new(data, flate2::Compression::fast());
+                let mut buffer = Vec::new();
+                deflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Zlib => {
+                let mut deflater = bufread::ZlibEncoder::new(data, flate2::Compression::fast());
+                let mut buffer = Vec::new();
+                deflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Gzip => {
+                let mut deflater = bufread::GzEncoder::new(data, flate2::Compression::fast());
+                let mut buffer = Vec::new();
+                deflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Snappy => Ok(parity_snappy::compress(data)),
+            Compression::Lz4 => {
+                let mut buf = Vec::with_capacity(data.len() / 2);
+                let mut encoder = lz4::EncoderBuilder::new().build(&mut buf)?;
+                encoder.write(data)?;
+                let (_, result) = encoder.finish();
+                match result {
+                    Ok(_) => Ok(buf),
+                    Err(err) => Err(err),
+                }
+            }
+        }
+    }
+
+    /// compress the data
+    pub fn decompress(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        match self {
+            Compression::Deflate => {
+                let mut inflater = bufread::DeflateDecoder::new(data);
+                let mut buffer = Vec::new();
+                inflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Zlib => {
+                let mut inflater = bufread::ZlibDecoder::new(data);
+                let mut buffer = Vec::new();
+                inflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Gzip => {
+                let mut inflater = bufread::GzDecoder::new(data);
+                let mut buffer = Vec::new();
+                inflater.read_to_end(&mut buffer)?;
+                Ok(buffer)
+            }
+            Compression::Snappy => parity_snappy::decompress(data)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err)),
+            Compression::Lz4 => {
+                let mut buf = Vec::with_capacity(data.len() / 2);
+                let mut decoder = lz4::Decoder::new(data)?;
+                io::copy(&mut decoder, &mut buf)?;
+                Ok(buf)
+            }
+        }
+    }
+}
+
 /// Message encoding format
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum Encoding {
@@ -446,6 +519,121 @@ pub enum Encoding {
     CBOR(Option<Compression>),
     /// [JSON](https://www.json.org/)
     JSON(Option<Compression>),
+}
+
+impl Encoding {
+    /// encode the data
+    pub fn encode<T>(&self, data: T) -> Result<Vec<u8>, Error>
+    where
+        T: serde::Serialize,
+    {
+        let (data, compression) = match self {
+            Encoding::MessagePack(compression) => {
+                let data = rmp_serde::to_vec(&data)
+                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                (data, compression)
+            }
+            Encoding::Bincode(compression) => {
+                let data = bincode::serialize(&data)
+                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                (data, compression)
+            }
+            Encoding::CBOR(compression) => {
+                let data = serde_cbor::to_vec(&data)
+                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                (data, compression)
+            }
+            Encoding::JSON(compression) => {
+                let data = serde_json::to_vec(&data)
+                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                (data, compression)
+            }
+        };
+
+        if let Some(compression) = compression {
+            compression
+                .compress(&data)
+                .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))
+        } else {
+            Ok(data)
+        }
+    }
+
+    /// decodes the data
+    pub fn decode<T>(&self, data: &[u8]) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self {
+            Encoding::MessagePack(compression) => {
+                if let Some(compression) = compression {
+                    compression
+                        .decompress(data)
+                        .and_then(|data| {
+                            rmp_serde::from_slice(&data)
+                                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+                        })
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                } else {
+                    rmp_serde::from_slice(data)
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                }
+            }
+            Encoding::Bincode(compression) => {
+                if let Some(compression) = compression {
+                    compression
+                        .decompress(data)
+                        .and_then(|data| {
+                            bincode::deserialize(&data)
+                                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+                        })
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                } else {
+                    bincode::deserialize(data)
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                }
+            }
+            Encoding::CBOR(compression) => {
+                if let Some(compression) = compression {
+                    compression
+                        .decompress(data)
+                        .and_then(|data| {
+                            serde_cbor::from_slice(&data)
+                                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+                        })
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                } else {
+                    serde_cbor::from_slice(data)
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                }
+            }
+            Encoding::JSON(compression) => {
+                if let Some(compression) = compression {
+                    compression
+                        .decompress(data)
+                        .and_then(|data| {
+                            serde_json::from_slice(&data)
+                                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+                        })
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                } else {
+                    serde_json::from_slice(data)
+                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                }
+            }
+        }
+    }
+}
+
+impl fmt::Display for Encoding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Encoding::MessagePack(compression) => write!(f, "MessagePack({:?})", compression),
+            Encoding::Bincode(compression) => write!(f, "Bincode({:?})", compression),
+            Encoding::CBOR(compression) => write!(f, "CBOR({:?})", compression),
+            Encoding::JSON(compression) => write!(f, "JSON({:?})", compression),
+        }
+    }
 }
 
 /// Deadline
@@ -521,14 +709,20 @@ impl fmt::Display for InstanceId {
 
 /// Encoded message data
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
+pub struct Message<T>
+where
+    T: fmt::Debug + Clone,
+{
     metadata: Metadata,
-    data: MessageBytes,
+    data: T,
 }
 
-impl Message {
+impl<T> Message<T>
+where
+    T: fmt::Debug + Clone,
+{
     /// constructor
-    pub fn new(metadata: Metadata, data: MessageBytes) -> Message {
+    pub fn new(metadata: Metadata, data: T) -> Message<T> {
         Message { metadata, data }
     }
 
@@ -538,8 +732,18 @@ impl Message {
     }
 
     /// returns the message data
-    pub fn data(&self) -> &MessageBytes {
+    pub fn data(&self) -> &T {
         &self.data
+    }
+}
+
+impl Message<MessageBytes> {
+    /// converts the MessageBytes data to the specified type, based on the message metatdata
+    pub fn decode<T>(self) -> Message<T>
+    where
+        T: fmt::Debug + Clone,
+    {
+        unimplemented!()
     }
 }
 
@@ -548,7 +752,7 @@ impl Message {
 pub struct EncodedMessage {
     sender: Address,
     recipient: Address,
-    msg: Message,
+    msg: Message<MessageBytes>,
 }
 
 impl EncodedMessage {
@@ -908,29 +1112,30 @@ mod test {
         let opening_key = client_addr.precompute_opening_key(&server_priv_key);
         let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
 
-        fn new_msg() -> super::Message {
-            const MESSAGE_TYPE: super::MessageTypeId = super::MessageTypeId(1867384532653698871582487715619812439);
+        fn new_msg() -> super::Message<MessageBytes> {
+            const MESSAGE_TYPE: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
             let metadata = super::Metadata::new(
                 MESSAGE_TYPE.message_type(),
                 super::Encoding::MessagePack(None),
                 None,
             );
             let data = super::MessageBytes::from(b"data".as_ref());
-            super::Message {
-                metadata,
-                data
-            }
+            super::Message { metadata, data }
         }
         let msg = new_msg();
         let msg_bytes = rmp_serde::to_vec(&msg).unwrap();
-        if let Err(err) = rmp_serde::from_slice::<super::Message>(&msg_bytes) {
+        if let Err(err) = rmp_serde::from_slice::<super::Message<MessageBytes>>(&msg_bytes) {
             panic!("Failed to deserialize Message: {}", err);
         }
 
         run_test("sealed_envelope_encoding_decoding", || {
             info!("addresses: {} -> {}", client_addr, server_addr);
-            let open_envelope =
-                OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), &rmp_serde::to_vec(&msg).unwrap());
+            let open_envelope = OpenEnvelope::new(
+                client_pub_key.into(),
+                server_pub_key.into(),
+                &rmp_serde::to_vec(&msg).unwrap(),
+            );
             let encoded_message = open_envelope.clone().encoded_message().unwrap();
             let open_envelope_2 = encoded_message.open_envelope().unwrap();
             assert_eq!(open_envelope.sender(), open_envelope_2.sender());
@@ -945,14 +1150,14 @@ mod test {
         #[derive(Debug, Serialize, Deserialize)]
         struct Foo {
             #[serde(skip_serializing_if = "Option::is_none")]
-            bar: Option<bool>
+            bar: Option<bool>,
         }
 
-        let foo = Foo { bar: None } ;
+        let foo = Foo { bar: None };
         let foo_bytes = rmp_serde::to_vec(&foo).unwrap();
         // deserializing panics because rmp is expecting 1 element
         // this is a bug in rmp_serde: https://github.com/3Hren/msgpack-rust/issues/86
-        let foo : Foo = rmp_serde::from_slice(&foo_bytes).unwrap();
+        let foo: Foo = rmp_serde::from_slice(&foo_bytes).unwrap();
     }
 
 }

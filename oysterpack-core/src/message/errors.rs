@@ -16,7 +16,7 @@
 
 //! message errors
 
-use super::{Address, SessionId};
+use super::{Address, Encoding, SessionId};
 use exonum_sodiumoxide::crypto::{box_, sign};
 use oysterpack_errors::{Id, IsError, Level};
 use std::fmt;
@@ -260,5 +260,89 @@ impl fmt::Display for EncodingError {
         match self {
             _ => write!(f, "{:?}", self),
         }
+    }
+}
+
+/// SerializationError
+#[derive(Debug)]
+pub struct SerializationError {
+    encoding: Encoding,
+    err_msg: String,
+}
+
+impl SerializationError {
+    /// Error Id(01CXMQQXSBYCJWWS916JDJN136)
+    pub const ERROR_ID: Id = Id(1866174046782305267123345584340763750);
+    /// Level::Error
+    pub const ERROR_LEVEL: Level = Level::Error;
+
+    /// constructor
+    pub fn new<Msg: fmt::Display>(encoding: Encoding, err_msg: Msg) -> SerializationError {
+        SerializationError {
+            encoding,
+            err_msg: err_msg.to_string(),
+        }
+    }
+}
+
+impl IsError for SerializationError {
+    fn error_id(&self) -> Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for SerializationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} serialization failed: {}",
+            self.encoding, self.err_msg
+        )
+    }
+}
+
+/// DeserializationError
+#[derive(Debug)]
+pub struct DeserializationError {
+    encoding: Encoding,
+    err_msg: String,
+}
+
+impl DeserializationError {
+    /// Error Id(01CXMRB1X1K091BFNN6X37DVDF)
+    pub const ERROR_ID: Id = Id(1866174804543832457347080642119527855);
+    /// Level::Error
+    pub const ERROR_LEVEL: Level = Level::Error;
+
+    /// constructor
+    pub fn new<Msg: fmt::Display>(encoding: Encoding, err_msg: Msg) -> DeserializationError {
+        DeserializationError {
+            encoding,
+            err_msg: err_msg.to_string(),
+        }
+    }
+}
+
+impl IsError for DeserializationError {
+    fn error_id(&self) -> Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for DeserializationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} deserialization failed: {}",
+            self.encoding, self.err_msg
+        )
     }
 }
