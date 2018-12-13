@@ -69,6 +69,10 @@
 //!   - clients can bid for a service at a lower price, sellers may choose to take the lower price
 //!   - clients can bid higher, if service supply is low, in order to get higher priority
 //!
+//! ### Notes
+//! - rmp_serde does not support Serde #[serde(skip_serializing_if="Option::is_none")] - it fails
+//!   on deserialization - [https://github.com/3Hren/msgpack-rust/issues/86]
+//!   - take away lesson is don't use the Serde #[serde(skip_serializing_if="Option::is_none")] feature
 //!
 
 use bincode;
@@ -232,6 +236,21 @@ impl OpenEnvelope {
     pub fn recipient(&self) -> &Address {
         &self.recipient
     }
+
+    /// parses the message data into an encoded message
+    pub fn encoded_message(self) -> Result<EncodedMessage, Error> {
+        let msg: Message = rmp_serde::from_slice(self.msg()).map_err(|err| {
+            op_error!(errors::MessageError::MessageDataDeserializationFailed(
+                &self.sender,
+                errors::ErrorInfo(err.to_string())
+            ))
+        })?;
+        Ok(EncodedMessage {
+            sender: self.sender,
+            recipient: self.recipient,
+            msg,
+        })
+    }
 }
 
 impl fmt::Display for OpenEnvelope {
@@ -308,6 +327,15 @@ impl From<Vec<u8>> for EncryptedMessageBytes {
     }
 }
 
+impl std::iter::FromIterator<u8> for EncryptedMessageBytes {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = u8>,
+    {
+        EncryptedMessageBytes(Vec::from_iter(iter))
+    }
+}
+
 /// message data bytes
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct MessageBytes(Vec<u8>);
@@ -336,41 +364,227 @@ impl From<Vec<u8>> for MessageBytes {
     }
 }
 
-/// Each new client connection is assigned a new SessionId
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct SignedSessionId(Vec<u8>);
-
-impl SignedSessionId {
-    /// constructor
-    pub fn generate(private_key: &sign::SecretKey) -> SignedSessionId {
-        let ulid = ULID::generate();
-        let ulid_bytes: [u8; 16] = ulid.to_bytes();
-        SignedSessionId(sign::sign(&ulid_bytes, private_key))
+impl std::iter::FromIterator<u8> for MessageBytes {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = u8>,
+    {
+        MessageBytes(Vec::from_iter(iter))
     }
+}
 
+/// Message metadata
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct Metadata {
+    msg_type: MessageType,
+    instance_id: InstanceId,
+    encoding: Encoding,
+    deadline: Option<Deadline>,
+}
+
+impl Metadata {
     /// constructor
-    pub fn from_session_id(
-        session_id: SessionId,
-        private_key: &sign::SecretKey,
-    ) -> SignedSessionId {
-        let ulid_bytes: [u8; 16] = session_id.ulid().to_bytes();
-        SignedSessionId(sign::sign(&ulid_bytes, private_key))
-    }
-
-    /// verify the signature. If the signature is valid, then the SessionId is returned.
-    pub fn verify(&self, public_key: &sign::PublicKey) -> Result<SessionId, Error> {
-        let session_id_bytes = sign::verify(&self.0, public_key)
-            .map_err(|_| op_error!(errors::MessageError::InvalidSignature(public_key)))?;
-        if session_id_bytes.len() != 16 {
-            return Err(op_error!(errors::MessageError::InvalidSessionIdLength {
-                from: public_key,
-                len: session_id_bytes.len()
-            }));
+    pub fn new(msg_type: MessageType, encoding: Encoding, deadline: Option<Deadline>) -> Metadata {
+        Metadata {
+            msg_type,
+            instance_id: InstanceId::generate(),
+            encoding,
+            deadline,
         }
+    }
 
-        let mut session_id_bytes_array: [u8; 16] = Default::default();
-        session_id_bytes_array.copy_from_slice(&session_id_bytes);
-        Ok(SessionId(ULID::from(session_id_bytes_array)))
+    /// Each message type is identified by an Id
+    pub fn message_type(&self) -> MessageType {
+        self.msg_type
+    }
+
+    /// Each message instance is assigned a unique ULID. This can be used as a nonce for replay protection
+    /// on the network.
+    pub fn instance_id(&self) -> InstanceId {
+        self.instance_id
+    }
+
+    /// When the message was created. This is derived from the message instance ID.
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        self.instance_id.ulid().datetime()
+    }
+
+    /// A message can specify that it must be processed by the specified deadline.
+    pub fn deadline(&self) -> Option<Deadline> {
+        self.deadline
+    }
+
+    /// return the message data encoding
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+}
+
+/// Compression mode
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum Compression {
+    /// deflate
+    Deflate,
+    /// zlib
+    Zlib,
+    /// gzip
+    Gzip,
+    /// snappy
+    Snappy,
+    /// LZ4
+    Lz4,
+}
+
+/// Message encoding format
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+pub enum Encoding {
+    /// [MessagePack](https://msgpack.org/) - default
+    MessagePack(Option<Compression>),
+    /// [Bincode](https://github.com/TyOverby/bincode)
+    Bincode(Option<Compression>),
+    /// [CBOR](http://cbor.io/)
+    CBOR(Option<Compression>),
+    /// [JSON](https://www.json.org/)
+    JSON(Option<Compression>),
+}
+
+/// Deadline
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Deadline {
+    /// Max time allowed for the message to process
+    ProcessingTimeoutMillis(u64),
+    /// Message timeout is relative to the message timestamp
+    MessageTimeoutMillis(u64),
+}
+
+op_ulid! {
+    /// Unique message type identifier
+    pub MessageTypeId
+}
+
+impl MessageTypeId {
+    /// converts itself into a MessageType
+    pub fn message_type(&self) -> MessageType {
+        MessageType(self.ulid())
+    }
+}
+
+/// Identifies the message type, whcih tells us how to decode the bytes message data.
+///
+/// # Why is there a MessageTypeId and MessageType - aren't they redundant ?
+/// Underneath the covers, MessageTypeId is really a u128. MessagePack does not support u128.
+/// Thus, for serializing messages, we use MessageType(ULID). MessageTypeId is used to define
+/// constants.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct MessageType(ULID);
+
+impl From<MessageTypeId> for MessageType {
+    fn from(type_id: MessageTypeId) -> MessageType {
+        MessageType(type_id.ulid())
+    }
+}
+
+impl MessageType {
+    /// ULID getter
+    pub fn ulid(&self) -> ULID {
+        self.0
+    }
+}
+
+impl fmt::Display for MessageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Message instance unique identifier.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct InstanceId(ULID);
+
+impl InstanceId {
+    /// generates a new MessageInstance
+    pub fn generate() -> InstanceId {
+        InstanceId(ULID::generate())
+    }
+
+    /// ULID getter
+    pub fn ulid(&self) -> ULID {
+        self.0
+    }
+}
+
+impl fmt::Display for InstanceId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Encoded message data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    metadata: Metadata,
+    data: MessageBytes,
+}
+
+impl Message {
+    /// constructor
+    pub fn new(metadata: Metadata, data: MessageBytes) -> Message {
+        Message { metadata, data }
+    }
+
+    /// returns the message metadata
+    pub fn metadata(&self) -> Metadata {
+        self.metadata
+    }
+
+    /// returns the message data
+    pub fn data(&self) -> &MessageBytes {
+        &self.data
+    }
+}
+
+/// Encoded message data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncodedMessage {
+    sender: Address,
+    recipient: Address,
+    msg: Message,
+}
+
+impl EncodedMessage {
+    /// returns the message metadata
+    pub fn metadata(&self) -> Metadata {
+        self.msg.metadata
+    }
+
+    /// returns the message data
+    pub fn data(&self) -> &MessageBytes {
+        &self.msg.data
+    }
+
+    /// return the sender's address
+    pub fn sender(&self) -> &Address {
+        &self.sender
+    }
+
+    /// return the recipient's address
+    pub fn recipient(&self) -> &Address {
+        &self.sender
+    }
+
+    /// converts into an OpenEnvelope
+    pub fn open_envelope(self) -> Result<OpenEnvelope, Error> {
+        let msg = MessageBytes(rmp_serde::to_vec(&self.msg).map_err(|err| {
+            op_error!(errors::MessageError::EncodedMessageSerializationFailed(
+                self.sender(),
+                errors::ErrorInfo(err.to_string())
+            ))
+        })?);
+        Ok(OpenEnvelope {
+            sender: self.sender,
+            recipient: self.recipient,
+            msg,
+        })
     }
 }
 
@@ -387,11 +601,6 @@ impl SessionId {
     /// session ULID
     pub fn ulid(&self) -> ULID {
         self.0
-    }
-
-    /// sign the session id to create a new SignedSessionId
-    pub fn sign(&self, private_key: &sign::SecretKey) -> SignedSessionId {
-        SignedSessionId::from_session_id(*self, private_key)
     }
 }
 
@@ -493,17 +702,6 @@ impl From<Vec<u8>> for SignedHash {
     }
 }
 
-/// Message header metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageHeader {
-    msg_type: MessageType,
-}
-
-op_ulid! {
-    /// Unique message type identifier
-    pub MessageType
-}
-
 #[allow(warnings)]
 #[cfg(test)]
 mod test {
@@ -555,7 +753,6 @@ mod test {
         let opening_key = client_addr.precompute_opening_key(&server_priv_key);
         let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
         let msg = b"data";
-        const FOO: MessageType = MessageType(1866963020838464595588390333368926107);
 
         run_test("seal_open_envelope", || {
             info!("addresses: {} -> {}", client_addr, server_addr);
@@ -676,20 +873,6 @@ mod test {
     }
 
     #[test]
-    fn signed_session_id() {
-        let (client_pub_key, client_priv_key) = sign::gen_keypair();
-
-        let session_id_1 = super::SessionId::generate();
-        let signed_session_id_1 = session_id_1.sign(&client_priv_key);
-
-        let session_id_2 = signed_session_id_1.verify(&client_pub_key).unwrap();
-        assert_eq!(session_id_1, session_id_2);
-
-        let signed_session_id_2 = session_id_2.sign(&client_priv_key);
-        assert_eq!(signed_session_id_1, signed_session_id_2);
-    }
-
-    #[test]
     fn encrypted_signed_hash() {
         let (client_pub_key, client_priv_key) = sign::gen_keypair();
         let cipher = secretbox::gen_key();
@@ -713,6 +896,63 @@ mod test {
             .unwrap();
         assert_eq!(digest_1, digest_2);
         assert_eq!(digest_1, data_hash);
+    }
+
+    #[test]
+    fn encoded_message() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let (client_addr, server_addr) =
+            (Address::from(client_pub_key), Address::from(server_pub_key));
+        let opening_key = client_addr.precompute_opening_key(&server_priv_key);
+        let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
+
+        fn new_msg() -> super::Message {
+            const MESSAGE_TYPE: super::MessageTypeId = super::MessageTypeId(1867384532653698871582487715619812439);
+            let metadata = super::Metadata::new(
+                MESSAGE_TYPE.message_type(),
+                super::Encoding::MessagePack(None),
+                None,
+            );
+            let data = super::MessageBytes::from(b"data".as_ref());
+            super::Message {
+                metadata,
+                data
+            }
+        }
+        let msg = new_msg();
+        let msg_bytes = rmp_serde::to_vec(&msg).unwrap();
+        if let Err(err) = rmp_serde::from_slice::<super::Message>(&msg_bytes) {
+            panic!("Failed to deserialize Message: {}", err);
+        }
+
+        run_test("sealed_envelope_encoding_decoding", || {
+            info!("addresses: {} -> {}", client_addr, server_addr);
+            let open_envelope =
+                OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), &rmp_serde::to_vec(&msg).unwrap());
+            let encoded_message = open_envelope.clone().encoded_message().unwrap();
+            let open_envelope_2 = encoded_message.open_envelope().unwrap();
+            assert_eq!(open_envelope.sender(), open_envelope_2.sender());
+            assert_eq!(open_envelope.recipient(), open_envelope_2.recipient());
+            assert_eq!(open_envelope.msg(), open_envelope_2.msg());
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn rmp_serde_deserialize_fails_when_skipping_none_option() {
+        #[derive(Debug, Serialize, Deserialize)]
+        struct Foo {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            bar: Option<bool>
+        }
+
+        let foo = Foo { bar: None } ;
+        let foo_bytes = rmp_serde::to_vec(&foo).unwrap();
+        // deserializing panics because rmp is expecting 1 element
+        // this is a bug in rmp_serde: https://github.com/3Hren/msgpack-rust/issues/86
+        let foo : Foo = rmp_serde::from_slice(&foo_bytes).unwrap();
     }
 
 }

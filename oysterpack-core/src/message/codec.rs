@@ -22,7 +22,8 @@ use std::{cmp, io};
 use tokio::codec::{Decoder, Encoder};
 use tokio::prelude::*;
 
-// TODO: track connection timeouts, i.e., if receiving or sending messages takes too long.
+// TODO: track connection timeouts, i.e., if receiving or sending messages takes too long then return an error
+// TODO: track metrics
 /// SealedEnvelope codec
 #[derive(Debug)]
 pub struct SealedEnvelopeCodec {

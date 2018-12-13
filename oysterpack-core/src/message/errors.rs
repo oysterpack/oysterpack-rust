@@ -55,19 +55,29 @@ impl fmt::Display for SealedEnvelopeOpenFailed<'_> {
     }
 }
 
+/// Provides information regarding the error.
+#[derive(Debug)]
+pub struct ErrorInfo(pub String);
+
+impl fmt::Display for ErrorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Message related errors
 #[derive(Debug)]
 pub enum MessageError<'a> {
     /// The key is not a valid public-key
     InvalidAddress(&'a [u8]),
     /// the sender's public-key is unknown
-    UnknownSender(&'a box_::PublicKey),
+    UnknownSender(&'a Address),
     /// the sender is forbidden, i.e., has been blocked
-    ForbiddenSender(&'a box_::PublicKey),
+    ForbiddenSender(&'a Address),
     /// the recipient's public-key is unknown.
-    UnknownRecipient(&'a box_::PublicKey),
+    UnknownRecipient(&'a Address),
     /// Payment is required
-    SenderPaymentRequired(&'a box_::PublicKey),
+    SenderPaymentRequired(&'a Address),
     /// Decoding error
     DecodingError(DecodingError),
     /// Encoding error
@@ -99,6 +109,10 @@ pub enum MessageError<'a> {
     ChecksumFailed(&'a sign::PublicKey),
     /// Decryption failed
     DecryptionFailed(&'a sign::PublicKey),
+    /// Decryption failed
+    MessageDataDeserializationFailed(&'a Address, ErrorInfo),
+    /// The EncodedMessage serialization failed
+    EncodedMessageSerializationFailed(&'a Address, ErrorInfo),
 }
 
 impl IsError for MessageError<'_> {
@@ -119,6 +133,12 @@ impl IsError for MessageError<'_> {
             MessageError::ChecksumFailed { .. } => Id(1867178063957932565585764976839329233), // 01CYDFRWD29J3TP97F47WS71EH
             MessageError::DecryptionFailed { .. } => Id(1867178498353912205043500705741562600), // 01CYDG3V9Y7D0XYEJKCH3MGRQ8
             MessageError::InvalidSessionId { .. } => Id(1867222419281185803983256937238975084), // 01CYEJRJB9R7Q902QW2HT5TMKC
+            MessageError::MessageDataDeserializationFailed(_, _) => {
+                Id(1867379901106813525954568540389375130)
+            } // 01CYJEZZ52QW58MHHQAQKXZZ4T
+            MessageError::EncodedMessageSerializationFailed(_, _) => {
+                Id(1867382411073195824459596594818407224)
+            } // 01CYJGZAP68TF3H847NCYE2PSR
         }
     }
 
@@ -140,6 +160,8 @@ impl IsError for MessageError<'_> {
             MessageError::ChecksumFailed(_) => Level::Alert,
             MessageError::DecryptionFailed(_) => Level::Alert,
             MessageError::InvalidSessionId { .. } => Level::Error,
+            MessageError::MessageDataDeserializationFailed(_, _) => Level::Error,
+            MessageError::EncodedMessageSerializationFailed(_, _) => Level::Error,
         }
     }
 }
@@ -152,26 +174,12 @@ impl fmt::Display for MessageError<'_> {
                 "Invalid address: {}",
                 crate::message::base58::encode(address)
             ),
-            MessageError::UnknownSender(address) => write!(
-                f,
-                "Unknown sender: {}",
-                crate::message::base58::encode(&address.0)
-            ),
-            MessageError::ForbiddenSender(address) => write!(
-                f,
-                "Forbidden sender: {}",
-                crate::message::base58::encode(&address.0)
-            ),
-            MessageError::UnknownRecipient(address) => write!(
-                f,
-                "Unknown recipient: {}",
-                crate::message::base58::encode(&address.0)
-            ),
-            MessageError::SenderPaymentRequired(address) => write!(
-                f,
-                "Sender payment is required: {}",
-                crate::message::base58::encode(&address.0)
-            ),
+            MessageError::UnknownSender(address) => write!(f, "Unknown sender: {}", address),
+            MessageError::ForbiddenSender(address) => write!(f, "Forbidden sender: {}", address),
+            MessageError::UnknownRecipient(address) => write!(f, "Unknown recipient: {}", address),
+            MessageError::SenderPaymentRequired(address) => {
+                write!(f, "Sender payment is required: {}", address)
+            }
             MessageError::DecodingError(err) => write!(f, "Failed to decode: {}", err),
             MessageError::EncodingError(err) => write!(f, "Failed to encode: {}", err),
             MessageError::InvalidSignature(address) => write!(
@@ -206,6 +214,16 @@ impl fmt::Display for MessageError<'_> {
                 "Invalid session ID [{}] from: {}",
                 session_id,
                 crate::message::base58::encode(&from.0)
+            ),
+            MessageError::MessageDataDeserializationFailed(address, err_info) => write!(
+                f,
+                "Failed to deserialize message data: {} : {}",
+                address, err_info
+            ),
+            MessageError::EncodedMessageSerializationFailed(address, err_info) => write!(
+                f,
+                "Failed to serialize encoded message: {} : {}",
+                address, err_info
             ),
         }
     }

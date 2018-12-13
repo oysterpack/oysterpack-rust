@@ -41,6 +41,10 @@ bytes = "0.4.11"
 exonum_sodiumoxide = "0.0.20"
 bs58 = "0.2.2"
 
+flate2 = "1.0.6"
+lz4 = "1.23.1"
+parity-snappy = "0.1.0"
+
 [dev-dependencies]
 version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
