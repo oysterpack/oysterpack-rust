@@ -64,3 +64,7 @@ harness = false
 [[bench]]
 name = "async_logger"
 harness = false
+
+[[bench]]
+name = "message_encoding"
+harness = false

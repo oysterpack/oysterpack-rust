@@ -378,7 +378,7 @@ impl std::iter::FromIterator<u8> for MessageBytes {
 }
 
 /// Message metadata
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct Metadata {
     msg_type: MessageType,
     instance_id: InstanceId,
@@ -422,6 +422,12 @@ impl Metadata {
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
+}
+
+/// Used to attach the MessageId to the message type
+pub trait IsMessage {
+    /// MessageTypeId is defined on the message type
+    const MESSAGE_TYPE_ID: MessageTypeId;
 }
 
 /// Compression mode
@@ -509,6 +515,13 @@ impl Compression {
 }
 
 /// Message encoding format
+///
+/// ## Performance (based on simple benchmark tests)
+/// - bincode tends to be the smallest, with messagepack a close 2nd
+/// - based on some simple benchmarks, bincode+snappy are the fastest, again with messagepack+snappy
+///   a close runner up
+///
+/// You will want to benchmark to see what works best for your use case.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum Encoding {
     /// [MessagePack](https://msgpack.org/) - default
@@ -719,7 +732,7 @@ where
 
 impl<T> Message<T>
 where
-    T: fmt::Debug + Clone,
+    T: fmt::Debug + Clone + serde::Serialize,
 {
     /// constructor
     pub fn new(metadata: Metadata, data: T) -> Message<T> {
@@ -735,15 +748,42 @@ where
     pub fn data(&self) -> &T {
         &self.data
     }
+
+    /// encode the message data into bytes
+    pub fn encode(self) -> Result<Message<MessageBytes>, Error> {
+        match self.metadata.encoding.encode(self.data) {
+            Ok(data) => Ok(Message {
+                metadata: self.metadata,
+                data: MessageBytes(data),
+            }),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// converts itself into an EncodedMessage
+    pub fn encoded_message(
+        self,
+        sender: Address,
+        recipient: Address,
+    ) -> Result<EncodedMessage, Error> {
+        Ok(EncodedMessage {
+            sender,
+            recipient,
+            msg: self.encode()?,
+        })
+    }
 }
 
 impl Message<MessageBytes> {
     /// converts the MessageBytes data to the specified type, based on the message metatdata
-    pub fn decode<T>(self) -> Message<T>
+    pub fn decode<T>(self) -> Result<Message<T>, Error>
     where
-        T: fmt::Debug + Clone,
+        T: fmt::Debug + Clone + serde::de::DeserializeOwned + serde::Serialize,
     {
-        unimplemented!()
+        match self.metadata.encoding.decode::<T>(self.data.data()) {
+            Ok(data) => Ok(Message::new(self.metadata, data)),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -789,6 +829,49 @@ impl EncodedMessage {
             recipient: self.recipient,
             msg,
         })
+    }
+
+    /// converts the MessageBytes data to the specified type, based on the message metatdata
+    pub fn decode<T>(self) -> Result<(Addresses, Message<T>), Error>
+    where
+        T: fmt::Debug + Clone + serde::de::DeserializeOwned + serde::Serialize,
+    {
+        match self.msg.decode() {
+            Ok(msg) => Ok((Addresses::new(self.sender, self.recipient), msg)),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// constructor which encodes the specified message
+    pub fn encode<T>(addresses: Addresses, msg: Message<T>) -> Result<EncodedMessage, Error>
+    where
+        T: fmt::Debug + Clone + serde::Serialize,
+    {
+        msg.encoded_message(addresses.sender, addresses.recipient)
+    }
+}
+
+/// Envelope addresses contain the sender's and recipient's addresses
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Addresses {
+    sender: Address,
+    recipient: Address,
+}
+
+impl Addresses {
+    /// constructor
+    pub fn new(sender: Address, recipient: Address) -> Addresses {
+        Addresses { sender, recipient }
+    }
+
+    /// sender address
+    pub fn sender(&self) -> &Address {
+        &self.sender
+    }
+
+    /// recipient address
+    pub fn recipient(&self) -> &Address {
+        &self.recipient
     }
 }
 
@@ -1112,6 +1195,9 @@ mod test {
         let opening_key = client_addr.precompute_opening_key(&server_priv_key);
         let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
 
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+
         fn new_msg() -> super::Message<MessageBytes> {
             const MESSAGE_TYPE: super::MessageTypeId =
                 super::MessageTypeId(1867384532653698871582487715619812439);
@@ -1120,14 +1206,21 @@ mod test {
                 super::Encoding::MessagePack(None),
                 None,
             );
-            let data = super::MessageBytes::from(b"data".as_ref());
+            let data =
+                super::MessageBytes::from(rmp_serde::to_vec(&Foo("FOO".to_string())).unwrap());
             super::Message { metadata, data }
         }
         let msg = new_msg();
+
+        // verify that msg can be serialized / deserialized
         let msg_bytes = rmp_serde::to_vec(&msg).unwrap();
         if let Err(err) = rmp_serde::from_slice::<super::Message<MessageBytes>>(&msg_bytes) {
             panic!("Failed to deserialize Message: {}", err);
         }
+
+        // verify that the Message<MessageBytes> can be converted into Message<Foo>
+        let foo_msg = msg.clone().decode::<Foo>().unwrap();
+        assert_eq!(*foo_msg.data(), Foo("FOO".to_string()));
 
         run_test("sealed_envelope_encoding_decoding", || {
             info!("addresses: {} -> {}", client_addr, server_addr);
@@ -1141,6 +1234,364 @@ mod test {
             assert_eq!(open_envelope.sender(), open_envelope_2.sender());
             assert_eq!(open_envelope.recipient(), open_envelope_2.recipient());
             assert_eq!(open_envelope.msg(), open_envelope_2.msg());
+
+            let encoded_message = open_envelope.encoded_message().unwrap();
+            let (addresses, msg) = encoded_message.clone().decode::<Foo>().unwrap();
+            let encoded_message_2 = super::EncodedMessage::encode(addresses, msg).unwrap();
+            assert_eq!(encoded_message.sender(), encoded_message_2.sender());
+            assert_eq!(encoded_message.recipient(), encoded_message_2.recipient());
+            assert_eq!(encoded_message.metadata(), encoded_message_2.metadata());
+            assert_eq!(encoded_message.data(), encoded_message_2.data());
+        });
+    }
+
+    // no compression msg size = 122
+    // deflate msg size = 53
+    // snappy msg size = 54
+    // zlib msg size = 59
+    // gzip msg size = 71
+    // lz4 msg size = 76
+    #[test]
+    fn messagepack_compressed_encodings() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = super::Addresses::new(client_pub_key.into(), server_pub_key.into());
+
+        use super::IsMessage;
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+        impl IsMessage for Foo {
+            const MESSAGE_TYPE_ID: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+        }
+
+        let foo = Foo("hello 1867384532653698871582487715619812439 1867384532653698871582487715619812439 1867384532653698871582487715619812439".to_string());
+
+        run_test("messagepack_compressed_encodings", || {
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(None),
+                None,
+            );
+            let msg = super::Message::new(metadata, foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("no compression msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(Some(super::Compression::Deflate)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("deflate msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(Some(super::Compression::Gzip)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("gzip msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(Some(super::Compression::Zlib)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("zlib msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(Some(super::Compression::Snappy)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("snappy msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::MessagePack(Some(super::Compression::Lz4)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("lz4 msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+        });
+    }
+
+    #[test]
+    fn bincode_compressed_encodings() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = super::Addresses::new(client_pub_key.into(), server_pub_key.into());
+
+        use super::IsMessage;
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+        impl IsMessage for Foo {
+            const MESSAGE_TYPE_ID: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+        }
+
+        let foo = Foo("hello 1867384532653698871582487715619812439 1867384532653698871582487715619812439 1867384532653698871582487715619812439".to_string());
+
+        run_test("bincode_compressed_encodings", || {
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(None),
+                None,
+            );
+            let msg = super::Message::new(metadata, foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("no compression msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(Some(super::Compression::Deflate)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("deflate msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(Some(super::Compression::Gzip)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("gzip msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(Some(super::Compression::Zlib)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("zlib msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(Some(super::Compression::Snappy)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("snappy msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::Bincode(Some(super::Compression::Lz4)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("lz4 msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+        });
+    }
+
+    #[test]
+    fn json_compressed_encodings() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = super::Addresses::new(client_pub_key.into(), server_pub_key.into());
+
+        use super::IsMessage;
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+        impl IsMessage for Foo {
+            const MESSAGE_TYPE_ID: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+        }
+
+        let foo = Foo("hello 1867384532653698871582487715619812439 1867384532653698871582487715619812439 1867384532653698871582487715619812439".to_string());
+
+        run_test("json_compressed_encodings", || {
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(None),
+                None,
+            );
+            let msg = super::Message::new(metadata, foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("no compression msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(Some(super::Compression::Deflate)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("deflate msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(Some(super::Compression::Gzip)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("gzip msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(Some(super::Compression::Zlib)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("zlib msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(Some(super::Compression::Snappy)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("snappy msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::JSON(Some(super::Compression::Lz4)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("lz4 msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+        });
+    }
+
+    #[test]
+    fn cbor_compressed_encodings() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let addresses = super::Addresses::new(client_pub_key.into(), server_pub_key.into());
+
+        use super::IsMessage;
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+        impl IsMessage for Foo {
+            const MESSAGE_TYPE_ID: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+        }
+
+        let foo = Foo("hello 1867384532653698871582487715619812439 1867384532653698871582487715619812439 1867384532653698871582487715619812439".to_string());
+
+        run_test("cbor_compressed_encodings", || {
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(None),
+                None,
+            );
+            let msg = super::Message::new(metadata, foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("no compression msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(Some(super::Compression::Deflate)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("deflate msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(Some(super::Compression::Gzip)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("gzip msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(Some(super::Compression::Zlib)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("zlib msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(Some(super::Compression::Snappy)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("snappy msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
+
+            let metadata = super::Metadata::new(
+                Foo::MESSAGE_TYPE_ID.message_type(),
+                super::Encoding::CBOR(Some(super::Compression::Lz4)),
+                None,
+            );
+            let msg = super::Message::new(metadata.clone(), foo.clone());
+            let msg = msg.encode().unwrap();
+            info!("lz4 msg size = {}", msg.data().data().len());
+            let msg = msg.decode::<Foo>().unwrap();
+            assert_eq!(*msg.data(), foo);
         });
     }
 
