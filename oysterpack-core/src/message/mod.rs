@@ -93,6 +93,7 @@ use std::{
 pub mod base58;
 pub mod codec;
 pub mod errors;
+pub mod service;
 
 /// Max message size - 256 KB
 pub const MAX_MSG_SIZE: usize = 1000 * 256;

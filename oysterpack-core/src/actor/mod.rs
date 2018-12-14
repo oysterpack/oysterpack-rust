@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! Actors are core on the OysterPack platform. [Actix](https://crates.io/crates/actix) is used as the
 //! underlying Actor framework. Top level actors are registered as services, either as an ArbiterService
@@ -507,7 +509,7 @@ pub mod logger;
 #[derive(Clone)]
 pub struct AppClient {
     get_build: Recipient<app::GetBuild>,
-    get_app_instance_id: Recipient<app::GetInstanceId>,
+    get_instance_id: Recipient<app::GetInstanceId>,
     get_app_instance_info: Recipient<app::GetAppInstanceInfo>,
     get_log_config: Recipient<app::GetLogConfig>,
     get_registered_services: Recipient<app::GetRegisteredServices>,
@@ -531,7 +533,7 @@ impl AppClient {
 
         AppClient {
             get_build: app.clone().recipient(),
-            get_app_instance_id: app.clone().recipient(),
+            get_instance_id: app.clone().recipient(),
             get_app_instance_info: app.clone().recipient(),
             get_log_config: app.clone().recipient(),
             get_registered_services: app.clone().recipient(),
@@ -592,16 +594,16 @@ impl AppClient {
 
     /// Returns a future that will return App instance id ULID.
     /// - MailboxError should never happen
-    pub fn get_app_instance_id(
+    pub fn get_instance_id(
         &self,
         timeout: Option<time::Duration>,
     ) -> impl Future<Item = ULID, Error = MailboxError> {
         match timeout {
             Some(duration) => self
-                .get_app_instance_id
+                .get_instance_id
                 .send(app::GetInstanceId)
                 .timeout(duration),
-            None => self.get_app_instance_id.send(app::GetInstanceId),
+            None => self.get_instance_id.send(app::GetInstanceId),
         }
     }
 
@@ -899,7 +901,7 @@ mod tests {
             future::lazy(|| {
                 let app_client = AppClient::get();
 
-                let get_app_instance_id = app_client.get_app_instance_id(None);
+                let get_app_instance_id = app_client.get_instance_id(None);
                 let get_app_instance_info = app_client.get_app_instance_info(None);
                 let get_build = app_client.get_build(None);
                 let get_log_config = app_client.get_log_config(None);

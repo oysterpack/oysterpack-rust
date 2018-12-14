@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! macros
 
@@ -130,6 +132,9 @@ macro_rules! op_actor_service {
         impl $crate::actix::dev::Actor for $name {
             type Context = $crate::actix::dev::Context<Self>;
 
+            /// - logs ServiceLifeCycle::Started event
+            /// - registers the service with the app
+            /// - invokes LifeCycle::on_started(), which is the hook to run any Actor specific initialization
             fn started(&mut self, c: &mut Self::Context) {
                 $crate::__op_log_event_for_service!(
                     self,
@@ -150,6 +155,8 @@ macro_rules! op_actor_service {
                 self.on_started(c);
             }
 
+            /// - logs ServiceLifeCycle::Stopped event
+            /// - invokes LifeCycle.on_stopped() - which is the hook to run any Actor service cleanup
             fn stopped(&mut self, c: &mut Self::Context) {
                 $crate::__op_log_event_for_service!(
                     self,
@@ -159,13 +166,22 @@ macro_rules! op_actor_service {
                 self.on_stopped(c);
             }
 
+            /// - logs ServiceLifeCycle::Stopping event
+            /// - invokes LifeCycle.on_stopping() - which is the hook to run any Actor service cleanup
             fn stopping(&mut self, c: &mut Self::Context) -> actix::Running {
+                $crate::__op_log_event_for_service!(
+                    self,
+                    $crate::actor::events::ServiceLifeCycle::Stopping
+                );
                 use $crate::actor::LifeCycle;
                 self.on_stopping(c)
             }
         }
 
         impl $crate::actix::dev::ArbiterService for $name {
+            /// - logs ServiceLifeCycle::ServiceStarted event
+            /// - invokes LifeCycle.on_service_started() - which is the hook to run any Actor service
+            ///   initialization
             fn service_started(&mut self, c: &mut Self::Context) {
                 $crate::__op_log_event_for_service!(
                     self,
@@ -177,6 +193,9 @@ macro_rules! op_actor_service {
         }
 
         impl $crate::actix::dev::Supervised for $name {
+            /// - logs ServiceLifeCycle::Restarting event
+            /// - invokes LifeCycle.on_service_started() - notifies the Actor that the service is
+            ///   being restarted
             fn restarting(&mut self, c: &mut Self::Context) {
                 $crate::__op_log_event_for_service!(
                     self,
@@ -248,6 +267,10 @@ macro_rules! op_actor_service {
             }
 
             fn stopping(&mut self, c: &mut Self::Context) -> actix::Running {
+                $crate::__op_log_event_for_app_service!(
+                    self,
+                    $crate::actor::events::ServiceLifeCycle::Stopping
+                );
                 use $crate::actor::LifeCycle;
                 self.on_stopping(c)
             }

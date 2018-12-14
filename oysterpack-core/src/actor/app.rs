@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! Application Actor is used to represent the application.
 //! - each new instance is assigned a unique instance id, in the form of a TypedULID&lt;App&gt;
@@ -25,12 +27,12 @@ use oysterpack_uid::ULID;
 use crate::actor::{
     eventlog::{EventLog, LogEvent},
     events, AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId,
-    ServiceClient, ServiceInfo,
+    ServiceClient, ServiceInfo, AppClient
 };
 
 use actix::dev::{Handler, Message, MessageResult, System};
 use futures::{future, prelude::Future};
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, time};
 
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
@@ -38,7 +40,6 @@ pub const SERVICE_ID: ServiceId = ServiceId(186555895525892237512021671578869946
 /// App represents an application instance.
 #[derive(Debug)]
 pub struct App {
-    instance_id: ULID,
     build: Option<Build>,
     service_info: ServiceInfo,
     service_registry: HashMap<ServiceInfo, ServiceClient>,
@@ -51,7 +52,6 @@ op_actor_service! {
 impl Default for App {
     fn default() -> App {
         App {
-            instance_id: ULID::generate(),
             build: None,
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
             service_registry: HashMap::new(),
@@ -106,6 +106,19 @@ impl App {
                 });
             crate::actor::spawn_task(task);
         })
+    }
+
+    /// AppInstanceInfo getter
+    pub fn app_instance_info(&self) -> AppInstanceInfo {
+        AppInstanceInfo {
+            package_id: self
+                .build
+                .as_ref()
+                .map_or_else(PackageId::for_this_crate, |build| {
+                    build.package().id().clone()
+                }),
+            instance_id: self.service_info.instance_id().ulid(),
+        }
     }
 }
 
@@ -189,7 +202,7 @@ impl Handler<GetInstanceId> for App {
     type Result = MessageResult<GetInstanceId>;
 
     fn handle(&mut self, _: GetInstanceId, _: &mut Self::Context) -> Self::Result {
-        MessageResult(self.instance_id)
+        MessageResult(self.service_info.instance_id().ulid())
     }
 }
 
@@ -211,7 +224,7 @@ impl AppInstanceInfo {
         &self.package_id
     }
 
-    /// App instance id getter
+    /// is the same as the service instance ID
     pub fn instance_id(&self) -> ULID {
         self.instance_id
     }
@@ -231,15 +244,7 @@ impl Handler<GetAppInstanceInfo> for App {
     type Result = MessageResult<GetAppInstanceInfo>;
 
     fn handle(&mut self, _: GetAppInstanceInfo, _: &mut Self::Context) -> Self::Result {
-        MessageResult(AppInstanceInfo {
-            package_id: self
-                .build
-                .as_ref()
-                .map_or_else(PackageId::for_this_crate, |build| {
-                    build.package().id().clone()
-                }),
-            instance_id: self.instance_id,
-        })
+        MessageResult(self.app_instance_info())
     }
 }
 
