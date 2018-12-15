@@ -18,7 +18,7 @@
 
 use super::{Address, Encoding, SessionId};
 use exonum_sodiumoxide::crypto::{box_, sign};
-use oysterpack_errors::{Id, IsError, Level};
+use oysterpack_errors::{ErrorMessage, Id, IsError, Level};
 use std::fmt;
 
 /// Indicates that a SealedEnvelope failed to be open.
@@ -233,9 +233,9 @@ impl fmt::Display for MessageError<'_> {
 #[derive(Debug)]
 pub enum DecodingError {
     /// SealedEnvelope failed to be decoded
-    InvalidSealedEnvelope(rmp_serde::decode::Error),
+    InvalidSealedEnvelope(ErrorMessage),
     /// SealedSignedMessage failed to be decoded
-    InvalidSealedSignedMessage(rmp_serde::decode::Error),
+    InvalidSealedSignedMessage(ErrorMessage),
 }
 
 impl fmt::Display for DecodingError {
@@ -250,9 +250,9 @@ impl fmt::Display for DecodingError {
 #[derive(Debug)]
 pub enum EncodingError {
     /// SealedEnvelope failed to be encoded
-    InvalidSealedEnvelope(rmp_serde::encode::Error),
+    InvalidSealedEnvelope(ErrorMessage),
     /// SealedSignedMessage failed to be encoded
-    InvalidSealedSignedMessage(rmp_serde::encode::Error),
+    InvalidSealedSignedMessage(ErrorMessage),
 }
 
 impl fmt::Display for EncodingError {

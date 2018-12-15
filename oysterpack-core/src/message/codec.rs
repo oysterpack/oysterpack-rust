@@ -117,8 +117,8 @@ mod tests {
     use super::*;
     use crate::message::*;
     use crate::tests::run_test;
-    use tokio::codec::{Decoder, Encoder};
     use exonum_sodiumoxide::crypto::box_;
+    use tokio::codec::{Decoder, Encoder};
 
     #[test]
     fn sealed_envelope_codec() {
@@ -158,7 +158,7 @@ mod tests {
                 OpenEnvelope::new(client_addr.clone(), server_addr.clone(), &vec![1]);
             let mut sealed_envelope = open_envelope.seal(&sealing_key);
 
-            let bytes = rmp_serde::to_vec(&sealed_envelope).unwrap();
+            let bytes = bincode::serialize(&sealed_envelope).unwrap();
             let (left, right) = bytes.split_at(SEALED_ENVELOPE_MIN_SIZE);
             buf.extend_from_slice(left);
             assert!(codec.decode(&mut buf).unwrap().is_none());

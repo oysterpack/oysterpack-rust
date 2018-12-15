@@ -374,11 +374,11 @@ mod tests {
         let sealed_envelope = {
             let metadata = crate::message::Metadata::new(
                 Foo::MESSAGE_TYPE_ID.message_type(),
-                crate::message::Encoding::Bincode(None),
+                crate::message::Encoding::Bincode(Some(crate::message::Compression::Snappy)),
                 Some(crate::message::Deadline::ProcessingTimeoutMillis(10)),
-//                None
+
             );
-            let msg = crate::message::Message::new(metadata, Foo("hello".to_string()));
+            let msg = crate::message::Message::new(metadata, Foo("cryptocurrency is changing the world through decentralization".to_string()));
             let msg = msg
                 .encoded_message(addresses.sender().clone(), addresses.recipient().clone())
                 .unwrap();

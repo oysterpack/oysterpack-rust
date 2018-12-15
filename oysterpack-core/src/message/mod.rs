@@ -75,16 +75,11 @@
 //!   - take away lesson is don't use the Serde #[serde(skip_serializing_if="Option::is_none")] feature
 //!
 
-use bincode;
 use chrono::{DateTime, Duration, Utc};
 use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
 use flate2::bufread;
-use oysterpack_errors::{Error, Id as ErrorId, IsError, Level as ErrorLevel};
+use oysterpack_errors::{Error, ErrorMessage, Id as ErrorId, IsError, Level as ErrorLevel};
 use oysterpack_uid::ULID;
-use rmp_serde;
-use serde;
-use serde_cbor;
-use serde_json;
 use std::{
     cmp, error, fmt,
     io::{self, Read, Write},
@@ -105,6 +100,11 @@ pub const SEALED_ENVELOPE_MIN_SIZE: usize = 90;
 /// A sealed envelope is secured via public-key authenticated encryption. It contains a private message
 /// that is encrypted using the recipient's public-key and the sender's private-key. If the recipient
 /// is able to decrypt the message, then the recipient knows it was sealed by the sender.
+///
+/// [Bincode](https://crates.io/crates/bincode) is used as the envelope's default binary encoding via
+/// [SealedEnvelope::decode()](#method.decode) and [SealedEnvelope::encode()](#method.encode)
+/// However, any encoding can be used for the embedded message.
+/// - in benchmarks (compared to MessagePack, JSON, and CBOR), bincode encoding is the fastest and the most memory efficient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SealedEnvelope {
     sender: Address,
@@ -115,25 +115,26 @@ pub struct SealedEnvelope {
 
 impl SealedEnvelope {
     /// decodes the io stream to construct a new SealedEnvelope
+    /// - the stream must use the [bincode](https://crates.io/crates/bincode) encoding
     pub fn decode<R>(read: R) -> Result<SealedEnvelope, Error>
     where
         R: io::Read,
     {
-        rmp_serde::from_read(read).map_err(|err| {
+        bincode::deserialize_from(read).map_err(|err| {
             op_error!(errors::MessageError::DecodingError(
-                errors::DecodingError::InvalidSealedEnvelope(err)
+                errors::DecodingError::InvalidSealedEnvelope(ErrorMessage(err.to_string()))
             ))
         })
     }
 
-    /// encode the SealedEnvelope and write it to the io stream
+    /// encode the SealedEnvelope and write it to the io stream using [bincode](https://crates.io/crates/bincode) encoding
     pub fn encode<W: ?Sized>(&self, wr: &mut W) -> Result<(), Error>
     where
         W: io::Write,
     {
-        rmp_serde::encode::write(wr, self).map_err(|err| {
+        bincode::serialize_into(wr, self).map_err(|err| {
             op_error!(errors::MessageError::EncodingError(
-                errors::EncodingError::InvalidSealedEnvelope(err)
+                errors::EncodingError::InvalidSealedEnvelope(ErrorMessage(err.to_string()))
             ))
         })
     }
@@ -245,7 +246,7 @@ impl OpenEnvelope {
 
     /// parses the message data into an encoded message
     pub fn encoded_message(self) -> Result<EncodedMessage, Error> {
-        let msg: Message<MessageBytes> = rmp_serde::from_slice(self.msg()).map_err(|err| {
+        let msg: Message<MessageBytes> = bincode::deserialize(self.msg()).map_err(|err| {
             op_error!(errors::MessageError::MessageDataDeserializationFailed(
                 &self.sender,
                 errors::ErrorInfo(err.to_string())
@@ -519,15 +520,16 @@ impl Compression {
 /// Message encoding format
 ///
 /// ## Performance (based on simple benchmark tests)
-/// - bincode tends to be the smallest, with messagepack a close 2nd
-/// - based on some simple benchmarks, bincode+snappy are the fastest, again with messagepack+snappy
-///   a close runner up
+/// - bincode tends to be the smallest
+/// - based on some simple benchmarks, bincode+snappy are the fastest
 ///
 /// You will want to benchmark to see what works best for your use case.
+///
+/// ## Notes
+/// - [MessagePack](https://crates.io/crates/rmp-serde) was dropped because it was found to be too buggy
+///   - there are issues deserializing Option(s), which is a show stopper
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum Encoding {
-    /// [MessagePack](https://msgpack.org/) - default
-    MessagePack(Option<Compression>),
     /// [Bincode](https://github.com/TyOverby/bincode)
     Bincode(Option<Compression>),
     /// [CBOR](http://cbor.io/)
@@ -543,11 +545,6 @@ impl Encoding {
         T: serde::Serialize,
     {
         let (data, compression) = match self {
-            Encoding::MessagePack(compression) => {
-                let data = rmp_serde::to_vec(&data)
-                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
-                (data, compression)
-            }
             Encoding::Bincode(compression) => {
                 let data = bincode::serialize(&data)
                     .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
@@ -580,20 +577,6 @@ impl Encoding {
         T: serde::de::DeserializeOwned,
     {
         match self {
-            Encoding::MessagePack(compression) => {
-                if let Some(compression) = compression {
-                    compression
-                        .decompress(data)
-                        .and_then(|data| {
-                            rmp_serde::from_slice(&data)
-                                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
-                        })
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
-                } else {
-                    rmp_serde::from_slice(data)
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
-                }
-            }
             Encoding::Bincode(compression) => {
                 if let Some(compression) = compression {
                     compression
@@ -643,7 +626,6 @@ impl Encoding {
 impl fmt::Display for Encoding {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Encoding::MessagePack(compression) => write!(f, "MessagePack({:?})", compression),
             Encoding::Bincode(compression) => write!(f, "Bincode({:?})", compression),
             Encoding::CBOR(compression) => write!(f, "CBOR({:?})", compression),
             Encoding::JSON(compression) => write!(f, "JSON({:?})", compression),
@@ -852,7 +834,7 @@ impl EncodedMessage {
 
     /// converts into an OpenEnvelope
     pub fn open_envelope(self) -> Result<OpenEnvelope, Error> {
-        let msg = MessageBytes(rmp_serde::to_vec(&self.msg).map_err(|err| {
+        let msg = MessageBytes(bincode::serialize(&self.msg).map_err(|err| {
             op_error!(errors::MessageError::EncodedMessageSerializationFailed(
                 self.sender(),
                 errors::ErrorInfo(err.to_string())
@@ -1043,7 +1025,7 @@ mod test {
     }
 
     #[test]
-    fn deserialize_byte_stream_using_rmp_serde() {
+    fn deserialize_byte_stream_using_bincode() {
         let p1 = Person {
             fname: "Alfio".to_string(),
             lname: "Zappala".to_string(),
@@ -1053,14 +1035,14 @@ mod test {
             lname: "Antonopoulos".to_string(),
         };
 
-        let mut p1_bytes = rmp_serde::to_vec(&p1).map_err(|_| ()).unwrap();
-        let mut p2_bytes = rmp_serde::to_vec(&p2).map_err(|_| ()).unwrap();
+        let mut p1_bytes = bincode::serialize(&p1).map_err(|_| ()).unwrap();
+        let mut p2_bytes = bincode::serialize(&p2).map_err(|_| ()).unwrap();
         let p1_bytes_len = p1_bytes.len();
         p1_bytes.append(&mut p2_bytes);
         let bytes = p1_bytes.as_slice();
-        let p1: Person = rmp_serde::from_read(bytes).unwrap();
+        let p1: Person = bincode::deserialize_from(bytes).unwrap();
         println!("p1: {:?}", p1);
-        let p2: Person = rmp_serde::from_read(&bytes[p1_bytes_len..]).unwrap();
+        let p2: Person = bincode::deserialize_from(&bytes[p1_bytes_len..]).unwrap();
         println!("p2: {:?}", p2);
     }
 
@@ -1079,10 +1061,10 @@ mod test {
             info!("addresses: {} -> {}", client_addr, server_addr);
             let open_envelope =
                 OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), msg);
-            let open_envelope_rmp = rmp_serde::to_vec(&open_envelope).unwrap();
+            let open_envelope_rmp = bincode::serialize(&open_envelope).unwrap();
             info!("open_envelope_rmp len = {}", open_envelope_rmp.len());
             let sealed_envelope = open_envelope.seal(&sealing_key);
-            let sealed_envelope_rmp = rmp_serde::to_vec(&sealed_envelope).unwrap();
+            let sealed_envelope_rmp = bincode::serialize(&sealed_envelope).unwrap();
             info!("sealed_envelope_rmp len = {}", sealed_envelope_rmp.len());
             info!(
                 "sealed_envelope json: {}",
@@ -1180,8 +1162,8 @@ mod test {
 
         let ulid = oysterpack_uid::ULID::generate();
         let foo = Foo(ulid.into());
-        let ulid_bytes = rmp_serde::to_vec(&ulid).unwrap();
-        let foo_bytes = rmp_serde::to_vec(&foo).unwrap();
+        let ulid_bytes = bincode::serialize(&ulid).unwrap();
+        let foo_bytes = bincode::serialize(&foo).unwrap();
         println!(
             "foo_bytes.len = {}, ulid_bytes.len = {}",
             foo_bytes.len(),
@@ -1233,8 +1215,9 @@ mod test {
                 Some(super::Deadline::ProcessingTimeoutMillis(100)),
             );
 
-            let data =
-                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
+            let data = super::MessageBytes::from(
+                metadata.encoding().encode(&Foo("FOO".to_string())).unwrap(),
+            );
             super::Message { metadata, data }
         }
         let msg = new_msg();
@@ -1265,12 +1248,13 @@ mod test {
                 super::MessageTypeId(1867384532653698871582487715619812439);
             let metadata = super::Metadata::new(
                 MESSAGE_TYPE.message_type(),
-                super::Encoding::MessagePack(None),
+                super::Encoding::Bincode(None),
                 Some(super::Deadline::ProcessingTimeoutMillis(100)),
             );
 
-            let data =
-                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
+            let data = super::MessageBytes::from(
+                metadata.encoding().encode(&Foo("FOO".to_string())).unwrap(),
+            );
             super::Message { metadata, data }
         }
         let msg = new_msg();
@@ -1291,7 +1275,7 @@ mod test {
             let open_envelope = OpenEnvelope::new(
                 client_pub_key.into(),
                 server_pub_key.into(),
-                &rmp_serde::to_vec(&msg).unwrap(),
+                &bincode::serialize(&msg).unwrap(),
             );
             let encoded_message = open_envelope.clone().encoded_message().unwrap();
             let open_envelope_2 = encoded_message.open_envelope().unwrap();
@@ -1331,8 +1315,9 @@ mod test {
                 None,
             );
 
-            let data =
-                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
+            let data = super::MessageBytes::from(
+                metadata.encoding().encode(&Foo("FOO".to_string())).unwrap(),
+            );
             super::Message { metadata, data }
         }
         let msg = new_msg();
@@ -1353,7 +1338,7 @@ mod test {
             let open_envelope = OpenEnvelope::new(
                 client_pub_key.into(),
                 server_pub_key.into(),
-                &rmp_serde::to_vec(&msg).unwrap(),
+                &bincode::serialize(&msg).unwrap(),
             );
             let encoded_message = open_envelope.clone().encoded_message().unwrap();
             let open_envelope_2 = encoded_message.open_envelope().unwrap();
@@ -1368,98 +1353,6 @@ mod test {
             assert_eq!(encoded_message.recipient(), encoded_message_2.recipient());
             assert_eq!(encoded_message.metadata(), encoded_message_2.metadata());
             assert_eq!(encoded_message.data(), encoded_message_2.data());
-        });
-    }
-
-    // no compression msg size = 122
-    // deflate msg size = 53
-    // snappy msg size = 54
-    // zlib msg size = 59
-    // gzip msg size = 71
-    // lz4 msg size = 76
-    #[test]
-    fn messagepack_compressed_encodings() {
-        let (client_pub_key, client_priv_key) = box_::gen_keypair();
-        let (server_pub_key, server_priv_key) = box_::gen_keypair();
-
-        let addresses = super::Addresses::new(client_pub_key.into(), server_pub_key.into());
-
-        use super::IsMessage;
-        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-        struct Foo(String);
-        impl IsMessage for Foo {
-            const MESSAGE_TYPE_ID: super::MessageTypeId =
-                super::MessageTypeId(1867384532653698871582487715619812439);
-        }
-
-        let foo = Foo("hello 1867384532653698871582487715619812439 1867384532653698871582487715619812439 1867384532653698871582487715619812439".to_string());
-
-        run_test("messagepack_compressed_encodings", || {
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(None),
-                None,
-            );
-            let msg = super::Message::new(metadata, foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("no compression msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
-
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(Some(super::Compression::Deflate)),
-                None,
-            );
-            let msg = super::Message::new(metadata.clone(), foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("deflate msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
-
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(Some(super::Compression::Gzip)),
-                None,
-            );
-            let msg = super::Message::new(metadata.clone(), foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("gzip msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
-
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(Some(super::Compression::Zlib)),
-                None,
-            );
-            let msg = super::Message::new(metadata.clone(), foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("zlib msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
-
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(Some(super::Compression::Snappy)),
-                None,
-            );
-            let msg = super::Message::new(metadata.clone(), foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("snappy msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
-
-            let metadata = super::Metadata::new(
-                Foo::MESSAGE_TYPE_ID.message_type(),
-                super::Encoding::MessagePack(Some(super::Compression::Lz4)),
-                None,
-            );
-            let msg = super::Message::new(metadata.clone(), foo.clone());
-            let msg = msg.encode().unwrap();
-            info!("lz4 msg size = {}", msg.data().data().len());
-            let msg = msg.decode::<Foo>().unwrap();
-            assert_eq!(*msg.data(), foo);
         });
     }
 
@@ -1719,22 +1612,6 @@ mod test {
             let msg = msg.decode::<Foo>().unwrap();
             assert_eq!(*msg.data(), foo);
         });
-    }
-
-    #[test]
-    #[ignore]
-    fn rmp_serde_deserialize_fails_when_skipping_none_option() {
-        #[derive(Debug, Serialize, Deserialize)]
-        struct Foo {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            bar: Option<bool>,
-        }
-
-        let foo = Foo { bar: None };
-        let foo_bytes = rmp_serde::to_vec(&foo).unwrap();
-        // deserializing panics because rmp is expecting 1 element
-        // this is a bug in rmp_serde: https://github.com/3Hren/msgpack-rust/issues/86
-        let foo: Foo = rmp_serde::from_slice(&foo_bytes).unwrap();
     }
 
     #[test]
