@@ -88,6 +88,7 @@ use serde_json;
 use std::{
     cmp, error, fmt,
     io::{self, Read, Write},
+    time,
 };
 
 pub mod base58;
@@ -659,6 +660,38 @@ pub enum Deadline {
     MessageTimeoutMillis(u64),
 }
 
+impl Deadline {
+    /// converts the deadline into a timeout duration
+    /// - the starting_time is used when the deadline is Deadline::MessageTimeoutMillis. The timeout
+    ///   is taken relative to the specified starting time. If the deadline time has passed, then
+    ///   a zero duration is returned.
+    pub fn duration(&self, starting_time: chrono::DateTime<Utc>) -> chrono::Duration {
+        match self {
+            Deadline::ProcessingTimeoutMillis(millis) => {
+                chrono::Duration::milliseconds(*millis as i64)
+            }
+            Deadline::MessageTimeoutMillis(millis) => {
+                let now = Utc::now();
+                if starting_time >= now {
+                    return chrono::Duration::zero();
+                }
+                let deadline = starting_time
+                    .checked_add_signed(chrono::Duration::milliseconds(*millis as i64));
+                match deadline {
+                    Some(deadline) => {
+                        if now >= deadline {
+                            chrono::Duration::zero()
+                        } else {
+                            deadline.signed_duration_since(now)
+                        }
+                    }
+                    None => chrono::Duration::zero(),
+                }
+            }
+        }
+    }
+}
+
 op_ulid! {
     /// Unique message type identifier
     pub MessageTypeId
@@ -1187,6 +1220,34 @@ mod test {
     }
 
     #[test]
+    fn test_message_bytes_deserialization() {
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+
+        fn new_msg() -> super::Message<MessageBytes> {
+            const MESSAGE_TYPE: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+            let metadata = super::Metadata::new(
+                MESSAGE_TYPE.message_type(),
+                super::Encoding::Bincode(None),
+                Some(super::Deadline::ProcessingTimeoutMillis(100)),
+            );
+
+            let data =
+                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
+            super::Message { metadata, data }
+        }
+        let msg = new_msg();
+        let encoding = msg.metadata().encoding();
+
+        // verify that msg can be serialized / deserialized
+        let msg_bytes = encoding.encode(&msg).unwrap();
+        if let Err(err) = encoding.decode::<super::Message<MessageBytes>>(&msg_bytes) {
+            panic!("Failed to deserialize Message: {}", err);
+        }
+    }
+
+    #[test]
     fn encoded_message() {
         let (client_pub_key, client_priv_key) = box_::gen_keypair();
         let (server_pub_key, server_priv_key) = box_::gen_keypair();
@@ -1205,17 +1266,81 @@ mod test {
             let metadata = super::Metadata::new(
                 MESSAGE_TYPE.message_type(),
                 super::Encoding::MessagePack(None),
-                None,
+                Some(super::Deadline::ProcessingTimeoutMillis(100)),
             );
+
             let data =
-                super::MessageBytes::from(rmp_serde::to_vec(&Foo("FOO".to_string())).unwrap());
+                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
             super::Message { metadata, data }
         }
         let msg = new_msg();
+        let encoding = msg.metadata().encoding();
 
         // verify that msg can be serialized / deserialized
-        let msg_bytes = rmp_serde::to_vec(&msg).unwrap();
-        if let Err(err) = rmp_serde::from_slice::<super::Message<MessageBytes>>(&msg_bytes) {
+        let msg_bytes = encoding.encode(&msg).unwrap();
+        if let Err(err) = encoding.decode::<super::Message<MessageBytes>>(&msg_bytes) {
+            panic!("Failed to deserialize Message: {}", err);
+        }
+
+        // verify that the Message<MessageBytes> can be converted into Message<Foo>
+        let foo_msg = msg.clone().decode::<Foo>().unwrap();
+        assert_eq!(*foo_msg.data(), Foo("FOO".to_string()));
+
+        run_test("sealed_envelope_encoding_decoding", || {
+            info!("addresses: {} -> {}", client_addr, server_addr);
+            let open_envelope = OpenEnvelope::new(
+                client_pub_key.into(),
+                server_pub_key.into(),
+                &rmp_serde::to_vec(&msg).unwrap(),
+            );
+            let encoded_message = open_envelope.clone().encoded_message().unwrap();
+            let open_envelope_2 = encoded_message.open_envelope().unwrap();
+            assert_eq!(open_envelope.sender(), open_envelope_2.sender());
+            assert_eq!(open_envelope.recipient(), open_envelope_2.recipient());
+            assert_eq!(open_envelope.msg(), open_envelope_2.msg());
+
+            let encoded_message = open_envelope.encoded_message().unwrap();
+            let (addresses, msg) = encoded_message.clone().decode::<Foo>().unwrap();
+            let encoded_message_2 = super::EncodedMessage::encode(addresses, msg).unwrap();
+            assert_eq!(encoded_message.sender(), encoded_message_2.sender());
+            assert_eq!(encoded_message.recipient(), encoded_message_2.recipient());
+            assert_eq!(encoded_message.metadata(), encoded_message_2.metadata());
+            assert_eq!(encoded_message.data(), encoded_message_2.data());
+        });
+    }
+
+    #[test]
+    fn bincode_encoded_message() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+
+        let (client_addr, server_addr) =
+            (Address::from(client_pub_key), Address::from(server_pub_key));
+        let opening_key = client_addr.precompute_opening_key(&server_priv_key);
+        let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
+
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+
+        fn new_msg() -> super::Message<MessageBytes> {
+            const MESSAGE_TYPE: super::MessageTypeId =
+                super::MessageTypeId(1867384532653698871582487715619812439);
+            let metadata = super::Metadata::new(
+                MESSAGE_TYPE.message_type(),
+                super::Encoding::Bincode(None),
+                None,
+            );
+
+            let data =
+                super::MessageBytes::from(metadata.encoding().encode(&Foo("FOO".to_string())).unwrap());
+            super::Message { metadata, data }
+        }
+        let msg = new_msg();
+        let encoding = msg.metadata().encoding();
+
+        // verify that msg can be serialized / deserialized
+        let msg_bytes = encoding.encode(&msg).unwrap();
+        if let Err(err) = encoding.decode::<super::Message<MessageBytes>>(&msg_bytes) {
             panic!("Failed to deserialize Message: {}", err);
         }
 
@@ -1610,6 +1735,26 @@ mod test {
         // deserializing panics because rmp is expecting 1 element
         // this is a bug in rmp_serde: https://github.com/3Hren/msgpack-rust/issues/86
         let foo: Foo = rmp_serde::from_slice(&foo_bytes).unwrap();
+    }
+
+    #[test]
+    fn deadline() {
+        let start = chrono::Utc::now();
+
+        let deadline = super::Deadline::ProcessingTimeoutMillis(100);
+        assert_eq!(
+            deadline.duration(start),
+            chrono::Duration::milliseconds(100)
+        );
+
+        let deadline = super::Deadline::MessageTimeoutMillis(100);
+        assert!(deadline.duration(start) <= chrono::Duration::milliseconds(100));
+
+        let deadline = super::Deadline::MessageTimeoutMillis(100);
+        let start = start
+            .checked_sub_signed(chrono::Duration::milliseconds(200))
+            .unwrap();
+        assert_eq!(deadline.duration(start), chrono::Duration::zero());
     }
 
 }

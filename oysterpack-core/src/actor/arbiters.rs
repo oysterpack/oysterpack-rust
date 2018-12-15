@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! The Arbiters actor serves as the Arbiter central registry.
 //! - Arbiters implements AppService, i.e., it is registered as a SystemService.
@@ -54,8 +56,10 @@
 
 use crate::actor::{self, events, AppService, DisplayName, GetServiceInfo, ServiceInfo};
 use actix::{
-    msgs::Execute, registry::SystemService, Actor, Addr, Arbiter, Context, Handler, MailboxError,
-    Message, MessageResult, Supervised, System,
+    msgs::{Execute, StartActor},
+    registry::SystemService,
+    Actor, Addr, Arbiter, Context, Handler, MailboxError, Message, MessageResult, Supervised,
+    System,
 };
 use futures::prelude::*;
 use oysterpack_events::Eventful;
@@ -81,6 +85,18 @@ pub fn service<A: actor::Service>(
                 }))
                 .map(|service| service.unwrap())
         })
+}
+
+/// starts an actor on the specified Arbiter
+pub fn start_actor<F, A>(arbiter: Name, f: F) -> impl Future<Item = Addr<A>, Error = MailboxError>
+where
+    A: Actor<Context = Context<A>>,
+    F: FnOnce(&mut Context<A>) -> A + Send + 'static,
+{
+    let arbiters = actor::app_service::<Arbiters>();
+    arbiters
+        .send(GetArbiter::from(arbiter))
+        .and_then(|arbiter| arbiter.send(StartActor::new(f)))
 }
 
 /// Arbiter registry AppService
@@ -509,6 +525,46 @@ mod tests {
             });
 
             spawn_task(task);
+        });
+    }
+
+    #[test]
+    fn start_actor() {
+        struct Foo;
+
+        impl actix::Actor for Foo {
+            type Context = actix::Context<Self>;
+        }
+
+        struct Msg;
+
+        impl actix::Message for Msg {
+            type Result = String;
+        }
+
+        impl actix::Handler<Msg> for Foo {
+            type Result = actix::MessageResult<Msg>;
+
+            fn handle(&mut self, _: Msg, _: &mut Self::Context) -> Self::Result {
+                actix::MessageResult("HELLO".to_string())
+            }
+        }
+
+        const FOO: super::Name = super::Name("FOO");
+
+        actix::System::run(|| {
+            let foo = super::start_actor(FOO, |_| Foo);
+            let task = foo
+                .and_then(|foo| foo.send(Msg))
+                .and_then(|result| {
+                    println!("msg: {}", result);
+                    future::ok::<_, actix::MailboxError>(())
+                })
+                .then(|_| {
+                    System::current().stop();
+                    future::ok::<_, ()>(())
+                });
+            actor::spawn_task(task);
         });
     }
 }

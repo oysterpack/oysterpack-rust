@@ -26,8 +26,8 @@ use oysterpack_uid::ULID;
 
 use crate::actor::{
     eventlog::{EventLog, LogEvent},
-    events, AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId,
-    ServiceClient, ServiceInfo, AppClient
+    events, AppClient, AppService, DisplayName, Id as ServiceId, InstanceId as ServiceInstanceId,
+    ServiceClient, ServiceInfo,
 };
 
 use actix::dev::{Handler, Message, MessageResult, System};

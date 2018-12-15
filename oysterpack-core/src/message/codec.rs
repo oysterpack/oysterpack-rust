@@ -118,6 +118,7 @@ mod tests {
     use crate::message::*;
     use crate::tests::run_test;
     use tokio::codec::{Decoder, Encoder};
+    use exonum_sodiumoxide::crypto::box_;
 
     #[test]
     fn sealed_envelope_codec() {
