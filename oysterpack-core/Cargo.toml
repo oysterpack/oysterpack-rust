@@ -24,6 +24,7 @@ oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
 failure = "0.1.3"
 chrono = "0.4.6"
 serde = {version = "1", features = ["derive"] }
+lazy_static = "1"
 
 # serde serializers
 serde_cbor = "0.9"

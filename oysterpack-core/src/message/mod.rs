@@ -387,6 +387,7 @@ pub struct Metadata {
     instance_id: InstanceId,
     encoding: Encoding,
     deadline: Option<Deadline>,
+    correlation_id: Option<InstanceId>,
 }
 
 impl Metadata {
@@ -397,7 +398,21 @@ impl Metadata {
             instance_id: InstanceId::generate(),
             encoding,
             deadline,
+            correlation_id: None,
         }
+    }
+
+    /// correlate this message instance with another message instance, e.g., used to correlate a response
+    /// message with a request message
+    pub fn correlate(self, instance_id: InstanceId) -> Metadata {
+        let mut md = self;
+        md.correlation_id = Some(instance_id);
+        md
+    }
+
+    /// correlation ID getter
+    pub fn correlation_id(&self) -> Option<InstanceId> {
+        self.correlation_id
     }
 
     /// Each message type is identified by an Id

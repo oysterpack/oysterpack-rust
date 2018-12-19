@@ -23,6 +23,8 @@ use oysterpack_errors::Error;
 use std::collections::HashMap;
 use std::fmt;
 
+// TODO: schedule a periodic job to clear precomputed keys that have not been used in a while
+// TODO: metrics
 /// Messaging actor service
 /// - is a sync actor because it needs to perform CPU bound load for cryptography and compression
 /// - the service is assigned a public-key based address
@@ -376,9 +378,11 @@ mod tests {
                 Foo::MESSAGE_TYPE_ID.message_type(),
                 crate::message::Encoding::Bincode(Some(crate::message::Compression::Snappy)),
                 Some(crate::message::Deadline::ProcessingTimeoutMillis(10)),
-
             );
-            let msg = crate::message::Message::new(metadata, Foo("cryptocurrency is changing the world through decentralization".to_string()));
+            let msg = crate::message::Message::new(
+                metadata,
+                Foo("cryptocurrency is changing the world through decentralization".to_string()),
+            );
             let msg = msg
                 .encoded_message(addresses.sender().clone(), addresses.recipient().clone())
                 .unwrap();

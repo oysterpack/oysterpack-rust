@@ -61,6 +61,9 @@ impl Default for App {
 
 impl App {
     /// Runs the App actor System.
+    /// - initializes the sodium library and chooses faster versions of the primitives if possible.
+    ///   - also makes the random number generation functions (gen_key, gen_keypair, gen_nonce,
+    ///     randombytes, randombytes_into) thread-safe
     /// - log system is initialized
     /// - the Build is stored
     /// - AppLifeCycleEvent Started event is logged
@@ -69,10 +72,17 @@ impl App {
     /// - after the supplied future completes:
     ///   - AppLifeCycleEvent Stopped event is logged
     ///   - the System is stopped
+    ///
+    /// ## Panics
+    /// if sodium library initialization fails
     pub fn run<F>(build: Build, log_config: LogConfig, f: F) -> i32
     where
         F: Future<Item = (), Error = ()> + 'static,
     {
+        assert!(
+            exonum_sodiumoxide::init(),
+            "Failed to initialize the sodium library"
+        );
         System::run(move || {
             let task = crate::actor::logger::init_logging(log_config)
                 .then(move |_| {
