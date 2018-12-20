@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 use super::*;
 use crate::tests::run_test;
@@ -47,6 +49,14 @@ impl Into<DomainULID> for AppId {
     }
 }
 
+impl fmt::Display for AppId {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ulid = DomainULID::from_ulid(AppId::DOMAIN, ULID::from(self.0));
+        write!(f,"{}", ulid)
+    }
+}
+
 op_newtype! {
     /// App Id
     #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
@@ -60,6 +70,14 @@ impl HasDomain for ServiceId {
 impl Into<DomainULID> for ServiceId {
     fn into(self) -> DomainULID {
         DomainULID::from_ulid(ServiceId::DOMAIN, ULID::from(self.0))
+    }
+}
+
+impl fmt::Display for ServiceId {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ulid = DomainULID::from_ulid(ServiceId::DOMAIN, ULID::from(self.0));
+        write!(f,"{}", ulid)
     }
 }
 
@@ -154,6 +172,39 @@ fn event_tags() {
         assert_eq!(tags.len(), 2);
         assert!(tags.contains(&app_id.into()));
         assert!(tags.contains(&service_id.into()));
+    });
+}
+
+#[test]
+fn event_attributes() {
+    run_test("event_attributes with dups", || {
+        let app_id = super::AttributeId(1863291903828500526079298022856535457);
+        let service_id = super::AttributeId(1863291948359469739082252902144828404);
+        let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!())
+            .with_attribute(app_id, "A")
+            .with_attribute(app_id, "B")
+            .with_attribute(service_id, "C")
+            .with_attribute(service_id, "D");
+
+        foo_event.log();
+        let attributes = foo_event.attributes().unwrap();
+        assert_eq!(attributes.len(), 2);
+        assert_eq!(attributes.get(&app_id.to_string()).unwrap(), "B");
+        assert_eq!(attributes.get(&service_id.to_string()).unwrap(), "D");
+    });
+
+    run_test("event_attributes", || {
+        let app_id = super::AttributeId(1863291903828500526079298022856535457);
+        let service_id = super::AttributeId(1863291948359469739082252902144828404);
+        let foo_event = Foo::new_event(Foo("foo data".into()), op_module_source!())
+            .with_attribute(app_id, "B")
+            .with_attribute(service_id, "D");
+
+        foo_event.log();
+        let attributes = foo_event.attributes().unwrap();
+        assert_eq!(attributes.len(), 2);
+        assert_eq!(attributes.get(&app_id.to_string()).unwrap(), "B");
+        assert_eq!(attributes.get(&service_id.to_string()).unwrap(), "D");
     });
 }
 

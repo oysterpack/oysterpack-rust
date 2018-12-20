@@ -30,6 +30,7 @@ lazy_static = "1"
 serde_cbor = "0.9"
 serde_json = "1"
 bincode = "1"
+async-bincode = "0.4.9"
 
 actix = "0.7.6"
 tokio = "0.1.11"

@@ -24,6 +24,7 @@ use tokio::prelude::*;
 
 // TODO: track connection timeouts, i.e., if receiving or sending messages takes too long then return an error
 // TODO: track metrics
+// TODO: see the
 /// SealedEnvelope codec
 #[derive(Debug)]
 pub struct SealedEnvelopeCodec {

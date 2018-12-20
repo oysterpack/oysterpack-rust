@@ -23,14 +23,19 @@ use oysterpack_errors::Error;
 use std::collections::HashMap;
 use std::fmt;
 
+// TODO: provide integration with https://docs.rs/async-bincode/0.4.9/async_bincode
 // TODO: schedule a periodic job to clear precomputed keys that have not been used in a while
 // TODO: metrics
+// TODO: support for replay protection based on the message's InstanceID timestamp - "old" messages are rejected
+// TODO: support for seqential processing based on the message sequence - could be strict or loose
+//       - a message is considered "old" if its timestamp is older that the most recent message seen
 /// Messaging actor service
 /// - is a sync actor because it needs to perform CPU bound load for cryptography and compression
 /// - the service is assigned a public-key based address
 pub struct MessageService {
     address: message::Address,
     private_key: box_::SecretKey,
+    // sender -> precomputed key
     precomputed_keys: HashMap<message::Address, box_::PrecomputedKey>,
     message_handlers: HashMap<message::MessageType, actix::Recipient<Request>>,
 }
@@ -120,6 +125,24 @@ impl actix::Handler<GetRegisteredMessageTypes> for MessageService {
         let message_types: Vec<message::MessageType> =
             self.message_handlers.keys().map(|key| *key).collect();
         actix::MessageResult(message_types)
+    }
+}
+
+/// Message that indicates that a client has disconnected.
+/// -  the server should clean up any client related resources
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct ClientDisconnect(message::Address);
+
+impl actix::Message for ClientDisconnect {
+    type Result = ();
+}
+
+impl actix::Handler<ClientDisconnect> for MessageService {
+    type Result = actix::MessageResult<ClientDisconnect>;
+
+    fn handle(&mut self, msg: ClientDisconnect, _: &mut Self::Context) -> Self::Result {
+        self.precomputed_keys.remove(&msg.0);
+        actix::MessageResult(())
     }
 }
 

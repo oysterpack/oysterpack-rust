@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! Provides event standardization
 
@@ -19,7 +21,9 @@ use oysterpack_log;
 use oysterpack_uid::{Domain, DomainId, DomainULID, TypedULID};
 use serde::Serialize;
 use serde_json;
-use std::collections::HashSet;
+use std::collections::{
+    HashSet, HashMap
+};
 use std::fmt::{Debug, Display};
 
 #[cfg(test)]
@@ -47,6 +51,16 @@ op_ulid! {
     /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
     /// event Id(s) as constants.
     pub Id
+}
+
+op_ulid! {
+    /// AttributeId(s) are defined as constants. The intent is to use them as attribute keys to ensure
+    /// there is no collision
+    ///
+    /// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
+    /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
+    /// event Id(s) as constants.
+    pub AttributeId
 }
 
 /// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
@@ -81,6 +95,9 @@ where
     mod_src: ModuleSource,
     #[serde(skip_serializing_if = "Option::is_none")]
     tag_ids: Option<HashSet<DomainULID>>,
+    // using a AttributeId as the key because over time the key label may change, but the key ULID remains const
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attributes: Option<HashMap<String, String>>
 }
 
 impl<Data> Event<Data>
@@ -113,6 +130,7 @@ where
             msg,
             mod_src,
             tag_ids: None,
+            attributes: None
         }
     }
 
@@ -126,6 +144,7 @@ where
             msg,
             mod_src,
             tag_ids: None,
+            attributes: None
         }
     }
 
@@ -139,6 +158,21 @@ where
         {
             let tag_ids = event.tag_ids.iter_mut().next().unwrap();
             tag_ids.insert(tag_id);
+        }
+
+        event
+    }
+
+    /// Tags the event. DomainULID(s) are used to tag the Event.
+    pub fn with_attribute<K: Display, V: Display>(self, key: K, value: V) -> Event<Data> {
+        let mut event = self;
+        if event.attributes.is_none() {
+            event.attributes = Some(HashMap::new())
+        }
+
+        {
+            let attributes = event.attributes.iter_mut().next().unwrap();
+            attributes.insert(key.to_string(), value.to_string());
         }
 
         event
@@ -224,6 +258,11 @@ where
         self.tag_ids.as_ref()
     }
 
+    /// Returns attributes
+    pub fn attributes(&self) -> Option<&HashMap<String, String>> {
+        self.attributes.as_ref()
+    }
+
     /// tags the event as unregistered
     pub fn unregistered(self) -> Self {
         self.with_tag_id(UNREGISTERED_EVENT.as_domain_ulid())
@@ -241,6 +280,8 @@ where
         }
     }
 }
+
+
 
 /// Refers to a module source code location.
 /// This can be used to include information regarding where an event occurs in the code to provide

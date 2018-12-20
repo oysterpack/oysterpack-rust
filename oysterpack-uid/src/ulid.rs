@@ -102,6 +102,17 @@ impl ULID {
         byteorder::NetworkEndian::write_u64_into(&id, &mut bytes);
         bytes
     }
+
+    /// Returns a new ULID with the random part incremented by one.
+    /// Overflowing the random part generates a new ULID, i.e., with a new timestamp portion.
+    pub fn increment(self) -> ULID {
+        let ulid = self.0.increment();
+        if ulid == Ulid::from(0) {
+            Self::generate()
+        } else {
+            ULID(ulid)
+        }
+    }
 }
 
 impl fmt::Display for ULID {

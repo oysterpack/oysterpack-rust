@@ -79,7 +79,8 @@ use chrono::{DateTime, Duration, Utc};
 use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
 use flate2::bufread;
 use oysterpack_errors::{Error, ErrorMessage, Id as ErrorId, IsError, Level as ErrorLevel};
-use oysterpack_uid::ULID;
+use oysterpack_events::event::ModuleSource;
+use oysterpack_uid::{Domain, DomainULID, ULID};
 use std::{
     cmp, error, fmt,
     io::{self, Read, Write},
@@ -388,6 +389,7 @@ pub struct Metadata {
     encoding: Encoding,
     deadline: Option<Deadline>,
     correlation_id: Option<InstanceId>,
+    sequence: Option<u64>,
 }
 
 impl Metadata {
@@ -399,6 +401,7 @@ impl Metadata {
             encoding,
             deadline,
             correlation_id: None,
+            sequence: None,
         }
     }
 
@@ -420,13 +423,17 @@ impl Metadata {
         self.msg_type
     }
 
-    /// Each message instance is assigned a unique ULID. This can be used as a nonce for replay protection
-    /// on the network.
+    /// Each message instance is assigned a unique ULID.
+    /// - This could be used as a nonce for replay protection on the network.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
 
     /// When the message was created. This is derived from the message instance ID.
+    ///
+    /// ## NOTES
+    /// The timestamp has millisecond granularity. If sub-millisecond granularity is required, then
+    /// a numeric sequence based nonce would be required.
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.instance_id.ulid().datetime()
     }
@@ -439,6 +446,16 @@ impl Metadata {
     /// return the message data encoding
     pub fn encoding(&self) -> Encoding {
         self.encoding
+    }
+
+    /// message sequence getter
+    ///
+    /// ## Use Cases
+    /// 1. The client-server protocol can use the sequence to strictly process messages in order. For example,
+    ///    If the client sends a message with sequence=2, the sequence(=2 message will not be processed
+    ///    until the server knows that sequence=1 message had been processed.
+    pub fn sequence(&self) -> Option<u64> {
+        self.sequence
     }
 }
 
@@ -716,10 +733,20 @@ impl From<MessageTypeId> for MessageType {
     }
 }
 
+/// MessageType Domain
+pub const MESSAGE_TYPE_DOMAIN: Domain = Domain("MessageType");
+/// MessageType InstanceId
+pub const MESSAGE_INSTANCE_ID_DOMAIN: Domain = Domain("MessageInstanceId");
+
 impl MessageType {
     /// ULID getter
     pub fn ulid(&self) -> ULID {
         self.0
+    }
+
+    /// represents itself as a DomainULID
+    pub fn domain_ulid(&self) -> DomainULID {
+        DomainULID::from_ulid(MESSAGE_TYPE_DOMAIN, self.0)
     }
 }
 
@@ -742,6 +769,11 @@ impl InstanceId {
     /// ULID getter
     pub fn ulid(&self) -> ULID {
         self.0
+    }
+
+    /// represents itself as a DomainULID
+    pub fn domain_ulid(&self) -> DomainULID {
+        DomainULID::from_ulid(MESSAGE_INSTANCE_ID_DOMAIN, self.0)
     }
 }
 
@@ -803,6 +835,21 @@ where
             msg: self.encode()?,
         })
     }
+
+    /// Creates a new event, tagging it with the following domain tags:
+    /// - MessageType
+    /// - MessageInstanceId
+    ///
+    /// This links the event to the message.
+    pub fn event<E>(&self, event: E, mod_src: ModuleSource) -> oysterpack_events::Event<E>
+    where
+        E: oysterpack_events::Eventful,
+    {
+        event
+            .new_event(mod_src)
+            .with_tag_id(self.metadata.message_type().domain_ulid())
+            .with_tag_id(self.metadata.instance_id().domain_ulid())
+    }
 }
 
 impl Message<MessageBytes> {
@@ -827,6 +874,12 @@ pub struct EncodedMessage {
 }
 
 impl EncodedMessage {
+
+    /// sender event attribute ID (01CZ65BTACD5RCJAQFH09RFCDE)
+    pub const EVENT_ATTR_ID_SENDER: oysterpack_events::AttributeId = oysterpack_events::AttributeId(1868178990369345351553440989424628142);
+    /// sender event attribute ID (01CZ65DVD1J4C7Z9QKY586G9S5)
+    pub const EVENT_ATTR_ID_RECIPIENT: oysterpack_events::AttributeId = oysterpack_events::AttributeId(1868179070938393865818884425430607653);
+
     /// returns the message metadata
     pub fn metadata(&self) -> Metadata {
         self.msg.metadata
@@ -879,6 +932,25 @@ impl EncodedMessage {
         T: fmt::Debug + Clone + serde::Serialize,
     {
         msg.encoded_message(addresses.sender, addresses.recipient)
+    }
+
+
+    /// Creates a new event, tagging it with the following domain tags:
+    /// - MessageType
+    /// - MessageInstanceId
+    ///
+    /// and with the following attributes:
+    /// - Self::EVENT_ATTR_ID_SENDER
+    /// - Self::EVENT_ATTR_ID_RECIPIENT
+    ///
+    /// This links the event to the message.
+    pub fn event<E>(&self, event: E, mod_src: ModuleSource) -> oysterpack_events::Event<E>
+        where
+            E: oysterpack_events::Eventful,
+    {
+        self.msg.event(event, mod_src)
+            .with_attribute(Self::EVENT_ATTR_ID_SENDER, self.sender)
+            .with_attribute(Self::EVENT_ATTR_ID_RECIPIENT, self.recipient)
     }
 }
 
