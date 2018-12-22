@@ -482,7 +482,7 @@ pub enum Compression {
 
 impl Compression {
     /// compress the data
-    pub fn compress(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+    pub fn compress(self, data: &[u8]) -> io::Result<Vec<u8>> {
         match self {
             Compression::Deflate => {
                 let mut deflater = bufread::DeflateEncoder::new(data, flate2::Compression::fast());
@@ -506,7 +506,7 @@ impl Compression {
             Compression::Lz4 => {
                 let mut buf = Vec::with_capacity(data.len() / 2);
                 let mut encoder = lz4::EncoderBuilder::new().build(&mut buf)?;
-                encoder.write(data)?;
+                encoder.write_all(data)?;
                 let (_, result) = encoder.finish();
                 match result {
                     Ok(_) => Ok(buf),
@@ -517,7 +517,7 @@ impl Compression {
     }
 
     /// compress the data
-    pub fn decompress(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+    pub fn decompress(self, data: &[u8]) -> io::Result<Vec<u8>> {
         match self {
             Compression::Deflate => {
                 let mut inflater = bufread::DeflateDecoder::new(data);
@@ -572,24 +572,24 @@ pub enum Encoding {
 
 impl Encoding {
     /// encode the data
-    pub fn encode<T>(&self, data: T) -> Result<Vec<u8>, Error>
+    pub fn encode<T>(self, data: T) -> Result<Vec<u8>, Error>
     where
         T: serde::Serialize,
     {
         let (data, compression) = match self {
             Encoding::Bincode(compression) => {
                 let data = bincode::serialize(&data)
-                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                    .map_err(|err| op_error!(errors::SerializationError::new(self, err)))?;
                 (data, compression)
             }
             Encoding::CBOR(compression) => {
                 let data = serde_cbor::to_vec(&data)
-                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                    .map_err(|err| op_error!(errors::SerializationError::new(self, err)))?;
                 (data, compression)
             }
             Encoding::JSON(compression) => {
                 let data = serde_json::to_vec(&data)
-                    .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))?;
+                    .map_err(|err| op_error!(errors::SerializationError::new(self, err)))?;
                 (data, compression)
             }
         };
@@ -597,14 +597,14 @@ impl Encoding {
         if let Some(compression) = compression {
             compression
                 .compress(&data)
-                .map_err(|err| op_error!(errors::SerializationError::new(*self, err)))
+                .map_err(|err| op_error!(errors::SerializationError::new(self, err)))
         } else {
             Ok(data)
         }
     }
 
     /// decodes the data
-    pub fn decode<T>(&self, data: &[u8]) -> Result<T, Error>
+    pub fn decode<T>(self, data: &[u8]) -> Result<T, Error>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -617,10 +617,10 @@ impl Encoding {
                             bincode::deserialize(&data)
                                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
                         })
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 } else {
                     bincode::deserialize(data)
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 }
             }
             Encoding::CBOR(compression) => {
@@ -631,10 +631,10 @@ impl Encoding {
                             serde_cbor::from_slice(&data)
                                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
                         })
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 } else {
                     serde_cbor::from_slice(data)
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 }
             }
             Encoding::JSON(compression) => {
@@ -645,10 +645,10 @@ impl Encoding {
                             serde_json::from_slice(&data)
                                 .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
                         })
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 } else {
                     serde_json::from_slice(data)
-                        .map_err(|err| op_error!(errors::DeserializationError::new(*self, err)))
+                        .map_err(|err| op_error!(errors::DeserializationError::new(self, err)))
                 }
             }
         }
@@ -874,11 +874,12 @@ pub struct EncodedMessage {
 }
 
 impl EncodedMessage {
-
     /// sender event attribute ID (01CZ65BTACD5RCJAQFH09RFCDE)
-    pub const EVENT_ATTR_ID_SENDER: oysterpack_events::AttributeId = oysterpack_events::AttributeId(1868178990369345351553440989424628142);
+    pub const EVENT_ATTR_ID_SENDER: oysterpack_events::AttributeId =
+        oysterpack_events::AttributeId(1868178990369345351553440989424628142);
     /// sender event attribute ID (01CZ65DVD1J4C7Z9QKY586G9S5)
-    pub const EVENT_ATTR_ID_RECIPIENT: oysterpack_events::AttributeId = oysterpack_events::AttributeId(1868179070938393865818884425430607653);
+    pub const EVENT_ATTR_ID_RECIPIENT: oysterpack_events::AttributeId =
+        oysterpack_events::AttributeId(1868179070938393865818884425430607653);
 
     /// returns the message metadata
     pub fn metadata(&self) -> Metadata {
@@ -934,7 +935,6 @@ impl EncodedMessage {
         msg.encoded_message(addresses.sender, addresses.recipient)
     }
 
-
     /// Creates a new event, tagging it with the following domain tags:
     /// - MessageType
     /// - MessageInstanceId
@@ -945,17 +945,18 @@ impl EncodedMessage {
     ///
     /// This links the event to the message.
     pub fn event<E>(&self, event: E, mod_src: ModuleSource) -> oysterpack_events::Event<E>
-        where
-            E: oysterpack_events::Eventful,
+    where
+        E: oysterpack_events::Eventful,
     {
-        self.msg.event(event, mod_src)
+        self.msg
+            .event(event, mod_src)
             .with_attribute(Self::EVENT_ATTR_ID_SENDER, self.sender)
             .with_attribute(Self::EVENT_ATTR_ID_RECIPIENT, self.recipient)
     }
 }
 
 /// Envelope addresses contain the sender's and recipient's addresses
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Addresses {
     sender: Address,
     recipient: Address,

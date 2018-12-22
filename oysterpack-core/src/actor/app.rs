@@ -19,6 +19,8 @@
 //! - run() is the key method used to run the application actor system
 //!
 
+// TODO: how to do a clean shutdown, emsuring all queued messages are processed ? Is this really necessary ?
+
 use oysterpack_app_metadata::{Build, PackageId};
 use oysterpack_events::Eventful;
 use oysterpack_log::{self, LogConfig};

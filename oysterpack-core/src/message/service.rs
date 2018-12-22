@@ -28,6 +28,7 @@ use std::fmt;
 // TODO: metrics
 // TODO: support for replay protection based on the message's InstanceID timestamp - "old" messages are rejected
 // TODO: support for seqential processing based on the message sequence - could be strict or loose
+// TODO: support for signed addresses - a request is not accepted unless the address signature is verified
 //       - a message is considered "old" if its timestamp is older that the most recent message seen
 /// Messaging actor service
 /// - is a sync actor because it needs to perform CPU bound load for cryptography and compression
@@ -123,7 +124,7 @@ impl actix::Handler<GetRegisteredMessageTypes> for MessageService {
 
     fn handle(&mut self, _: GetRegisteredMessageTypes, _: &mut Self::Context) -> Self::Result {
         let message_types: Vec<message::MessageType> =
-            self.message_handlers.keys().map(|key| *key).collect();
+            self.message_handlers.keys().cloned().collect();
         actix::MessageResult(message_types)
     }
 }
@@ -218,7 +219,7 @@ impl actix::Handler<SealedEnvelopeRequest> for MessageService {
             Box::new(futures::future::err(err))
         }
 
-        let sender = req.0.sender().clone();
+        let sender = *req.0.sender();
         let result = req
             .0
             .open(&key)
@@ -226,11 +227,10 @@ impl actix::Handler<SealedEnvelopeRequest> for MessageService {
             .and_then(|encoded_message| {
                 let message_type = encoded_message.metadata().message_type();
                 let fut = match self.message_handlers.get(&message_type) {
-                    Some(handler) => seal(sender.clone(), handler, encoded_message, key),
-                    None => unsupported_message_type(
-                        sender.clone(),
-                        encoded_message.metadata().message_type(),
-                    ),
+                    Some(handler) => seal(sender, handler, encoded_message, key),
+                    None => {
+                        unsupported_message_type(sender, encoded_message.metadata().message_type())
+                    }
                 };
                 Ok(fut)
             });
