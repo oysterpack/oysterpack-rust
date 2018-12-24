@@ -7,13 +7,7 @@ sudo atp-get install build-essential
 - some common Rust packages depend on C code and will need a C compiler too
 
 ## Running test code coverage
-```
-# runs tests with code coverage and produces cobertura.xml output file
-cargo tarpaulin -v -o Xml
-
-# convert cobertura.xml into an HTML report
-pycobertura show --format html --output coverage.html cobertura.xml
-```
+https://crates.io/crates/cargo-tarpaulin
 
 ## Profiling apps using [Valgrand](http://valgrind.org/)
 There are Valgrind tools that can automatically detect many memory management and threading bugs, and profile your programs in detail.

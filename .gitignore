@@ -8,3 +8,5 @@ Cargo.lock
 
 **/*.log
 */target
+**/snap
+**/*.snap

@@ -6,6 +6,11 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## \[Unreleased\]
 
+## \[0.2.3\] 2018-12-24
+- re-organized project structure
+- added benchmark tests
+- changed ULID serde serialization to u128 instead of string for performance boost
+
 ## \[0.2.2\] 2018-12-07
 - upgraded to rust 2018 edition
 
