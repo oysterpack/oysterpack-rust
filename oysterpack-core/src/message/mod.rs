@@ -390,7 +390,7 @@ pub struct Metadata {
     deadline: Option<Deadline>,
     correlation_id: Option<InstanceId>,
     session_id: SessionId,
-    sequence: Option<u64>,
+    sequence: Option<Sequence>,
 }
 
 impl Metadata {
@@ -405,6 +405,20 @@ impl Metadata {
             session_id: SessionId::generate(),
             sequence: None,
         }
+    }
+
+    /// sets the session id
+    pub fn set_session_id(self, session_id: SessionId) -> Metadata {
+        let mut md = self;
+        md.session_id = session_id;
+        md
+    }
+
+    /// sets the sequence
+    pub fn set_sequence(self, sequence: Sequence) -> Metadata {
+        let mut md = self;
+        md.sequence = Some(sequence);
+        md
     }
 
     /// correlate this message instance with another message instance, e.g., used to correlate a response
@@ -460,7 +474,7 @@ impl Metadata {
     ///    not be processed until the server knows that sequence=1 message had been processed.
     ///    The sequence=2 message will be held until sequence=1 message is received. The sequencing
     ///    protocol can be negotiated between the client and server.
-    pub fn sequence(&self) -> Option<u64> {
+    pub fn sequence(&self) -> Option<Sequence> {
         self.sequence
     }
 
@@ -470,6 +484,8 @@ impl Metadata {
     }
 }
 
+/// Message sequence
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Sequence {
     /// Messages must be processed in order relative to its session, e.g. Strict(2) message will not be processed until
     /// Strict(1) message is processed. Strict(2) message will be held until Strict(1) message
@@ -479,6 +495,16 @@ pub enum Sequence {
     /// than the last message processed for the client session, then it will be processed. Otherwise,
     /// the message will be rejected as a stale message.
     Loose(u64),
+}
+
+impl Sequence {
+    /// increments the sequence value
+    pub fn inc(self) -> Sequence {
+        match self {
+            Sequence::Strict(n) => Sequence::Strict(n + 1),
+            Sequence::Loose(n) => Sequence::Loose(n + 1),
+        }
+    }
 }
 
 /// Used to attach the MessageId to the message type
