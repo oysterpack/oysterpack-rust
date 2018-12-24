@@ -389,6 +389,7 @@ pub struct Metadata {
     encoding: Encoding,
     deadline: Option<Deadline>,
     correlation_id: Option<InstanceId>,
+    session_id: SessionId,
     sequence: Option<u64>,
 }
 
@@ -401,6 +402,7 @@ impl Metadata {
             encoding,
             deadline,
             correlation_id: None,
+            session_id: SessionId::generate(),
             sequence: None,
         }
     }
@@ -448,15 +450,35 @@ impl Metadata {
         self.encoding
     }
 
-    /// message sequence getter
+    /// Message sequence is relative to the current session.
+    ///
+    /// No message sequence implies that messages can be processed in any order.
     ///
     /// ## Use Cases
-    /// 1. The client-server protocol can use the sequence to strictly process messages in order. For example,
-    ///    If the client sends a message with sequence=2, the sequence(=2 message will not be processed
-    ///    until the server knows that sequence=1 message had been processed.
+    /// 1. The client-server protocol can use the sequence to strictly process messages in order.
+    ///    For example, if the client sends a message with sequence=2, the sequence=2 message will
+    ///    not be processed until the server knows that sequence=1 message had been processed.
+    ///    The sequence=2 message will be held until sequence=1 message is received. The sequencing
+    ///    protocol can be negotiated between the client and server.
     pub fn sequence(&self) -> Option<u64> {
         self.sequence
     }
+
+    /// Each message is associated with a session
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+}
+
+pub enum Sequence {
+    /// Messages must be processed in order relative to its session, e.g. Strict(2) message will not be processed until
+    /// Strict(1) message is processed. Strict(2) message will be held until Strict(1) message
+    /// is received, or until Strict(2) expires according to its deadline.
+    Strict(u64),
+    /// Messages are processed in order relative to its session. If the message received has a higher Loose(N)
+    /// than the last message processed for the client session, then it will be processed. Otherwise,
+    /// the message will be rejected as a stale message.
+    Loose(u64),
 }
 
 /// Used to attach the MessageId to the message type

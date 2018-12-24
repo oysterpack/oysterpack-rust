@@ -25,11 +25,17 @@ use std::fmt;
 
 // TODO: provide integration with https://docs.rs/async-bincode/0.4.9/async_bincode
 // TODO: schedule a periodic job to clear precomputed keys that have not been used in a while
-// TODO: metrics
+// TODO: metrics per message type
+
 // TODO: support for replay protection based on the message's InstanceID timestamp - "old" messages are rejected
+// TODO: a message is considered "old" if its timestamp is older than the most recent message processed within the client session
 // TODO: support for seqential processing based on the message sequence - could be strict or loose
+
 // TODO: support for signed addresses - a request is not accepted unless the address signature is verified
-//       - a message is considered "old" if its timestamp is older that the most recent message seen
+
+// TODO: all message types must have a deadline to ensure server resources are protected (and potentially from attack)
+// TODO: message types must have a max deadline configured, to protect against attacks
+
 /// Messaging actor service
 /// - is a sync actor because it needs to perform CPU bound load for cryptography and compression
 /// - the service is assigned a public-key based address
@@ -147,6 +153,7 @@ impl actix::Handler<ClientDisconnect> for MessageService {
     }
 }
 
+// TODO: add an optional token, which is used to pay for the request
 /// Process the SealedEnvelope request
 #[derive(Debug, Clone)]
 pub struct SealedEnvelopeRequest(pub message::SealedEnvelope);
