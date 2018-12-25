@@ -1291,27 +1291,6 @@ mod test {
     }
 
     #[test]
-    fn ulid_msg_pack_size() {
-        op_ulid! {
-            Foo
-        }
-
-        let ulid = oysterpack_uid::ULID::generate();
-        let foo = Foo(ulid.into());
-        let ulid_bytes = bincode::serialize(&ulid).unwrap();
-        let foo_bytes = bincode::serialize(&foo).unwrap();
-        println!(
-            "foo_bytes.len = {}, ulid_bytes.len = {}",
-            foo_bytes.len(),
-            ulid_bytes.len()
-        ); // foo_bytes.len = 19, ulid_bytes.len = 27
-        assert!(
-            foo_bytes.len() < ulid_bytes.len(),
-            "in binary form, (u64,u64) should be smaller than a 27 char ULID"
-        );
-    }
-
-    #[test]
     fn encrypted_signed_hash() {
         let (client_pub_key, client_priv_key) = sign::gen_keypair();
         let cipher = secretbox::gen_key();

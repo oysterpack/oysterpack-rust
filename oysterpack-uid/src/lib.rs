@@ -37,6 +37,8 @@
 //! ```rust
 //! # #[macro_use]
 //! # extern crate oysterpack_uid;
+//! # #[macro_use]
+//! # extern crate serde;
 //! # use oysterpack_uid::*;
 //! op_ulid!{
 //!     /// Foo Id
