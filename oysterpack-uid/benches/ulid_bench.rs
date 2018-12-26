@@ -55,11 +55,18 @@ criterion_group!(
     ulid_deserialize_bincode_bench,
 );
 
-criterion_main!(ulid_benches, uuid_benches, typed_ulid_benches, ulid_serde_benches);
+criterion_main!(
+    ulid_benches,
+    uuid_benches,
+    typed_ulid_benches,
+    ulid_serde_benches
+);
 
 fn ulid_serialize_bincode_bench(c: &mut Criterion) {
     let ulid = ULID::generate();
-    c.bench_function("bincode::serialize(&ULID)", move |b| b.iter(|| bincode::serialize(&ulid).unwrap()));
+    c.bench_function("bincode::serialize(&ULID)", move |b| {
+        b.iter(|| bincode::serialize(&ulid).unwrap())
+    });
 }
 
 fn ulid_deserialize_bincode_bench(c: &mut Criterion) {
@@ -79,9 +86,7 @@ fn ulid_to_bytes_bench(c: &mut Criterion) {
 
 fn ulid_from_bytes_bench(c: &mut Criterion) {
     let ulid = ULID::generate().to_bytes();
-    c.bench_function("ULID::from([u8;16])", move |b| {
-        b.iter(|| ULID::from(ulid))
-    });
+    c.bench_function("ULID::from([u8;16])", move |b| b.iter(|| ULID::from(ulid)));
 }
 
 fn ulid_generate_bench(c: &mut Criterion) {

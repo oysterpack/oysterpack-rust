@@ -123,29 +123,29 @@ impl<'de, T: 'static> Deserialize<'de> for TypedULID<T> {
             }
 
             fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(TypedULID::from(u128::from(value)))
             }
 
             fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(TypedULID::from(u128::from(value)))
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(TypedULID::from(u128::from(value)))
             }
 
             fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(TypedULID::from(value))
             }

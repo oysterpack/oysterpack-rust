@@ -18,6 +18,7 @@
 
 use byteorder::ByteOrder;
 use chrono::{DateTime, Utc};
+use failure::Fail;
 use rusty_ulid::{self, Ulid};
 use serde::{
     de::{self, Visitor},
@@ -203,22 +204,22 @@ impl<'de> Deserialize<'de> for ULID {
             }
 
             fn visit_u8<E>(self, value: u8) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(ULID(Ulid::from(u128::from(value))))
             }
 
             fn visit_u32<E>(self, value: u32) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(ULID(Ulid::from(u128::from(value))))
             }
 
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
+            where
+                E: de::Error,
             {
                 Ok(ULID(Ulid::from(u128::from(value))))
             }
@@ -236,13 +237,16 @@ impl<'de> Deserialize<'de> for ULID {
 }
 
 /// Types of errors that can occur while trying to decode a string into a ulid_str
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum DecodingError {
+    #[fail(display = "invalid length")]
     /// The length of the parsed string does not conform to requirements.
     InvalidLength,
     /// The parsed string contains a character that is not allowed in a [crockford Base32](https://crockford.com/wrmg/base32.html) string.
+    #[fail(display = "invalid char: '{}'", _0)]
     InvalidChar(char),
     /// Parsing the string overflowed the result value bits
+    #[fail(display = "overflow")]
     DataTypeOverflow,
 }
 
@@ -254,17 +258,6 @@ impl From<rusty_ulid::crockford::DecodingError> for DecodingError {
             rusty_ulid::crockford::DecodingError::DataTypeOverflow => {
                 DecodingError::DataTypeOverflow
             }
-        }
-    }
-}
-
-impl fmt::Display for DecodingError {
-
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            DecodingError::InvalidLength => write!(f, "invalid length"),
-            DecodingError::InvalidChar(c) => write!(f, "invalid char: '{}'",c),
-            DecodingError::DataTypeOverflow => write!(f, "overflow"),
         }
     }
 }
@@ -297,37 +290,36 @@ mod tests {
         let id2 = ULID::from_str(&id_str).unwrap();
         assert_eq!(id, id2);
 
-
-        let (ulid_str_part_1, ulid_str_part_2) = id_str.split_at(id_str.len()/2);
+        let (ulid_str_part_1, ulid_str_part_2) = id_str.split_at(id_str.len() / 2);
         match ULID::from_str(ulid_str_part_1) {
             Ok(_) => panic!("Should have failed"),
             Err(err @ DecodingError::InvalidLength) => println!("Invalid ULID: {}", err),
-            Err(err) => panic!("Failed because of some other reason: {}", err)
+            Err(err) => panic!("Failed because of some other reason: {}", err),
         }
 
         // Crockford's Base32 encoding (https://crockford.com/wrmg/base32.html) is used. This alphabet excludes the letters I, L, O, and U to avoid confusion and abuse.
         // When decoding, upper and lower case letters are accepted, and i and l will be treated as 1 and o will be treated as 0.
         let mut ulid = crate::ulid_str();
-        ulid.remove(ulid.len()-1);
+        ulid.remove(ulid.len() - 1);
         ulid.insert(ulid.len(), 'U');
         println!("invalid ulid: {}", ulid);
         match ULID::from_str(&ulid) {
             Ok(ulid) => panic!("Should have failed: {}", ulid),
             Err(err @ DecodingError::InvalidChar(_)) => println!("Invalid ULID: {}", err),
-            Err(err) => panic!("Failed because of some other reason: {}", err)
+            Err(err) => panic!("Failed because of some other reason: {}", err),
         }
 
-        ulid.remove(ulid.len()-1);
+        ulid.remove(ulid.len() - 1);
         ulid.insert(ulid.len(), 'I');
         println!("invalid ulid: {}", ulid);
         assert!(ULID::from_str(&ulid).unwrap().to_string().ends_with("1"));
 
-        ulid.remove(ulid.len()-1);
+        ulid.remove(ulid.len() - 1);
         ulid.insert(ulid.len(), 'L');
         println!("invalid ulid: {}", ulid);
         assert!(ULID::from_str(&ulid).unwrap().to_string().ends_with("1"));
 
-        ulid.remove(ulid.len()-1);
+        ulid.remove(ulid.len() - 1);
         ulid.insert(ulid.len(), 'O');
         println!("invalid ulid: {}", ulid);
         assert!(ULID::from_str(&ulid).unwrap().to_string().ends_with("0"));
@@ -338,7 +330,7 @@ mod tests {
         match ULID::from_str("8ZZZZZZZZZZZZZZZZZZZZZZZZZ") {
             Ok(_) => panic!("Should have failed"),
             Err(err @ DecodingError::DataTypeOverflow) => println!("Invalid ULID: {}", err),
-            Err(err) => panic!("Failed because of some other reason: {}", err)
+            Err(err) => panic!("Failed because of some other reason: {}", err),
         }
     }
 
@@ -397,9 +389,13 @@ mod tests {
     fn uid_serde() {
         let id = ULID::generate();
         let id_bytes = bincode::serialize(&id).unwrap();
-        assert_eq!(id_bytes.len(), 16, "ULID should be serialized as 128 bits, i.e., 16 bytes * 8 = 128");
+        assert_eq!(
+            id_bytes.len(),
+            16,
+            "ULID should be serialized as 128 bits, i.e., 16 bytes * 8 = 128"
+        );
         let id_u128: u128 = id.into();
-        println!("({}) bytes.len = {}",id_u128, id_bytes.len());
+        println!("({}) bytes.len = {}", id_u128, id_bytes.len());
         let id2: ULID = bincode::deserialize(&id_bytes).unwrap();
         assert_eq!(id, id2);
     }
