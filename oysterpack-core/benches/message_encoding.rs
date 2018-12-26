@@ -24,6 +24,10 @@ extern crate serde;
 use criterion::Criterion;
 use oysterpack_core::message::*;
 
+criterion_group!(benches, encoding_benchmarks, encoding_decoding_benchmarks);
+
+criterion_main!(benches);
+
 fn encoding_benchmark(c: &mut Criterion, encoding: Encoding) {
     #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
     struct Foo(String);
@@ -61,13 +65,6 @@ fn encoding_decoding_benchmark(c: &mut Criterion, encoding: Encoding) {
 // - fastest combination was bincode + snappy
 //   - message pack came in a close 2nd place
 fn encoding_benchmarks(c: &mut Criterion) {
-    encoding_benchmark(c, Encoding::MessagePack(None));
-    encoding_benchmark(c, Encoding::MessagePack(Some(Compression::Deflate)));
-    encoding_benchmark(c, Encoding::MessagePack(Some(Compression::Gzip)));
-    encoding_benchmark(c, Encoding::MessagePack(Some(Compression::Zlib)));
-    encoding_benchmark(c, Encoding::MessagePack(Some(Compression::Snappy)));
-    encoding_benchmark(c, Encoding::MessagePack(Some(Compression::Lz4)));
-
     encoding_benchmark(c, Encoding::Bincode(None));
     encoding_benchmark(c, Encoding::Bincode(Some(Compression::Deflate)));
     encoding_benchmark(c, Encoding::Bincode(Some(Compression::Gzip)));
@@ -96,13 +93,6 @@ fn encoding_benchmarks(c: &mut Criterion) {
 // - fastest combination was bincode + snappy
 //   - message pack came in a close 2nd place
 fn encoding_decoding_benchmarks(c: &mut Criterion) {
-    encoding_decoding_benchmark(c, Encoding::MessagePack(None));
-    encoding_decoding_benchmark(c, Encoding::MessagePack(Some(Compression::Deflate)));
-    encoding_decoding_benchmark(c, Encoding::MessagePack(Some(Compression::Gzip)));
-    encoding_decoding_benchmark(c, Encoding::MessagePack(Some(Compression::Zlib)));
-    encoding_decoding_benchmark(c, Encoding::MessagePack(Some(Compression::Snappy)));
-    encoding_decoding_benchmark(c, Encoding::MessagePack(Some(Compression::Lz4)));
-
     encoding_decoding_benchmark(c, Encoding::Bincode(None));
     encoding_decoding_benchmark(c, Encoding::Bincode(Some(Compression::Deflate)));
     encoding_decoding_benchmark(c, Encoding::Bincode(Some(Compression::Gzip)));
@@ -123,14 +113,4 @@ fn encoding_decoding_benchmarks(c: &mut Criterion) {
     encoding_decoding_benchmark(c, Encoding::JSON(Some(Compression::Zlib)));
     encoding_decoding_benchmark(c, Encoding::JSON(Some(Compression::Snappy)));
     encoding_decoding_benchmark(c, Encoding::JSON(Some(Compression::Lz4)));
-}
-
-criterion_group!(benches, encoding_benchmarks, encoding_decoding_benchmarks);
-
-fn main() {
-    benches();
-
-    criterion::Criterion::default()
-        .configure_from_args()
-        .final_summary();
 }

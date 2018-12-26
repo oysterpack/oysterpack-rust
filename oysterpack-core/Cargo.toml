@@ -59,13 +59,5 @@ oysterpack_built = {path = "../oysterpack-built", version="0.3"}
 maintenance = {status = "actively-developed"}
 
 [[bench]]
-name = "sync_logger"
-harness = false
-
-[[bench]]
-name = "async_logger"
-harness = false
-
-[[bench]]
 name = "message_encoding"
 harness = false

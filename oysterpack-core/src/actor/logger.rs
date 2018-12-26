@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! Actor Logging Service for async logging.
 
@@ -23,23 +25,30 @@ use oysterpack_log::{
     log::{Level, Record},
     manager::RecordLogger,
 };
-use std::fmt;
+use std::{
+    fmt, io::{self, BufWriter, Write}
+};
 
 /// Logger ServiceId (01CWXSW61VREYK48PZ7QE549G5)
 pub const SERVICE_ID: actor::Id = actor::Id(1865243759930187031543830440471307781);
 
+// TODO: collect logging metrics
 /// Logger Actor.
 /// - should run in its own dedicated Arbiter, i.e., thread.
 /// - logs to stderr (for now - long term we need remote centralized logging)
 #[derive(Debug)]
 pub struct Logger {
     service_info: ServiceInfo,
+    buf_stderr: BufWriter<io::Stderr>
 }
 
 impl Default for Logger {
     fn default() -> Self {
+        let stderr = io::stderr();
+        let buf_stderr = io::BufWriter::new(stderr);
         Logger {
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
+            buf_stderr
         }
     }
 }
@@ -132,21 +141,31 @@ impl Handler<LogRecord> for Logger {
     fn handle(&mut self, request: LogRecord, _: &mut Self::Context) -> Self::Result {
         let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         match request.module_source() {
-            Some(module_source) => eprintln!(
-                "[{}][{}][{}][{}]\n{}",
-                request.level(),
-                now,
-                request.target(),
-                module_source,
-                request.message()
-            ),
-            None => eprintln!(
-                "[{}][{}][{}]\n{}",
-                request.level(),
-                now,
-                request.target(),
-                request.message()
-            ),
+            Some(module_source) => {
+                let _ = writeln!(
+                    self.buf_stderr,
+                    "[{}][{}][{}][{}]\n{}",
+                    request.level(),
+                    now,
+                    request.target(),
+                    module_source,
+                    request.message()
+                );
+            },
+            None => {
+                let _ = writeln!(
+                    self.buf_stderr,
+                    "[{}][{}][{}]\n{}",
+                    request.level(),
+                    now,
+                    request.target(),
+                    request.message()
+                );
+            },
+        }
+
+        if request.level() <= Level::Warn {
+            let _ = self.buf_stderr.flush();
         }
 
         MessageResult(())

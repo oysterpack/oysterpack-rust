@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2018 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! This module is the anchor point for configuring and initializing the [log](https://crates.io/crates/log) system.
 
@@ -29,10 +31,6 @@ static mut LOG_CONFIG: Option<LogConfig> = None;
 
 /// Initializes the logging system
 /// - if the logging system is already initialized (or initializing), then a warning log message is logged.
-/// - the build is provided to get the crate's package name. This is used to configure the crate log level.
-///   - Build is used instead of the more specific PackageId because using Build ensures that the crate's
-///     package name was obtained during build time. Otherwise, it's too easy to "hardcode" the crate package
-///     name
 pub fn init<F: RecordLogger>(config: LogConfig, logger: F) {
     match LOG_STATE.compare_and_swap(LOG_NOT_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) {
         LOG_NOT_INITIALIZED => {
@@ -101,6 +99,7 @@ pub fn format(record: &Record) -> String {
         )
     }
 }
+
 /// logs the record to stdout
 #[derive(Debug)]
 pub struct StdoutLogger;
