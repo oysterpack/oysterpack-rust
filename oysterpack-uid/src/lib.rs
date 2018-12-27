@@ -18,14 +18,14 @@
 //!
 //! ## Features
 //! - ULID generation via [ULID](ulid/struct.ULID.html)
-//! - ULIDs can be associated with a domain manner. Example domains are user ids, request ids, application ids, service ids, etc.
-//!   - [TypedULID&lt;T&gt;](ulid/struct.TypedULID.html)
-//!     - domain is encoded into the type system
+//! - ULIDs can be associated with a domain. Example domains are user ids, request ids, application ids, service ids, etc.
 //!   - [DomainULID](ulid/struct.DomainULID.html) and [Domain](ulid/struct.Domain.html)
 //!     - domain is defined by code, i.e., [Domain](ulid/struct.Domain.html) is used to define domain names as constants
 //!     - [DomainULID](ulid/struct.DomainULID.html) scopes [ULID](ulid/struct.ULID.html)(s) to a [Domain](ulid/struct.Domain.html)
+//!   - [DomainId](ulid/struct.DomainId.html) can be used to define constants, which can then be converted into DomainULID
+//!   - u128 or ULID tuple structs marked with a `#[ulid]` attribute
 //! - ULIDs are thread safe, i.e., they can be sent across threads
-//! - ULIDs are lightweight and require no heap allocation//!
+//! - ULIDs are lightweight and require no heap allocation
 //! - ULIDs are serializable via [serde](https://crates.io/crates/serde)
 //!
 //! ### Generating ULIDs
@@ -40,31 +40,11 @@
 //! # #[macro_use]
 //! # extern crate serde;
 //! # use oysterpack_uid::*;
-//! op_ulid!{
-//!     /// Foo Id
-//!     FooId
-//! }
+//! #[oysterpack_uid::macros::ulid]
+//! pub struct FooId(u128);
 //!
 //! const FOO_ID: FooId = FooId(1866910953065622895350834727020862173);
 //! # fn main() {}
-//! ```
-//!
-//! ### Generating TypedULID&lt;T&gt; where T is a struct
-//! ```rust
-//! # use oysterpack_uid::TypedULID;
-//! struct User;
-//! type UserId = TypedULID<User>;
-//! let id = UserId::generate();
-//! ```
-//!
-//! ### TypedULID&lt;T&gt; where T is a trait
-//! ```rust
-//! use oysterpack_uid::TypedULID;
-//! trait Foo{}
-//! // Send + Sync are added to the type def in order to satisfy TypedULID type constraints for thread safety,
-//! // i.e., in order to be able to send the TypedULID across threads.
-//! type FooId = TypedULID<dyn Foo + Send + Sync>;
-//! let id = FooId::generate();
 //! ```
 //!
 //! ### Generating DomainULIDs
@@ -84,18 +64,15 @@
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_uid/0.2.3")]
 
-#[allow(unused_imports)]
-#[macro_use]
-pub extern crate oysterpack_macros;
 /// re-exporting because it is required by op_ulid!
 pub extern crate rusty_ulid;
 
-#[cfg(test)]
-#[macro_use]
-extern crate oysterpack_testing;
-
-#[macro_use]
-mod macros;
+/// macros
+pub mod macros {
+    pub use oysterpack_uid_macros::{
+        ulid, domain
+    };
+}
 pub mod ulid;
 
 pub use crate::ulid::{
@@ -103,12 +80,3 @@ pub use crate::ulid::{
 };
 
 pub use crate::ulid::domain::{Domain, DomainId, DomainULID, HasDomain};
-pub use crate::ulid::typed::TypedULID;
-
-// re-exported because it is used internally by op_ulid!
-// this makes it easier for clients to use op_ulid! without using oysterpack_macros directly, i.e.,
-// it is used behind the scenes by this crate.
-pub use oysterpack_macros::op_tt_as_item;
-
-#[cfg(test)]
-op_tests_mod!();

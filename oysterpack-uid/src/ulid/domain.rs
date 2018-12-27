@@ -18,8 +18,6 @@
 
 use crate::ULID;
 
-use crate::TypedULID;
-
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -88,12 +86,6 @@ impl fmt::Display for DomainULID {
     }
 }
 
-impl<T: HasDomain> From<TypedULID<T>> for DomainULID {
-    fn from(uid: TypedULID<T>) -> Self {
-        DomainULID::from_ulid(T::DOMAIN, uid.ulid())
-    }
-}
-
 /// Domain ID is used to define constants
 ///
 /// ```rust
@@ -158,28 +150,7 @@ impl AsRef<str> for Domain {
     }
 }
 
-/// Meant to be implemented by domain types to associate the Domain with the type.
-///
-///
-/// ## Example
-/// ```rust
-/// extern crate oysterpack_uid;
-/// use oysterpack_uid::*;
-///
-/// struct User;
-///
-/// impl HasDomain for User {
-///     const DOMAIN: Domain = Domain("User");
-/// }
-///
-/// type UserId = TypedULID<User>;
-///
-/// fn main() {
-///     let id : DomainULID = UserId::generate().into();
-///     assert_eq!(id.domain(), User::DOMAIN.name());
-/// }
-///
-/// ```
+/// Associates a type to a domain
 pub trait HasDomain {
     /// Domain
     const DOMAIN: Domain;
@@ -191,7 +162,6 @@ pub trait HasDomain {
 mod tests {
 
     use super::*;
-    use crate::tests::run_test;
     use serde_json;
     use std::{cmp::Ordering, str::FromStr};
 
@@ -216,11 +186,9 @@ mod tests {
 
     #[test]
     fn domain() {
-        run_test("domain", || {
-            const USERS: Domain = Domain("users");
-            assert_eq!(USERS.as_ref(), "users");
-            assert_eq!(USERS.as_ref(), USERS.name());
-        });
+        const USERS: Domain = Domain("users");
+        assert_eq!(USERS.as_ref(), "users");
+        assert_eq!(USERS.as_ref(), USERS.name());
     }
 
 }

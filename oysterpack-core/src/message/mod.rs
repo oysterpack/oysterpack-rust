@@ -754,10 +754,9 @@ impl Deadline {
     }
 }
 
-op_ulid! {
-    /// Unique message type identifier
-    pub MessageTypeId
-}
+#[oysterpack_uid::macros::ulid]
+/// Unique message type identifier
+pub struct MessageTypeId(pub u128);
 
 impl MessageTypeId {
     /// converts itself into a MessageType

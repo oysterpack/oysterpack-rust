@@ -27,7 +27,6 @@ use serde::{
 use std::{fmt, str::FromStr};
 
 pub(crate) mod domain;
-pub(crate) mod typed;
 
 /// Returns a new ULID encoded as a String.
 pub fn ulid_str() -> String {
@@ -87,11 +86,6 @@ impl ULID {
         ULID(Ulid::generate())
     }
 
-    /// internal constuctor
-    pub(crate) fn from_ulid(ulid: Ulid) -> ULID {
-        ULID(ulid)
-    }
-
     /// Returns the timestamp of this ULID as a DateTime<Utc>.
     pub fn datetime(&self) -> DateTime<Utc> {
         self.0.datetime()
@@ -121,7 +115,6 @@ impl ULID {
     ///
     /// ## Notes
     /// Based on benchmarks, producing a new ULID via `increment` is about 10x faster vs `generate`.
-
     pub fn increment(self) -> ULID {
         let prev = self.0;
         let ulid = self.0.increment();
@@ -268,7 +261,6 @@ impl From<rusty_ulid::crockford::DecodingError> for DecodingError {
 mod tests {
 
     use super::*;
-    use crate::tests::run_test;
     use serde_json;
     use std::{cmp::Ordering, str::FromStr};
 
@@ -452,20 +444,6 @@ mod tests {
         let id_bytes = bincode::serialize(&id_2).unwrap();
         let id_3: ULID = bincode::deserialize(&id_bytes).unwrap();
         assert_eq!(id_3, id_2);
-    }
-
-    #[test]
-    fn const_ulid() {
-        op_ulid! { FooId }
-        const FOO_ID: FooId = FooId(1866907549525959787301297812082244355);
-        let id = FOO_ID.to_string();
-        let ulid: ULID = id.parse().unwrap();
-        assert_eq!(ulid, FOO_ID.ulid());
-        let foo_ulid: ULID = FOO_ID.into();
-        assert_eq!(ulid, foo_ulid);
-        run_test("const_ulid", || {
-            info!("{}", serde_json::to_string(&FOO_ID).unwrap());
-        })
     }
 
     #[test]

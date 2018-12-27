@@ -21,7 +21,10 @@ use oysterpack_events::{
     event::{self, ModuleSource},
     Event, Eventful,
 };
-use oysterpack_uid::{Domain, DomainULID, TypedULID, ULID};
+use oysterpack_uid::{
+    macros::{domain, ulid},
+    Domain, DomainULID, ULID,
+};
 use std::{fmt, sync::Arc};
 
 /// Converts the Error into an Event&lt;Error&gt;
@@ -134,15 +137,13 @@ macro_rules! op_error {
             $crate::oysterpack_events::event::ModuleSource::new(module_path!(), line!()),
         )
     };
-    ( $error:expr ) => {
-        {
-            use $crate::IsError;
-            $error.to_error($crate::oysterpack_events::event::ModuleSource::new(
-                module_path!(),
-                line!(),
-            ))
-        }
-    };
+    ( $error:expr ) => {{
+        use $crate::IsError;
+        $error.to_error($crate::oysterpack_events::event::ModuleSource::new(
+            module_path!(),
+            line!(),
+        ))
+    }};
 }
 
 /// Errors have the following features:
@@ -288,17 +289,15 @@ impl Eventful for Error {
     }
 }
 
-op_ulid! {
-    /// Error unique identifier
-    pub Id
-}
+#[domain(Error)]
+#[ulid]
+/// Error unique identifier
+pub struct Id(pub u128);
 
-/// Marker type for an Error instance, which is used to define [InstanceId](type.InstanceId.html)
-#[allow(missing_debug_implementations)]
-pub struct Instance;
-
+#[domain(ErrorInstance)]
+#[ulid]
 /// Error instance IDs are generated for each new Error instance that is created.
-pub type InstanceId = TypedULID<Instance>;
+pub struct InstanceId(ULID);
 
 /// Error severity level
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -345,7 +344,6 @@ pub trait IsError: fmt::Display {
 pub struct ErrorMessage(pub String);
 
 impl fmt::Display for ErrorMessage {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }

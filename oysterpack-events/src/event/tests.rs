@@ -33,11 +33,9 @@ impl Display for Foo {
     }
 }
 
-op_newtype! {
-    /// App Id
-    #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
-    pub AppId(pub u128)
-}
+/// App Id
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct AppId(pub u128);
 
 impl HasDomain for AppId {
     const DOMAIN: Domain = Domain("App");
@@ -50,18 +48,15 @@ impl Into<DomainULID> for AppId {
 }
 
 impl fmt::Display for AppId {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ulid = DomainULID::from_ulid(AppId::DOMAIN, ULID::from(self.0));
-        write!(f,"{}", ulid)
+        write!(f, "{}", ulid)
     }
 }
 
-op_newtype! {
-    /// App Id
-    #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
-    pub ServiceId(pub u128)
-}
+/// Service Id
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct ServiceId(pub u128);
 
 impl HasDomain for ServiceId {
     const DOMAIN: Domain = Domain("Service");
@@ -74,10 +69,9 @@ impl Into<DomainULID> for ServiceId {
 }
 
 impl fmt::Display for ServiceId {
-
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ulid = DomainULID::from_ulid(ServiceId::DOMAIN, ULID::from(self.0));
-        write!(f,"{}", ulid)
+        write!(f, "{}", ulid)
     }
 }
 

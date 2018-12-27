@@ -18,12 +18,13 @@
 
 use chrono::{DateTime, Utc};
 use oysterpack_log;
-use oysterpack_uid::{Domain, DomainId, DomainULID, TypedULID};
+use oysterpack_uid::{
+    macros::{domain, ulid},
+    Domain, DomainId, DomainULID,
+};
 use serde::Serialize;
 use serde_json;
-use std::collections::{
-    HashSet, HashMap
-};
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 
 #[cfg(test)]
@@ -43,32 +44,25 @@ pub trait Eventful: Debug + Display + Send + Sync + Clone + Serialize {
     }
 }
 
-op_ulid! {
-    /// EventId(s) are defined as constants. They uniquely identify the event class, i.e., the logical
-    /// event.
-    ///
-    /// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
-    /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
-    /// event Id(s) as constants.
-    pub Id
-}
+#[domain(Event)]
+#[ulid]
+/// Event ID
+pub struct Id(pub u128);
 
-op_ulid! {
-    /// AttributeId(s) are defined as constants. The intent is to use them as attribute keys to ensure
-    /// there is no collision
-    ///
-    /// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
-    /// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
-    /// event Id(s) as constants.
-    pub AttributeId
-}
+#[domain(EventAttribute)]
+#[ulid]
+/// AttributeId(s) are defined as constants. The intent is to use them as attribute keys to ensure
+/// there is no collision
+///
+/// ULIDs should be used to avoid collision. ULIDs are not enforced, but is the convention.
+/// We are not using oysterpack_uid::TypedULID explicitly here because we want the ability to define
+/// event Id(s) as constants.
+pub struct AttributeId(pub u128);
 
-/// Marker type for an Event instance, which is used to define [InstanceId](type.InstanceId.html)
-#[allow(missing_debug_implementations)]
-pub struct Instance;
-
-/// Event instance IDs are generated for each new Event instance that is created.
-pub type InstanceId = TypedULID<Instance>;
+#[domain(EventInstance)]
+#[ulid]
+/// Event instance ID
+pub struct InstanceId(pub u128);
 
 /// Event features:
 /// - the event class is uniquely identified by an Id
@@ -97,7 +91,7 @@ where
     tag_ids: Option<HashSet<DomainULID>>,
     // using a AttributeId as the key because over time the key label may change, but the key ULID remains const
     #[serde(skip_serializing_if = "Option::is_none")]
-    attributes: Option<HashMap<String, String>>
+    attributes: Option<HashMap<String, String>>,
 }
 
 impl<Data> Event<Data>
@@ -130,7 +124,7 @@ where
             msg,
             mod_src,
             tag_ids: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -144,7 +138,7 @@ where
             msg,
             mod_src,
             tag_ids: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -281,8 +275,6 @@ where
     }
 }
 
-
-
 /// Refers to a module source code location.
 /// This can be used to include information regarding where an event occurs in the code to provide
 /// traceability.
@@ -321,16 +313,6 @@ impl std::fmt::Display for ModuleSource {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}:{}", self.module_path, self.line)
     }
-}
-
-// TODO: currently not used
-/// Event class
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Class {
-    id: DomainULID,
-    level: Level,
-    description: Description,
-    category_ids: HashSet<DomainULID>,
 }
 
 /// Event severity level
@@ -382,18 +364,6 @@ impl Into<oysterpack_log::Level> for Level {
             _ => oysterpack_log::Level::Error,
         }
     }
-}
-
-op_newtype! {
-    /// Name
-    #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-    pub Name(String)
-}
-
-op_newtype! {
-    /// Description
-    #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-    pub Description(String)
 }
 
 /// Domain for unregistered events.

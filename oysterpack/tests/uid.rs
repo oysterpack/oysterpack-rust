@@ -20,10 +20,19 @@ extern crate serde_json;
 extern crate simple_logging;
 
 use oysterpack::log::log::LevelFilter;
-use oysterpack::uid;
+use oysterpack::uid::{
+    self, ULID, macros::{
+        ulid,
+        domain
+    }
+};
+use serde::{
+    Serialize, Deserialize
+};
 
-struct User;
-type UserId = uid::TypedULID<User>;
+#[domain(User)]
+#[ulid]
+struct UserId(ULID);
 
 #[derive(Serialize, Deserialize)]
 struct Foo(u128);

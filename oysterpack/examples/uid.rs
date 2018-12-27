@@ -21,9 +21,13 @@ extern crate simple_logging;
 
 use log::LevelFilter;
 use oysterpack::uid;
+use serde::{
+    Serialize, Deserialize
+};
 
-struct User;
-type UserId = uid::TypedULID<User>;
+#[uid::macros::domain(User)]
+#[uid::macros::ulid]
+struct UserId(uid::ULID);
 
 fn main() {
     simple_logging::log_to_stderr(LevelFilter::Info);

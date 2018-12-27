@@ -22,13 +22,9 @@
 #![allow(clippy::unreadable_literal)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_events/0.1.0")]
 
-#[macro_use]
-extern crate oysterpack_macros;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate oysterpack_log;
-#[macro_use]
-extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;
@@ -40,7 +36,7 @@ extern crate failure;
 mod macros;
 pub mod event;
 
-pub use crate::event::{Event, Eventful, Id, InstanceId, Level, AttributeId};
+pub use crate::event::{AttributeId, Event, Eventful, Id, InstanceId, Level};
 pub use crate::macros::*;
 
 #[cfg(test)]

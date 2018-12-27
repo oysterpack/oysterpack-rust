@@ -1,44 +1,49 @@
-Provides support for universally unique identifiers that confirm to the [ULID spec](https://github.com/ulid/spec).
+Provides macros for its [oysterpack_uid](https://crates.io/crates/oysterpack_uid) sister crate.
+This crate is exported by [oysterpack_uid](https://crates.io/crates/oysterpack_uid).
 
-You can generate ULIDs as String or u128.
-You can convert ULIDs between String and u128.
+## For Example
+<pre>
+use oysterpack_uid::macros::ulid;
 
-```
-use oysterpack_uid::{
-    ulid,
-    ulid_u128,
-    ulid_u128_into_string,
-    ulid_str_into_u128
-};
+#[ulid]
+pub struct UserId(pub u128);
+</pre>
 
-// generates a new ULID as a string
-let id_str = ulid();
-// generates a new ULID as u128
-let id_u128 = ulid_u128();
+### Produces the following code
+<pre>
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct UserId(pub u128);
 
-// conversions between string and u128 ULIDs
-let ulid_str = ulid_u128_into_string(id_u128);
-assert_eq!(ulid_str_into_u128(&ulid_str).unwrap(), id_u128);
-```
+impl From<UserId> for oysterpack_uid::ULID {
+    fn from(ulid: UserId) -> oysterpack_uid::ULID {
+        ulid.0.into()
+    }
+}
 
-You can define type safe ULID based unique identifiers ([Uid](https://docs.rs/oysterpack_uid/latest/oysterpack_uid/uid/struct.Uid.html)):
+impl From<oysterpack_uid::ULID> for UserId{
+    fn from(ulid: oysterpack_uid::ULID) -> UserId{
+        UserId(ulid.into())
+    }
+}
 
-### Uid for structs
-```rust
-use oysterpack_uid::Uid;
-struct User;
-type UserId = Uid<User>;
-let id = UserId::new();
-```
+impl From<oysterpack_uid::DomainULID> for UserId{
+    fn from(ulid: oysterpack_uid::DomainULID) -> UserId{
+        UserId(ulid.ulid().into())
+    }
+}
 
-### Uid for traits
-```rust
-use oysterpack_uid::Uid;
-trait Foo{}
-TypedULID
-TypedULID
-type FooId = Uid<dyn Foo + Send + Sync>;
-let id = FooId::new();
-```
-By default, Uid<T> is serializable via serde. If serialization is not needed then you can opt out by
-including the dependency with default features disabled : `default-features = false`.
+impl UserId{
+    /// returns the ID as a ULID
+    pub fn ulid(&self) -> oysterpack_uid::ULID {
+        self.0.into()
+    }
+}
+
+impl std::fmt::Display for UserId{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let ulid: oysterpack_uid::ULID = self.0.into();
+        f.write_str(ulid.to_string().as_str())
+    }
+}
+
+</pre>

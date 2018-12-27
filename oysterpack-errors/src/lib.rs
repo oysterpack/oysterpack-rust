@@ -84,8 +84,6 @@ extern crate oysterpack_log;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate oysterpack_events;
-#[macro_use]
-extern crate oysterpack_uid;
 
 #[macro_use]
 extern crate serde;
@@ -99,7 +97,7 @@ extern crate oysterpack_testing;
 #[macro_use]
 pub mod error;
 
-pub use crate::error::{Error, Id, IsError, Level, ErrorMessage};
+pub use crate::error::{Error, ErrorMessage, Id, IsError, Level};
 
 #[cfg(test)]
 op_tests_mod!();

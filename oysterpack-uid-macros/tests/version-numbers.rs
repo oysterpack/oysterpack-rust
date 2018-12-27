@@ -14,22 +14,10 @@
  *    limitations under the License.
  */
 
-// ulid integration tests
-
-use oysterpack_uid::macros::ulid;
-
-// is required because Serialize and Deserialize are derived for Foo via `#[ulid]`
-use serde::{
-    Serialize, Deserialize
-};
-
-#[ulid]
-pub struct Foo(u128);
+#[macro_use]
+extern crate version_sync;
 
 #[test]
-fn uid_json() {
-    let id = Foo::generate();
-    let id_json = serde_json::to_string(&id).unwrap();
-    let id2 = serde_json::from_str(&id_json).unwrap();
-    assert_eq!(id, id2);
+fn test_html_root_url() {
+    assert_html_root_url_updated!("src/lib.rs");
 }

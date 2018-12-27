@@ -54,7 +54,9 @@ use futures::{Async, Future, Poll};
 use oysterpack_app_metadata::Build;
 use oysterpack_errors::Error;
 use oysterpack_events::Id as EventId;
-use oysterpack_uid::{ulid::ulid_u128_into_string, TypedULID, ULID};
+use oysterpack_uid::{ulid::ulid_u128_into_string, ULID, macros::{
+    ulid, domain
+}};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -172,11 +174,10 @@ impl Into<ULID> for Id {
     }
 }
 
-/// ServiceActor is used to define InstanceId
-#[derive(Debug)]
-pub struct ServiceActor;
+#[domain(ServiceActor)]
+#[ulid]
 /// Service Actor Instance Id
-pub type InstanceId = TypedULID<ServiceActor>;
+pub struct InstanceId(ULID);
 
 /// Service info
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
