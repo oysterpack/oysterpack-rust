@@ -6,6 +6,12 @@ sudo atp-get install build-essential
 - the Rust compiler needs a linker, which is provided by the C compiler
 - some common Rust packages depend on C code and will need a C compiler too
 
+## installing musl-tools
+```
+sudo apt-get install musl-tools
+```
+- [MUSL support for fully static binaries](https://rust-lang-nursery.github.io/edition-guide/rust-2018/platform-and-target-support/musl-support-for-fully-static-binaries.html)
+
 ## Running test code coverage
 https://crates.io/crates/cargo-tarpaulin
 

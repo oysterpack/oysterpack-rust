@@ -1,5 +1,5 @@
 [workspace]
-members = ["oysterpack","oysterpack-*", "snaps/oysterpack-*"]
+members = ["oysterpack","oysterpack-*", "apps/oysterpack-*"]
 
 [profile.release]
 #Link Time Optimization usually reduces size of binaries and static libraries.

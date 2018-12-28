@@ -1,11 +1,11 @@
 [package]
-name = "oysterpack_snap_ulid"
+name = "oysterpack_ulid"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
 description = "ULID utility (https://github.com/ulid/spec)"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
-homepage = "https://github.com/oysterpack/oysterpack/tree/master/snaps/oysterpack-snap-ulid"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/apps/oysterpack-ulid"
 documentation = "https://docs.rs/oysterpack_uid"
 readme = "README.md"
 keywords = ["ulid"]
@@ -20,3 +20,7 @@ failure = "0.1.3"
 [dev-dependencies]
 assert_cmd = "0.10.2"
 predicates = "1.0.0"
+
+[[bin]]
+name = "oysterpack-ulid"
+path = "src/main.rs"

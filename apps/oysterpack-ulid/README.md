@@ -4,7 +4,7 @@ Alfio Zappala <oysterpack.inc@gmail.com>
 ULID utility (https://github.com/ulid/spec)
 
 USAGE:
-    oysterpack_snap_ulid <SUBCOMMAND>
+    oysterpack-ulid <SUBCOMMAND>
 
 FLAGS:
     -h, --help       Prints help information
