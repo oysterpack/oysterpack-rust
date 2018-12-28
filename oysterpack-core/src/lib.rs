@@ -33,8 +33,6 @@ extern crate oysterpack_log;
 #[macro_use]
 extern crate oysterpack_events;
 #[macro_use]
-extern crate oysterpack_macros;
-#[macro_use]
 extern crate oysterpack_errors;
 #[macro_use]
 extern crate oysterpack_uid;

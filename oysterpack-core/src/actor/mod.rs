@@ -150,31 +150,12 @@ pub trait LifeCycle: Actor {
     fn on_stopped(&mut self, _: &mut Self::Context) {}
 }
 
-op_newtype! {
-    /// Service identifier
-    #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
-    pub Id(pub u128)
-}
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(ulid_u128_into_string(self.0).as_str())
-    }
-}
-
-impl From<ULID> for Id {
-    fn from(id: ULID) -> Id {
-        Id(id.into())
-    }
-}
-
-impl Into<ULID> for Id {
-    fn into(self) -> ULID {
-        ULID::from(self.0)
-    }
-}
-
 #[domain(ServiceActor)]
+#[ulid]
+/// Service identifier
+pub struct Id(pub u128);
+
+#[domain(ServiceActorInstance)]
 #[ulid]
 /// Service Actor Instance Id
 pub struct InstanceId(ULID);
@@ -505,6 +486,10 @@ pub mod arbiters;
 pub mod eventlog;
 pub mod events;
 pub mod logger;
+
+pub mod config;
+pub mod errors;
+pub mod alarms;
 
 /// AppClient provides a 1 stop shop to work with the App.
 #[derive(Clone)]

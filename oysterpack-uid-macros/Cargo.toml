@@ -1,0 +1,23 @@
+[package]
+name = "oysterpack_uid_macros"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
+description = "ULID utility (https://github.com/ulid/spec)"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/oysterpack/oysterpack"
+homepage = "https://github.com/oysterpack/oysterpack/tree/master/snaps/oysterpack-uid-macros"
+documentation = "https://docs.rs/oysterpack_uid"
+readme = "README.md"
+keywords = ["ulid"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "0.4.24"
+syn = {version = "0.15.23", features = ["full"] }
+quote = "0.6.10"
+
+[dev-dependencies]
+version-sync = "0.6"

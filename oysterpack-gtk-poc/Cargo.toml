@@ -1,0 +1,10 @@
+[package]
+name = "oysterpack-gtk-poc"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+gtk = {version = "0.5.0", features = ["v3_22_30"]}
+
+

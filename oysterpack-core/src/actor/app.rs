@@ -17,9 +17,6 @@
 //! Application Actor is used to represent the application.
 //! - each new instance is assigned a unique instance id, in the form of a TypedULID&lt;App&gt;
 //! - run() is the key method used to run the application actor system
-//!
-
-// TODO: how to do a clean shutdown, emsuring all queued messages are processed ? Is this really necessary ?
 
 use oysterpack_app_metadata::{Build, PackageId};
 use oysterpack_events::Eventful;

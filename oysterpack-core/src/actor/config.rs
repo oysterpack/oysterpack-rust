@@ -14,6 +14,7 @@
  *    limitations under the License.
  */
 
-//! Provides support for error reporting and logging
+//! Actor Config Service
 
 // TODO
+
