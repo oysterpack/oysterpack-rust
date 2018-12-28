@@ -39,12 +39,17 @@
 //! # extern crate oysterpack_uid;
 //! # #[macro_use]
 //! # extern crate serde;
-//! # use oysterpack_uid::*;
-//! #[oysterpack_uid::macros::ulid]
+//! # use oysterpack_uid::{*, macros::*};
+//! #[domain(Foo)]
+//! #[ulid]
 //! pub struct FooId(u128);
 //!
 //! const FOO_ID: FooId = FooId(1866910953065622895350834727020862173);
-//! # fn main() {}
+//!
+//! fn main() {
+//!   let ulid: ULID = FOO_ID.into();
+//!   assert_eq!(FooId::DOMAIN,Domain("Foo"));
+//! }
 //! ```
 //!
 //! ### Generating DomainULIDs

@@ -1,49 +1,49 @@
-Provides macros for its [oysterpack_uid](https://crates.io/crates/oysterpack_uid) sister crate.
-This crate is exported by [oysterpack_uid](https://crates.io/crates/oysterpack_uid).
+Provides support for universally unique identifiers that confirm to the [ULID spec](https://github.com/ulid/spec).
 
-## For Example
-<pre>
-use oysterpack_uid::macros::ulid;
+## Features
+- ULID generation via [ULID](ulid/struct.ULID.html)
+- ULIDs can be associated with a domain. Example domains are user ids, request ids, application ids, service ids, etc.
+  - [DomainULID](ulid/struct.DomainULID.html) and [Domain](ulid/struct.Domain.html)
+    - domain is defined by code, i.e., [Domain](ulid/struct.Domain.html) is used to define domain names as constants
+    - [DomainULID](ulid/struct.DomainULID.html) scopes [ULID](ulid/struct.ULID.html)(s) to a [Domain](ulid/struct.Domain.html)
+  - [DomainId](ulid/struct.DomainId.html) can be used to define constants, which can then be converted into DomainULID
+  - u128 or ULID tuple structs marked with a `#[ulid]` attribute
+- ULIDs are thread safe, i.e., they can be sent across threads
+- ULIDs are lightweight and require no heap allocation
+- ULIDs are serializable via [serde](https://crates.io/crates/serde)
 
+### Generating ULIDs
+```rust
+use oysterpack_uid::*;
+let id = ULID::generate();
+```
+### Generating ULID constants
+```rust
+use oysterpack_uid::{
+    ULID, Domain, DomainULID, macros::{ulid, domain}
+};
+use serde::{Serialize, Deserialize};
+
+#[domain(Foo)]
 #[ulid]
-pub struct UserId(pub u128);
-</pre>
+pub struct FooId(u128);
 
-### Produces the following code
-<pre>
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct UserId(pub u128);
+const FOO_ID: FooId = FooId(1866910953065622895350834727020862173);
+let ulid: ULID = FOO_ID.into();
+let ulid: DomainULID = FOO_ID.into();
+```
 
-impl From<UserId> for oysterpack_uid::ULID {
-    fn from(ulid: UserId) -> oysterpack_uid::ULID {
-        ulid.0.into()
-    }
-}
+### Generating DomainULIDs
+```rust
+use oysterpack_uid::*;
+const DOMAIN: Domain = Domain("Foo");
+let id = DomainULID::generate(DOMAIN);
+```
 
-impl From<oysterpack_uid::ULID> for UserId{
-    fn from(ulid: oysterpack_uid::ULID) -> UserId{
-        UserId(ulid.into())
-    }
-}
-
-impl From<oysterpack_uid::DomainULID> for UserId{
-    fn from(ulid: oysterpack_uid::DomainULID) -> UserId{
-        UserId(ulid.ulid().into())
-    }
-}
-
-impl UserId{
-    /// returns the ID as a ULID
-    pub fn ulid(&self) -> oysterpack_uid::ULID {
-        self.0.into()
-    }
-}
-
-impl std::fmt::Display for UserId{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let ulid: oysterpack_uid::ULID = self.0.into();
-        f.write_str(ulid.to_string().as_str())
-    }
-}
-
-</pre>
+### Generating DomainULID constants via DomainId
+```rust
+use oysterpack_uid::*;
+const FOO: Domain = Domain("Foo");
+pub const FOO_EVENT_ID: DomainId = DomainId(FOO, 1866921270748045466739527680884502485);
+let domain_ulid = FOO_EVENT_ID.as_domain_ulid();
+```

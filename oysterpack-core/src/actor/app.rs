@@ -36,6 +36,7 @@ use std::{collections::HashMap, fmt, time};
 /// App ServiceId (01CX5JGTT4VJE4XTJFD2564HTA)
 pub const SERVICE_ID: ServiceId = ServiceId(1865558955258922375120216715788699466);
 
+// TODO: handle OS signals - see https://crates.io/crates/signal-hook
 /// App represents an application instance.
 #[derive(Debug)]
 pub struct App {

@@ -25,6 +25,8 @@ extern crate proc_macro;
 use quote::quote;
 use syn::{parse_macro_input, AttributeArgs};
 
+// TODO: add support for `#[ulid(domain = "DOMAIN_NAME")]` - provides an Into<DomainULID> impl
+
 /// ulid attribute macro - augments u128 tuple structs to be ULID compatible. It provides the following:
 /// - conversion to and from ULID
 /// - conversion from a DomainULID
