@@ -1,4 +1,8 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = "true"
+
 [tasks.default]
+# overriding the default task
 clear = true
 dependencies = [
     "format",
@@ -8,6 +12,7 @@ dependencies = [
 ]
 
 [tasks.format]
+# because of https://github.com/sagiegurari/cargo-make/issues/162 (Rust 2018 - clippy/rustfmt are not preview)
 clear = true
 command = "cargo"
 args = ["fmt"]
@@ -16,14 +21,14 @@ args = ["fmt"]
 args = ["build", "--target", "x86_64-unknown-linux-musl", "--release"]
 dependencies = ["clean"]
 
-[tasks.clean_AppDir]
+[tasks.pre-linuxdeploy]
 command = "rm"
 args = ["-fr", "AppDir"]
 
 [tasks.linuxdeploy]
 command = "../../build/bin/linuxdeploy-x86_64.AppImage"
 args = [ "--appdir=AppDir" ]
-dependencies = ["clean_AppDir"]
+dependencies = ["pre-linuxdeploy"]
 
 [tasks.prep_AppDir]
 script = [
