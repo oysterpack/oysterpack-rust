@@ -21,9 +21,7 @@ use std::{env, process::Command};
 #[test]
 fn run_cmd_with_no_args() {
     let mut cmd = Command::main_binary().unwrap();
-    cmd.assert()
-        .failure()
-        .stderr(
+    cmd.assert().failure().stderr(
         predicate::str::contains(format!(
             "oysterpack-ulid {}",
             env::var("CARGO_PKG_VERSION").unwrap()
@@ -66,7 +64,8 @@ fn parse_ulid_u128() {
 #[test]
 fn parse_ulid_str_invalid() {
     let mut cmd = Command::main_binary().unwrap();
-    cmd.arg("parse").arg("sdfdsf")
+    cmd.arg("parse")
+        .arg("sdfdsf")
         .assert()
         .failure()
         .stderr(predicate::str::is_match("Error: invalid length").unwrap());

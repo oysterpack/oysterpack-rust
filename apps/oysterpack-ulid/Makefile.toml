@@ -1,0 +1,51 @@
+[tasks.default]
+clear = true
+dependencies = [
+    "format",
+    "test",
+    "build",
+    "appimage"
+]
+
+[tasks.format]
+clear = true
+command = "cargo"
+args = ["fmt"]
+
+[tasks.build]
+args = ["build", "--target", "x86_64-unknown-linux-musl", "--release"]
+dependencies = ["clean"]
+
+[tasks.clean_AppDir]
+command = "rm"
+args = ["-fr", "AppDir"]
+
+[tasks.linuxdeploy]
+command = "../../build/bin/linuxdeploy-x86_64.AppImage"
+args = [ "--appdir=AppDir" ]
+dependencies = ["clean_AppDir"]
+
+[tasks.prep_AppDir]
+script = [
+'''
+cp ../../target/x86_64-unknown-linux-musl/release/oysterpack-ulid ./AppDir/usr/bin/
+
+cd ./AppDir
+pwd
+ln -sf usr/bin/oysterpack-ulid AppRun
+cd ..
+
+cp ./AppImage/* ./AppDir/
+rm -f *.AppImage
+'''
+]
+
+[tasks.appimage]
+command = "../../build/bin/appimagetool-x86_64.AppImage"
+args = ["AppDir"]
+dependencies = [
+    "build",
+    "linuxdeploy",
+    "prep_AppDir"
+]
+

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Categories=Utility;
+Type=Application
+Icon=oysterpack-ulid
+Exec=oysterpack-ulid
+Name=oysterpack-ulid
+Terminal=true

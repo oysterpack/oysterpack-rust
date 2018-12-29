@@ -7,6 +7,6 @@ Cargo.lock
 **/coverage.html
 
 **/*.log
-*/target
+**/target
 **/snap
 **/*.snap
