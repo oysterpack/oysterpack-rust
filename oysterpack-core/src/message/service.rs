@@ -174,7 +174,7 @@ impl actix::Handler<SealedEnvelopeRequest> for MessageService {
                 .clone()
         };
 
-        fn seal(
+        fn process_message(
             sender: message::Address,
             handler: &actix::Recipient<Request>,
             encoded_message: message::EncodedMessage,
@@ -234,7 +234,7 @@ impl actix::Handler<SealedEnvelopeRequest> for MessageService {
             .and_then(|encoded_message| {
                 let message_type = encoded_message.metadata().message_type();
                 let fut = match self.message_handlers.get(&message_type) {
-                    Some(handler) => seal(sender, handler, encoded_message, key),
+                    Some(handler) => process_message(sender, handler, encoded_message, key),
                     None => {
                         unsupported_message_type(sender, encoded_message.metadata().message_type())
                     }

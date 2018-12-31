@@ -349,6 +349,12 @@ impl fmt::Display for ErrorMessage {
     }
 }
 
+impl<'a> From<&'a str> for ErrorMessage {
+    fn from(msg: &'a str) -> ErrorMessage {
+        ErrorMessage(msg.to_string())
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {

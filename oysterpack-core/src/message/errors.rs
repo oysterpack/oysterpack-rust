@@ -346,3 +346,36 @@ impl fmt::Display for DeserializationError {
         )
     }
 }
+
+/// nng:Message related error
+#[derive(Debug)]
+pub struct NngMessageError(ErrorMessage);
+
+impl NngMessageError {
+    /// Error Id(01CZZS8BEZPNA2WWRQ1R4PKN0Z)
+    pub const ERROR_ID: Id = Id(1869218326628258606664054868854559775);
+    /// Level::Alert
+    pub const ERROR_LEVEL: Level = Level::Alert;
+}
+
+impl From<ErrorMessage> for NngMessageError {
+    fn from(err_msg: ErrorMessage) -> NngMessageError {
+        NngMessageError(err_msg)
+    }
+}
+
+impl IsError for NngMessageError {
+    fn error_id(&self) -> Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for NngMessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Failed to allocate a new nng:Message: {}", self.0)
+    }
+}

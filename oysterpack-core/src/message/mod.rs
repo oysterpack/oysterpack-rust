@@ -101,11 +101,6 @@ pub const SEALED_ENVELOPE_MIN_SIZE: usize = 90;
 /// A sealed envelope is secured via public-key authenticated encryption. It contains a private message
 /// that is encrypted using the recipient's public-key and the sender's private-key. If the recipient
 /// is able to decrypt the message, then the recipient knows it was sealed by the sender.
-///
-/// [Bincode](https://crates.io/crates/bincode) is used as the envelope's default binary encoding via
-/// [SealedEnvelope::decode()](#method.decode) and [SealedEnvelope::encode()](#method.encode)
-/// However, any encoding can be used for the embedded message.
-/// - in benchmarks (compared to MessagePack, JSON, and CBOR), bincode encoding is the fastest and the most memory efficient.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SealedEnvelope {
     sender: Address,
@@ -153,6 +148,37 @@ impl SealedEnvelope {
             nonce,
             msg: EncryptedMessageBytes(msg.into()),
         }
+    }
+
+    // TODO: implement TryFrom when it bocomes stable
+    /// Converts an nng:Message into a SealedEnvelope.
+    pub fn try_from_nng_message(msg: nng::Message) -> Result<SealedEnvelope, Error> {
+        SealedEnvelope::decode(&**msg).map_err(|err| {
+            op_error!(errors::NngMessageError::from(ErrorMessage::from(
+                "Failed to decode SealedEnvelope"
+            )))
+            .with_cause(err)
+        })
+    }
+
+    // TODO: implement TryInto when it becomes stable
+    /// Converts itself into an nng:Message
+    pub fn try_into_nng_message(self) -> Result<nng::Message, Error> {
+        let bytes = bincode::serialize(&self).map_err(|err| {
+            op_error!(errors::MessageError::EncodingError(
+                errors::EncodingError::InvalidSealedEnvelope(ErrorMessage(err.to_string()))
+            ))
+        })?;
+        let mut msg = nng::Message::with_capacity(bytes.len()).map_err(|err| {
+            op_error!(errors::NngMessageError::from(ErrorMessage(format!("Failed to create an empty message with a pre-allocated body buffer (capacity = {}): {}", bytes.len(), err))))
+        })?;
+        msg.push_back(&bytes).map_err(|err| {
+            op_error!(errors::NngMessageError::from(ErrorMessage(format!(
+                "Failed to append data to the back of the message body: {}",
+                err
+            ))))
+        })?;
+        Ok(msg)
     }
 
     /// open the envelope using the specified precomputed key
@@ -1143,7 +1169,6 @@ impl From<Vec<u8>> for SignedHash {
 #[allow(warnings)]
 #[cfg(test)]
 mod test {
-
     use super::{
         base58, Address, EncryptedMessageBytes, MessageBytes, MessageType, OpenEnvelope,
         SealedEnvelope,
@@ -1228,6 +1253,188 @@ mod test {
         run_test("open_envelope", || {
             let _ = sealed_envelope.open(&opening_key).unwrap();
         });
+    }
+
+    #[test]
+    fn sealed_envelope_nng_conversions() {
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+        let (client_addr, server_addr) =
+            (Address::from(client_pub_key), Address::from(server_pub_key));
+        let opening_key = client_addr.precompute_opening_key(&server_priv_key);
+        let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
+        let msg = b"data";
+
+        let open_envelope = OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), msg);
+        let sealed_envelope = open_envelope.seal(&sealing_key);
+        let nng_msg = sealed_envelope.try_into_nng_message().unwrap();
+        let sealed_envelope = SealedEnvelope::try_from_nng_message(nng_msg).unwrap();
+        let open_envelope = sealed_envelope.open(&opening_key).unwrap();
+        assert_eq!(open_envelope.msg(), msg);
+    }
+
+    #[test]
+    fn sealed_envelope_nng_aio_messaging() {
+        use nng::{
+            aio::{Aio, Context},
+            Message, Protocol, Socket,
+        };
+        use std::sync::mpsc;
+        use std::time::{Duration, Instant};
+        use std::{env, thread};
+
+        /// Number of outstanding requests that we can handle at a given time.
+        ///
+        /// This is *NOT* the number of threads in use, but instead represents
+        /// outstanding work items. Select a small number to reduce memory size. (Each
+        /// one of these can be thought of as a request-reply loop.) Note that you will
+        /// probably run into limitations on the number of open file descriptors if you
+        /// set this too high. (If not for that limit, this could be set in the
+        /// thousands, each context consumes a couple of KB.)
+        const PARALLEL: usize = 10;
+
+        /// Run the server portion of the program.
+        fn server(
+            url: &str,
+            start: mpsc::Sender<()>,
+            shutdown: mpsc::Receiver<()>,
+        ) -> Result<(), nng::Error> {
+            // Create the socket
+            let mut s = Socket::new(Protocol::Rep0)?;
+
+            // Create all of the worker contexts
+            let workers: Vec<_> = (0..PARALLEL)
+                .map(|i| create_worker(i, &s))
+                .collect::<Result<_, _>>()?;
+
+            // Only after we have the workers do we start listening.
+            s.listen(url)?;
+
+            // Now start all of the workers listening.
+            for (a, c) in &workers {
+                a.recv(c)?;
+            }
+
+            start
+                .send(())
+                .expect("Failed to send server started signal");
+
+            // block until server shutdown is signalled
+            shutdown.recv();
+            println!("server is shutting down ...");
+
+            Ok(())
+        }
+
+        /// Create a new worker context for the server.
+        fn create_worker(i: usize, s: &Socket) -> Result<(Aio, Context), nng::Error> {
+            let mut state = State::Recv;
+
+            let ctx = Context::new(s)?;
+            let ctx_clone = ctx.clone();
+            let aio =
+                Aio::with_callback(move |aio| worker_callback(i, aio, &ctx_clone, &mut state))?;
+
+            Ok((aio, ctx))
+        }
+
+        /// Callback function for workers.
+        fn worker_callback(i: usize, aio: &Aio, ctx: &Context, state: &mut State) {
+            let new_state = match *state {
+                State::Recv => {
+                    println!("[{}] state: {:?}", i, state);
+                    // If there was an issue, we're just going to panic instead of
+                    // doing something sensible.
+                    let _ = aio.result().unwrap();
+                    match aio.get_msg() {
+                        Some(msg) => {
+                            println!("[{}] received message: state: {:?}", i, state);
+                            let sealed_envelope =
+                                SealedEnvelope::try_from_nng_message(msg).unwrap();
+                            // echo back the message
+                            let response = sealed_envelope.try_into_nng_message().unwrap();
+                            aio.send(ctx, response).unwrap();
+                            State::Send
+                        }
+                        None => {
+                            println!("[{}] no message: state: {:?}", i, state);
+                            State::Recv
+                        }
+                    }
+                }
+                State::Send => {
+                    println!("[{}] state: {:?}", i, state);
+                    // Again, just panic bad if things happened.
+                    let _ = aio.result().unwrap();
+                    aio.recv(ctx).unwrap();
+
+                    State::Recv
+                }
+            };
+
+            *state = new_state;
+        }
+
+        /// State of a request.
+        #[derive(Debug, Copy, Clone)]
+        enum State {
+            Recv,
+            Send,
+        }
+
+        fn send_request(s: &mut Socket, msg: SealedEnvelope) -> Result<SealedEnvelope, nng::Error> {
+            let req = msg.try_into_nng_message().unwrap();
+
+            let start = Instant::now();
+            s.send(req)?;
+            let resp = s.recv()?;
+
+            let dur = Instant::now().duration_since(start);
+            println!("Request took {:?} milliseconds", dur);
+            let resp = SealedEnvelope::try_from_nng_message(resp).unwrap();
+            Ok(resp)
+        }
+
+        let mut s = Socket::new(Protocol::Req0).unwrap();
+        let url = "inproc://test";
+
+        let (server_shutdown_tx, server_shutdown_rx) = mpsc::channel();
+        let (server_started_tx, server_started_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            server(url, server_started_tx, server_shutdown_rx).expect("Failed to start the server");
+        });
+        // wait until the server has started
+        server_started_rx.recv();
+        // connect to the server
+        s.dial(url).unwrap();
+
+        // create the message
+        let (client_pub_key, client_priv_key) = box_::gen_keypair();
+        let (server_pub_key, server_priv_key) = box_::gen_keypair();
+        let (client_addr, server_addr) =
+            (Address::from(client_pub_key), Address::from(server_pub_key));
+        let opening_key = client_addr.precompute_opening_key(&server_priv_key);
+        let sealing_key = server_addr.precompute_sealing_key(&client_priv_key);
+        let msg = b"data";
+
+        // send request messages
+        for i in 0..100 {
+            let open_envelope =
+                OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), msg);
+            let sealed_envelope = open_envelope.seal(&sealing_key);
+            let start = Instant::now();
+            let resp = send_request(&mut s, sealed_envelope).unwrap();
+            let dur = Instant::now().duration_since(start);
+            println!("Request[{}] took {:?} milliseconds", i, dur);
+            let resp = resp.open(&opening_key).unwrap();
+            assert_eq!(resp.msg(), msg);
+        }
+
+        // signal the server to shutdown
+        server_shutdown_tx
+            .send(())
+            .expect("Failed to send shutdown signal");
+        server.join().unwrap();
     }
 
     #[test]
@@ -1747,5 +1954,4 @@ mod test {
             .unwrap();
         assert_eq!(deadline.duration(start), chrono::Duration::zero());
     }
-
 }

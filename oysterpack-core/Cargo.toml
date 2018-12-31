@@ -45,6 +45,8 @@ flate2 = "1.0.6"
 lz4 = "1.23.1"
 parity-snappy = "0.1.0"
 
+nng = "0.3.0"
+
 [dev-dependencies]
 version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}

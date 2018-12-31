@@ -26,7 +26,8 @@ use oysterpack_log::{
     manager::RecordLogger,
 };
 use std::{
-    fmt, io::{self, BufWriter, Write}
+    fmt,
+    io::{self, BufWriter, Write},
 };
 
 /// Logger ServiceId (01CWXSW61VREYK48PZ7QE549G5)
@@ -39,7 +40,7 @@ pub const SERVICE_ID: actor::Id = actor::Id(186524375993018703154383044047130778
 #[derive(Debug)]
 pub struct Logger {
     service_info: ServiceInfo,
-    buf_stderr: BufWriter<io::Stderr>
+    buf_stderr: BufWriter<io::Stderr>,
 }
 
 impl Default for Logger {
@@ -48,7 +49,7 @@ impl Default for Logger {
         let buf_stderr = io::BufWriter::new(stderr);
         Logger {
             service_info: ServiceInfo::for_new_actor_instance(SERVICE_ID, Self::TYPE),
-            buf_stderr
+            buf_stderr,
         }
     }
 }
@@ -151,7 +152,7 @@ impl Handler<LogRecord> for Logger {
                     module_source,
                     request.message()
                 );
-            },
+            }
             None => {
                 let _ = writeln!(
                     self.buf_stderr,
@@ -161,7 +162,7 @@ impl Handler<LogRecord> for Logger {
                     request.target(),
                     request.message()
                 );
-            },
+            }
         }
 
         if request.level() <= Level::Warn {

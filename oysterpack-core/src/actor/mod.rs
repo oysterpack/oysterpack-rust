@@ -54,9 +54,11 @@ use futures::{Async, Future, Poll};
 use oysterpack_app_metadata::Build;
 use oysterpack_errors::Error;
 use oysterpack_events::Id as EventId;
-use oysterpack_uid::{ulid::ulid_u128_into_string, ULID, macros::{
-    ulid, domain
-}};
+use oysterpack_uid::{
+    macros::{domain, ulid},
+    ulid::ulid_u128_into_string,
+    ULID,
+};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -487,9 +489,9 @@ pub mod eventlog;
 pub mod events;
 pub mod logger;
 
+pub mod alarms;
 pub mod config;
 pub mod errors;
-pub mod alarms;
 
 /// AppClient provides a 1 stop shop to work with the App.
 #[derive(Clone)]
