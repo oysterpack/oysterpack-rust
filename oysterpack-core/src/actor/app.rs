@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -79,10 +79,7 @@ impl App {
     where
         F: Future<Item = (), Error = ()> + 'static,
     {
-        assert!(
-            exonum_sodiumoxide::init(),
-            "Failed to initialize the sodium library"
-        );
+        sodiumoxide::init().expect("Failed to initialize the sodium library");
         System::run(move || {
             let task = crate::actor::logger::init_logging(log_config)
                 .then(move |_| {

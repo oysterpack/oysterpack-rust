@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@
 //!
 
 use chrono::{DateTime, Duration, Utc};
-use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
+use sodiumoxide::crypto::{box_, hash, secretbox, sign};
 use flate2::bufread;
 use oysterpack_errors::{Error, ErrorMessage, Id as ErrorId, IsError, Level as ErrorLevel};
 use oysterpack_events::event::ModuleSource;
@@ -88,7 +88,6 @@ use std::{
 };
 
 pub mod base58;
-pub mod codec;
 pub mod errors;
 pub mod service;
 
@@ -782,6 +781,7 @@ impl Deadline {
 
 #[oysterpack_uid::macros::ulid]
 /// Unique message type identifier
+/// - MessageTypeId enables MessageType(s) to be defined as constants
 pub struct MessageTypeId(pub u128);
 
 impl MessageTypeId {
@@ -791,12 +791,7 @@ impl MessageTypeId {
     }
 }
 
-/// Identifies the message type, whcih tells us how to decode the bytes message data.
-///
-/// # Why is there a MessageTypeId and MessageType - aren't they redundant ?
-/// Underneath the covers, MessageTypeId is really a u128. MessagePack does not support u128.
-/// Thus, for serializing messages, we use MessageType(ULID). MessageTypeId is used to define
-/// constants.
+/// Identifies the message type, which tells us how to decode the bytes message data.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct MessageType(ULID);
 
@@ -1174,7 +1169,7 @@ mod test {
         SealedEnvelope,
     };
     use crate::tests::run_test;
-    use exonum_sodiumoxide::crypto::{box_, hash, secretbox, sign};
+    use sodiumoxide::crypto::{box_, hash, secretbox, sign};
     use oysterpack_uid::ULID;
     use std::io;
 
@@ -1419,10 +1414,9 @@ mod test {
 
         // send request messages
         for i in 0..100 {
-            let open_envelope =
-                OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), msg);
-            let sealed_envelope = open_envelope.seal(&sealing_key);
             let start = Instant::now();
+            let open_envelope = OpenEnvelope::new(client_pub_key.into(), server_pub_key.into(), msg);
+            let sealed_envelope = open_envelope.seal(&sealing_key);
             let resp = send_request(&mut s, sealed_envelope).unwrap();
             let dur = Instant::now().duration_since(start);
             println!("Request[{}] took {:?} milliseconds", i, dur);

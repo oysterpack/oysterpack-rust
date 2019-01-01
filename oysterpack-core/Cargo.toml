@@ -38,7 +38,7 @@ futures = "0.1.25"
 crossbeam-channel = "0.3.0"
 bytes = "0.4.11"
 
-exonum_sodiumoxide = "0.0.20"
+sodiumoxide = "0.2.0"
 bs58 = "0.2.2"
 
 flate2 = "1.0.6"

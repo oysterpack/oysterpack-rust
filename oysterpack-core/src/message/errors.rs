@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 //! message errors
 
 use super::{Address, Encoding, SessionId};
-use exonum_sodiumoxide::crypto::{box_, sign};
+use sodiumoxide::crypto::{box_, sign};
 use oysterpack_errors::{ErrorMessage, Id, IsError, Level};
 use std::fmt;
 
