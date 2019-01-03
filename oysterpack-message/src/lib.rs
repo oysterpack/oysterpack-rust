@@ -691,4 +691,25 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn sealed_envelope_nng_conversions() {
+        sodiumoxide::init().unwrap();
+        let data: &[u8] = b"cryptocurrency is the future";
+
+        let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+        let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+
+        let client_addr = Address::from(client_public_key);
+        let server_addr = Address::from(server_public_key);
+
+        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
+        let sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let nng_msg = sealed_envelope.clone().try_into_nng_message().unwrap();
+        let sealed_envelope_2 = SealedEnvelope::try_from_nng_message(nng_msg).unwrap();
+        let open_envelope_2 = sealed_envelope_2.open(&client_addr.precompute_key(&server_private_key)).unwrap();
+        assert_eq!(open_envelope_2.sender(),open_envelope.sender());
+        assert_eq!(open_envelope_2.recipient(),open_envelope.recipient());
+        assert_eq!(open_envelope_2.msg(),open_envelope.msg());
+    }
 }
