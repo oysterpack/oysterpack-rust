@@ -20,13 +20,16 @@
 //! 2. public keys are used as message addresses
 //! 3. [nng](https://nanomsg.github.io/nng/index.html) message conversion
 
+#![allow(clippy::unreadable_literal)]
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_message/0.1.0")]
 
 use oysterpack_errors::{op_error, Error, ErrorMessage};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sodiumoxide::crypto::box_;
 use std::{fmt, str::FromStr};
+
+pub mod errors;
 
 /// Addresses are identified by public-keys.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -100,7 +103,7 @@ impl SealedEnvelope {
 
     // TODO: implement TryFrom when it bocomes stable
     /// Converts an nng:Message into a SealedEnvelope.
-    pub fn try_from_nng_message(msg: nng::Message) -> Result<SealedEnvelope, Error> {
+    pub fn try_from_nng_message(msg: &nng::Message) -> Result<SealedEnvelope, Error> {
         bincode::deserialize(&**msg).map_err(|err| {
             op_error!(errors::BincodeDeserializeError(
                 errors::Scope::SealedEnvelope,
@@ -190,7 +193,7 @@ impl EncryptedBytesMessage {
         key: &box_::PrecomputedKey,
     ) -> Result<BytesMessage, Error> {
         box_::open_precomputed(&self.0, nonce, key)
-            .map(|data| BytesMessage(data))
+            .map(BytesMessage)
             .map_err(|_| {
                 op_error!(errors::DecryptionError(
                     errors::Scope::EncryptedMessageBytes
@@ -218,14 +221,12 @@ pub struct BytesMessage(Vec<u8>);
 impl BytesMessage {
     /// constructor
     pub fn try_from<T: Serialize>(msg: &T) -> Result<BytesMessage, Error> {
-        bincode::serialize(msg)
-            .map(|bytes| BytesMessage(bytes))
-            .map_err(|err| {
-                op_error!(errors::BincodeSerializeError(
-                    errors::Scope::BytesMessage,
-                    ErrorMessage(err.to_string())
-                ))
-            })
+        bincode::serialize(msg).map(BytesMessage).map_err(|err| {
+            op_error!(errors::BincodeSerializeError(
+                errors::Scope::BytesMessage,
+                ErrorMessage(err.to_string())
+            ))
+        })
     }
 
     /// returns the message bytes
@@ -269,7 +270,7 @@ impl<T: Serialize> Envelope<T> {
         Envelope {
             sender,
             recipient,
-            msg: msg,
+            msg,
         }
     }
 
@@ -331,9 +332,13 @@ impl Envelope<BytesMessage> {
     }
 
     /// deserializes the BytesMessage into `T`
-    pub fn try_into<T: DeserializeOwned>(self) -> Result<Envelope<T>,Error> {
-        let msg: T = bincode::deserialize(self.msg.data())
-            .map_err(|err| op_error!(errors::BincodeDeserializeError(errors::Scope::BytesMessage, ErrorMessage(err.to_string()))))?;
+    pub fn try_into<T: DeserializeOwned>(self) -> Result<Envelope<T>, Error> {
+        let msg: T = bincode::deserialize(self.msg.data()).map_err(|err| {
+            op_error!(errors::BincodeDeserializeError(
+                errors::Scope::BytesMessage,
+                ErrorMessage(err.to_string())
+            ))
+        })?;
         Ok(Envelope {
             sender: self.sender,
             recipient: self.recipient,
@@ -353,8 +358,6 @@ impl fmt::Display for Envelope<BytesMessage> {
         )
     }
 }
-
-pub mod errors;
 
 #[allow(warnings)]
 #[cfg(test)]
@@ -599,7 +602,7 @@ mod test {
             .clone()
             .seal(&server_addr.precompute_key(&client_private_key));
         let nng_msg = sealed_envelope.clone().try_into_nng_message().unwrap();
-        let sealed_envelope_2 = SealedEnvelope::try_from_nng_message(nng_msg).unwrap();
+        let sealed_envelope_2 = SealedEnvelope::try_from_nng_message(&nng_msg).unwrap();
         let envelope_2 = sealed_envelope_2
             .open(&client_addr.precompute_key(&server_private_key))
             .unwrap();
@@ -614,7 +617,6 @@ mod test {
         struct Foo(String);
 
         impl SerializableMessage for Foo {}
-
 
         sodiumoxide::init().unwrap();
         let foo = Foo("cryptocurrency is the future".to_string());
