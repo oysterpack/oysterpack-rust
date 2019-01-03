@@ -14,13 +14,17 @@
  *    limitations under the License.
  */
 
-//! OysterPack Message
+//! OysterPack message features:
+//! 1. messages are secured via public-key encryption
+//!    - messages encrypted by the sender can only be decrypted by the recipient
+//! 2. public keys are used as message addresses
+//! 3. [nng](https://nanomsg.github.io/nng/index.html) message conversion
 
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_message/0.1.0")]
 
 use oysterpack_errors::{op_error, Error, ErrorMessage};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sodiumoxide::crypto::box_;
 use std::{fmt, str::FromStr};
 
@@ -75,7 +79,7 @@ pub struct SealedEnvelope {
     sender: Address,
     recipient: Address,
     nonce: box_::Nonce,
-    msg: EncryptedMessageBytes,
+    msg: EncryptedBytesMessage,
 }
 
 impl SealedEnvelope {
@@ -90,7 +94,7 @@ impl SealedEnvelope {
             sender,
             recipient,
             nonce,
-            msg: EncryptedMessageBytes::from(msg),
+            msg: EncryptedBytesMessage::from(msg),
         }
     }
 
@@ -98,15 +102,22 @@ impl SealedEnvelope {
     /// Converts an nng:Message into a SealedEnvelope.
     pub fn try_from_nng_message(msg: nng::Message) -> Result<SealedEnvelope, Error> {
         bincode::deserialize(&**msg).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(errors::Scope::SealedEnvelope, ErrorMessage(err.to_string())))
+            op_error!(errors::BincodeDeserializeError(
+                errors::Scope::SealedEnvelope,
+                ErrorMessage(err.to_string())
+            ))
         })
     }
 
     // TODO: implement TryInto when it becomes stable
     /// Converts itself into an nng:Message
     pub fn try_into_nng_message(self) -> Result<nng::Message, Error> {
-        let bytes = bincode::serialize(&self)
-            .map_err(|err| op_error!(errors::BincodeSerializeError(errors::Scope::SealedEnvelope, ErrorMessage(err.to_string()))))?;
+        let bytes = bincode::serialize(&self).map_err(|err| {
+            op_error!(errors::BincodeSerializeError(
+                errors::Scope::SealedEnvelope,
+                ErrorMessage(err.to_string())
+            ))
+        })?;
         let mut msg = nng::Message::with_capacity(bytes.len()).map_err(|err| {
             op_error!(errors::NngMessageError::from(ErrorMessage(format!("Failed to create an empty message with a pre-allocated body buffer (capacity = {}): {}", bytes.len(), err))))
         })?;
@@ -120,14 +131,16 @@ impl SealedEnvelope {
     }
 
     /// open the envelope using the specified precomputed key
-    pub fn open(self, key: &box_::PrecomputedKey) -> Result<OpenEnvelope, Error> {
+    pub fn open(self, key: &box_::PrecomputedKey) -> Result<Envelope<BytesMessage>, Error> {
         match box_::open_precomputed(&self.msg.0, &self.nonce, key) {
-            Ok(msg) => Ok(OpenEnvelope {
+            Ok(msg) => Ok(Envelope {
                 sender: self.sender,
                 recipient: self.recipient,
-                msg: MessageBytes(msg),
+                msg: BytesMessage(msg),
             }),
-            Err(_) => Err(op_error!(errors::DecryptionError(errors::Scope::SealedEnvelope))),
+            Err(_) => Err(op_error!(errors::DecryptionError(
+                errors::Scope::SealedEnvelope
+            ))),
         }
     }
 
@@ -160,11 +173,11 @@ impl fmt::Display for SealedEnvelope {
     }
 }
 
-/// message data bytes that is encrypted
+/// encrypted raw bytes message
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub struct EncryptedMessageBytes(Vec<u8>);
+pub struct EncryptedBytesMessage(Vec<u8>);
 
-impl EncryptedMessageBytes {
+impl EncryptedBytesMessage {
     /// returns the message bytess
     pub fn data(&self) -> &[u8] {
         &self.0
@@ -175,31 +188,47 @@ impl EncryptedMessageBytes {
         &self,
         nonce: &box_::Nonce,
         key: &box_::PrecomputedKey,
-    ) -> Result<MessageBytes, Error> {
+    ) -> Result<BytesMessage, Error> {
         box_::open_precomputed(&self.0, nonce, key)
-            .map(|data| MessageBytes(data))
-            .map_err(|_| op_error!(errors::DecryptionError(errors::Scope::EncryptedMessageBytes)))
+            .map(|data| BytesMessage(data))
+            .map_err(|_| {
+                op_error!(errors::DecryptionError(
+                    errors::Scope::EncryptedMessageBytes
+                ))
+            })
     }
 }
 
-impl From<&[u8]> for EncryptedMessageBytes {
-    fn from(bytes: &[u8]) -> EncryptedMessageBytes {
-        EncryptedMessageBytes(Vec::from(bytes))
+impl From<&[u8]> for EncryptedBytesMessage {
+    fn from(bytes: &[u8]) -> EncryptedBytesMessage {
+        EncryptedBytesMessage(Vec::from(bytes))
     }
 }
 
-impl From<Vec<u8>> for EncryptedMessageBytes {
-    fn from(bytes: Vec<u8>) -> EncryptedMessageBytes {
-        EncryptedMessageBytes(bytes)
+impl From<Vec<u8>> for EncryptedBytesMessage {
+    fn from(bytes: Vec<u8>) -> EncryptedBytesMessage {
+        EncryptedBytesMessage(bytes)
     }
 }
 
-/// message data bytes
+/// raw bytes message
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub struct MessageBytes(Vec<u8>);
+pub struct BytesMessage(Vec<u8>);
 
-impl MessageBytes {
-    /// returns the message bytess
+impl BytesMessage {
+    /// constructor
+    pub fn try_from<T: Serialize>(msg: &T) -> Result<BytesMessage, Error> {
+        bincode::serialize(msg)
+            .map(|bytes| BytesMessage(bytes))
+            .map_err(|err| {
+                op_error!(errors::BincodeSerializeError(
+                    errors::Scope::BytesMessage,
+                    ErrorMessage(err.to_string())
+                ))
+            })
+    }
+
+    /// returns the message bytes
     pub fn data(&self) -> &[u8] {
         &self.0
     }
@@ -209,55 +238,44 @@ impl MessageBytes {
         &self,
         nonce: &box_::Nonce,
         key: &box_::PrecomputedKey,
-    ) -> EncryptedMessageBytes {
-        EncryptedMessageBytes(box_::seal_precomputed(&self.0, nonce, key))
+    ) -> EncryptedBytesMessage {
+        EncryptedBytesMessage(box_::seal_precomputed(&self.0, nonce, key))
     }
 }
 
-impl From<&[u8]> for MessageBytes {
-    fn from(bytes: &[u8]) -> MessageBytes {
-        MessageBytes(Vec::from(bytes))
+impl From<&[u8]> for BytesMessage {
+    fn from(bytes: &[u8]) -> BytesMessage {
+        BytesMessage(Vec::from(bytes))
     }
 }
 
-impl From<Vec<u8>> for MessageBytes {
-    fn from(bytes: Vec<u8>) -> MessageBytes {
-        MessageBytes(bytes)
+impl From<Vec<u8>> for BytesMessage {
+    fn from(bytes: Vec<u8>) -> BytesMessage {
+        BytesMessage(bytes)
     }
 }
 
-/// Represents an envelope that is open, i.e., its message is not encrypted
+/// A message envelope that is addressed
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OpenEnvelope {
+pub struct Envelope<T> {
     sender: Address,
     recipient: Address,
-    msg: MessageBytes,
+    msg: T,
 }
 
-impl OpenEnvelope {
+impl<T: Serialize> Envelope<T> {
     /// constructor
-    pub fn new(sender: Address, recipient: Address, msg: &[u8]) -> OpenEnvelope {
-        OpenEnvelope {
+    pub fn new(sender: Address, recipient: Address, msg: T) -> Envelope<T> {
+        Envelope {
             sender,
             recipient,
-            msg: MessageBytes::from(msg),
-        }
-    }
-
-    /// seals the envelope
-    pub fn seal(self, key: &box_::PrecomputedKey) -> SealedEnvelope {
-        let nonce = box_::gen_nonce();
-        SealedEnvelope {
-            sender: self.sender,
-            recipient: self.recipient,
-            nonce,
-            msg: EncryptedMessageBytes(box_::seal_precomputed(&self.msg.0, &nonce, key)),
+            msg: msg,
         }
     }
 
     /// msg bytes
-    pub fn msg(&self) -> &[u8] {
-        &self.msg.0
+    pub fn msg(&self) -> &T {
+        &self.msg
     }
 
     /// returns the sender address
@@ -271,7 +289,60 @@ impl OpenEnvelope {
     }
 }
 
-impl fmt::Display for OpenEnvelope {
+/// Marker trait for any message that is serializable
+pub trait SerializableMessage: Serialize {}
+
+impl<T: SerializableMessage> Envelope<T> {
+    /// serializes the message into `Envelope<BytesMessage>`
+    pub fn try_into_bytes_message(self) -> Result<Envelope<BytesMessage>, Error> {
+        let msg = BytesMessage::try_from(&self.msg)?;
+        let envelope = Envelope {
+            sender: self.sender,
+            recipient: self.recipient,
+            msg,
+        };
+        Ok(envelope)
+    }
+}
+
+impl Envelope<BytesMessage> {
+    /// constructor
+    pub fn bytes_message(
+        sender: Address,
+        recipient: Address,
+        msg: &[u8],
+    ) -> Envelope<BytesMessage> {
+        Envelope {
+            sender,
+            recipient,
+            msg: BytesMessage::from(msg),
+        }
+    }
+
+    /// seals the envelope
+    pub fn seal(self, key: &box_::PrecomputedKey) -> SealedEnvelope {
+        let nonce = box_::gen_nonce();
+        SealedEnvelope {
+            sender: self.sender,
+            recipient: self.recipient,
+            nonce,
+            msg: EncryptedBytesMessage(box_::seal_precomputed(&self.msg.0, &nonce, key)),
+        }
+    }
+
+    /// deserializes the BytesMessage into `T`
+    pub fn try_into<T: DeserializeOwned>(self) -> Result<Envelope<T>,Error> {
+        let msg: T = bincode::deserialize(self.msg.data())
+            .map_err(|err| op_error!(errors::BincodeDeserializeError(errors::Scope::BytesMessage, ErrorMessage(err.to_string()))))?;
+        Ok(Envelope {
+            sender: self.sender,
+            recipient: self.recipient,
+            msg,
+        })
+    }
+}
+
+impl fmt::Display for Envelope<BytesMessage> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -283,200 +354,7 @@ impl fmt::Display for OpenEnvelope {
     }
 }
 
-/// message related errors
-pub mod errors {
-    use std::fmt;
-    use oysterpack_errors::{ErrorMessage, IsError};
-    use serde::{Deserialize, Serialize};
-
-    /// Base58 decoding error
-    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct Base58DecodeError(pub(crate) ErrorMessage);
-
-    impl Base58DecodeError {
-        /// Error ID
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869558836149169496880583090618468282);
-
-        /// Error level
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
-    }
-
-    impl IsError for Base58DecodeError {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for Base58DecodeError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(
-                f,
-                "Invalid Base58 encoding using the Bitcoin alphabet: {}",
-                self.0
-            )
-        }
-    }
-
-    /// PublicKey should be 32 bytes
-    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct InvalidPublicKeyLength(pub(crate) usize);
-
-    impl InvalidPublicKeyLength {
-        /// Error ID
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869558894929538460990404972159560814);
-
-        /// Error level
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
-    }
-
-    impl IsError for InvalidPublicKeyLength {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for InvalidPublicKeyLength {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "PublicKey should be 32 bytes, but was {}", self.0)
-        }
-    }
-
-    /// Base58 decoding error
-    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct DecryptionError(pub(crate) Scope);
-
-    impl DecryptionError {
-        /// Error ID
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869570295266385307080584268554182611);
-
-        /// Error level
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
-    }
-
-    impl IsError for DecryptionError {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for DecryptionError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "failed to decrypt: {:?}", self.0)
-        }
-    }
-
-
-    #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-    pub(crate) enum Scope {
-        EncryptedMessageBytes,
-        SealedEnvelope
-    }
-
-    /// nng:Message related error
-    #[derive(Debug)]
-    pub struct NngMessageError(pub(crate) ErrorMessage);
-
-    impl NngMessageError {
-        /// Error Id
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869218326628258606664054868854559775);
-        /// Level::Alert
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-    }
-
-    impl From<ErrorMessage> for NngMessageError {
-        fn from(err_msg: ErrorMessage) -> NngMessageError {
-            NngMessageError(err_msg)
-        }
-    }
-
-    impl IsError for NngMessageError {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for NngMessageError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "Failed to allocate a new nng:Message: {}", self.0)
-        }
-    }
-
-    /// bincode serialization related error
-    #[derive(Debug)]
-    pub struct BincodeSerializeError(pub(crate) Scope,pub(crate) ErrorMessage);
-
-    impl BincodeSerializeError {
-        /// Error Id
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869574419254846020884390106309931899);
-        /// Level::Alert
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-    }
-
-    impl IsError for BincodeSerializeError {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for BincodeSerializeError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "`{:?}` bincode deserialization failed: {}", self.0, self.1)
-        }
-    }
-
-    /// bincode deserialization related error
-    #[derive(Debug)]
-    pub struct BincodeDeserializeError(pub(crate) Scope,pub(crate) ErrorMessage);
-
-    impl BincodeDeserializeError {
-        /// Error Id
-        pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1869576546482110294116245028055198653);
-        /// Level::Alert
-        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-    }
-
-    impl IsError for BincodeDeserializeError {
-        fn error_id(&self) -> oysterpack_errors::Id {
-            Self::ERROR_ID
-        }
-
-        fn error_level(&self) -> oysterpack_errors::Level {
-            Self::ERROR_LEVEL
-        }
-    }
-
-    impl fmt::Display for BincodeDeserializeError {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "`{:?}` bincode serialization failed: {}", self.0, self.1)
-        }
-    }
-}
+pub mod errors;
 
 #[allow(warnings)]
 #[cfg(test)]
@@ -522,10 +400,13 @@ mod test {
             }
         }
 
-        let mut s = client_addr.to_string();
-        s.push('2');
+        let s = client_addr.to_string();
+        let s = format!("222222{}333333", s);
         match s.parse::<Address>() {
-            Ok(_) => panic!("should have failed to parse because the number of bytes is 33"),
+            Ok(_) => panic!(
+                "should have failed to parse because the number of bytes should be 32: {}",
+                s
+            ),
             Err(err) => {
                 println!("{}", err);
                 assert_eq!(err.id(), errors::InvalidPublicKeyLength::ERROR_ID);
@@ -536,8 +417,8 @@ mod test {
     #[test]
     fn message_bytes() {
         let data: &[u8] = b"cryptocurrency is the future";
-        let msg = MessageBytes::from(data);
-        let msg_2 = MessageBytes::from(Vec::from(data));
+        let msg = BytesMessage::from(data);
+        let msg_2 = BytesMessage::from(Vec::from(data));
         assert_eq!(msg, msg_2);
         assert_eq!(msg.data(), data);
     }
@@ -546,7 +427,7 @@ mod test {
     fn message_bytes_encrypt_decrypt() {
         sodiumoxide::init().unwrap();
         let data: &[u8] = b"cryptocurrency is the future";
-        let msg = MessageBytes::from(data);
+        let msg = BytesMessage::from(data);
 
         let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
         let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
@@ -564,7 +445,7 @@ mod test {
     }
 
     #[test]
-    fn open_envelope_sealed_envelope() {
+    fn open_sealed_envelope() {
         sodiumoxide::init().unwrap();
         let data: &[u8] = b"cryptocurrency is the future";
 
@@ -575,19 +456,23 @@ mod test {
         let server_addr = Address::from(server_public_key);
 
         // create a new OpenEnvelope
-        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
-        assert_eq!(data, open_envelope.msg());
-        assert_eq!(client_addr, *open_envelope.sender());
-        assert_eq!(server_addr, *open_envelope.recipient());
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        assert_eq!(data, envelope.msg().data());
+        assert_eq!(client_addr, *envelope.sender());
+        assert_eq!(server_addr, *envelope.recipient());
         // seal the OpenEnvelope
-        let sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let sealed_envelope = envelope
+            .clone()
+            .seal(&server_addr.precompute_key(&client_private_key));
         assert_eq!(client_addr, *sealed_envelope.sender());
         assert_eq!(server_addr, *sealed_envelope.recipient());
         // open the SealedEnvelope
-        let open_envelope_2 = sealed_envelope.open(&client_addr.precompute_key(&server_private_key)).unwrap();
-        assert_eq!(open_envelope_2.sender(),open_envelope.sender());
-        assert_eq!(open_envelope_2.recipient(),open_envelope.recipient());
-        assert_eq!(open_envelope_2.msg(),open_envelope.msg());
+        let envelope_2 = sealed_envelope
+            .open(&client_addr.precompute_key(&server_private_key))
+            .unwrap();
+        assert_eq!(envelope_2.sender(), envelope.sender());
+        assert_eq!(envelope_2.recipient(), envelope.recipient());
+        assert_eq!(envelope_2.msg(), envelope.msg());
     }
 
     #[test]
@@ -602,12 +487,14 @@ mod test {
         let server_addr = Address::from(server_public_key);
 
         // create a new OpenEnvelope
-        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
-        assert_eq!(data, open_envelope.msg());
-        assert_eq!(client_addr, *open_envelope.sender());
-        assert_eq!(server_addr, *open_envelope.recipient());
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        assert_eq!(data, envelope.msg().data());
+        assert_eq!(client_addr, *envelope.sender());
+        assert_eq!(server_addr, *envelope.recipient());
         // seal the OpenEnvelope
-        let sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let sealed_envelope = envelope
+            .clone()
+            .seal(&server_addr.precompute_key(&client_private_key));
         assert_eq!(client_addr, *sealed_envelope.sender());
         assert_eq!(server_addr, *sealed_envelope.recipient());
 
@@ -639,12 +526,14 @@ mod test {
         let (_, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
 
         // create a new OpenEnvelope
-        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
-        assert_eq!(data, open_envelope.msg());
-        assert_eq!(client_addr, *open_envelope.sender());
-        assert_eq!(server_addr, *open_envelope.recipient());
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        assert_eq!(data, envelope.msg().data());
+        assert_eq!(client_addr, *envelope.sender());
+        assert_eq!(server_addr, *envelope.recipient());
         // seal the OpenEnvelope
-        let sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let sealed_envelope = envelope
+            .clone()
+            .seal(&server_addr.precompute_key(&client_private_key));
         assert_eq!(client_addr, *sealed_envelope.sender());
         assert_eq!(server_addr, *sealed_envelope.recipient());
 
@@ -670,17 +559,19 @@ mod test {
         let server_addr = Address::from(server_public_key);
 
         // create a new OpenEnvelope
-        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
-        assert_eq!(data, open_envelope.msg());
-        assert_eq!(client_addr, *open_envelope.sender());
-        assert_eq!(server_addr, *open_envelope.recipient());
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        assert_eq!(data, envelope.msg().data());
+        assert_eq!(client_addr, *envelope.sender());
+        assert_eq!(server_addr, *envelope.recipient());
         // seal the OpenEnvelope
-        let mut sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let mut sealed_envelope = envelope
+            .clone()
+            .seal(&server_addr.precompute_key(&client_private_key));
         assert_eq!(client_addr, *sealed_envelope.sender());
         assert_eq!(server_addr, *sealed_envelope.recipient());
         let mut encrypted_msg = sealed_envelope.msg.0.clone();
-        encrypted_msg.truncate(data.len()/2);
-        sealed_envelope.msg = EncryptedMessageBytes(encrypted_msg);
+        encrypted_msg.truncate(data.len() / 2);
+        sealed_envelope.msg = EncryptedBytesMessage(encrypted_msg);
 
         // open the SealedEnvelope
         match sealed_envelope.open(&client_addr.precompute_key(&server_private_key)) {
@@ -703,13 +594,44 @@ mod test {
         let client_addr = Address::from(client_public_key);
         let server_addr = Address::from(server_public_key);
 
-        let open_envelope = OpenEnvelope::new(client_addr,server_addr,data);
-        let sealed_envelope = open_envelope.clone().seal(&server_addr.precompute_key(&client_private_key));
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        let sealed_envelope = envelope
+            .clone()
+            .seal(&server_addr.precompute_key(&client_private_key));
         let nng_msg = sealed_envelope.clone().try_into_nng_message().unwrap();
         let sealed_envelope_2 = SealedEnvelope::try_from_nng_message(nng_msg).unwrap();
-        let open_envelope_2 = sealed_envelope_2.open(&client_addr.precompute_key(&server_private_key)).unwrap();
-        assert_eq!(open_envelope_2.sender(),open_envelope.sender());
-        assert_eq!(open_envelope_2.recipient(),open_envelope.recipient());
-        assert_eq!(open_envelope_2.msg(),open_envelope.msg());
+        let envelope_2 = sealed_envelope_2
+            .open(&client_addr.precompute_key(&server_private_key))
+            .unwrap();
+        assert_eq!(envelope_2.sender(), envelope.sender());
+        assert_eq!(envelope_2.recipient(), envelope.recipient());
+        assert_eq!(envelope_2.msg(), envelope.msg());
+    }
+
+    #[test]
+    fn envelope_try_into_bytes_message() {
+        #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
+        struct Foo(String);
+
+        impl SerializableMessage for Foo {}
+
+
+        sodiumoxide::init().unwrap();
+        let foo = Foo("cryptocurrency is the future".to_string());
+        let data: &[u8] = &bincode::serialize(&foo).unwrap();
+
+        let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+        let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+
+        let client_addr = Address::from(client_public_key);
+        let server_addr = Address::from(server_public_key);
+
+        let envelope = Envelope::bytes_message(client_addr, server_addr, data);
+        let envelope_foo: Envelope<Foo> = envelope.try_into().unwrap();
+        println!("envelope_foo: {:?}", envelope_foo);
+        assert_eq!(*envelope_foo.msg(), foo);
+        let envelope = envelope_foo.try_into_bytes_message().unwrap();
+        let envelope_foo: Envelope<Foo> = envelope.try_into().unwrap();
+        assert_eq!(*envelope_foo.msg(), foo);
     }
 }

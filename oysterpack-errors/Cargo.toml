@@ -20,6 +20,7 @@ chrono = "0.4.6"
 serde = {version = "1", features = ["derive"] }
 
 [dev-dependencies]
+oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 version-sync = "0.6"
 lazy_static = "1.1"
 

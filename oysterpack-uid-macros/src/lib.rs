@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -194,6 +194,21 @@ pub fn ulid(
     }
 }
 
+/// implements oysterpack_uid::HasDomain for a struct
+///
+/// ## Example
+/// <pre>
+/// #[domain(User)]
+/// #[ulid]
+/// pub struct UserId(pub u128);
+/// </pre>
+///
+/// ### `#[domain(User)]` produces the following code
+/// <pre>
+/// impl oysterpack_uid::HasDomain for UserId {
+///  const DOMAIN: oysterpack_uid::Domain = oysterpack_uid::Domain("User");
+/// }
+/// </pre>
 #[proc_macro_attribute]
 pub fn domain(
     args: proc_macro::TokenStream,
