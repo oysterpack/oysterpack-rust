@@ -50,7 +50,7 @@ nng = "0.3.0"
 [dev-dependencies]
 version-sync = "0.6"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
-criterion = "0.2.5"
+criterion = "0.2.7"
 serde_json = "1"
 
 [build-dependencies]

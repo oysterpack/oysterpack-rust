@@ -7,17 +7,30 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
-chrono = { version = "0.4.2", features = ["serde"] }
-serde = "1.0.37"
-serde_derive = "1.0.37"
+oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
+oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
 sodiumoxide = "0.2.0"
+bs58 = "0.2.2"
+chrono = "0.4.6"
 
-oysterpack_id = {path = "../oysterpack-id", version = "0.1.0"}
+# serde serializers
+serde = {version = "1", features = ["derive"] }
+bincode = {version = "1", features = ["i128"]}
+serde_cbor = "0.9"
+serde_json = "1"
+
+flate2 = "1.0.6"
+lz4 = "1.23.1"
+parity-snappy = "0.1.0"
+
+nng = "0.3.0"
 
 [dev-dependencies]
 version-sync = "0.5"
+criterion = "0.2.7"
 
 # serde serializers
 serde_cbor = "0.8.2"
@@ -27,3 +40,7 @@ rmp-serde = "0.13.7"
 
 [badges]
 maintenance = { status = "actively-developed" }
+
+[[bench]]
+name = "address_bench"
+harness = false

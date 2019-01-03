@@ -10,3 +10,4 @@ Cargo.lock
 **/target
 **/snap
 **/*.snap
+**/AppDir
