@@ -28,3 +28,4 @@ pub mod envelope;
 pub mod errors;
 pub mod message;
 pub mod protocol;
+pub mod security;

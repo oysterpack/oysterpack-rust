@@ -24,7 +24,7 @@ use chrono::{DateTime, Utc};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use oysterpack_uid::{macros::ulid, ULID};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{fmt, marker::PhantomData, collections::HashMap};
+use std::{collections::HashMap, fmt, marker::PhantomData};
 
 /// Represents a message specification.
 /// - maps a MessageTypeId to type `T`.
@@ -174,7 +174,7 @@ pub struct Header {
     #[serde(skip_serializing_if = "Option::is_none")]
     sequence: Option<Sequence>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    attributes: Option<HashMap<String, Vec<u8>>>
+    attributes: Option<HashMap<String, Vec<u8>>>,
 }
 
 impl Header {
@@ -189,7 +189,7 @@ impl Header {
             correlation_session_id: None,
             deadline: None,
             sequence: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -204,7 +204,7 @@ impl Header {
             correlation_session_id: None,
             deadline: None,
             sequence: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -220,7 +220,7 @@ impl Header {
             correlation_session_id: Some(request.session_id),
             deadline: None,
             sequence: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -240,7 +240,7 @@ impl Header {
             correlation_session_id: Some(request.session_id),
             deadline: None,
             sequence: None,
-            attributes: None
+            attributes: None,
         }
     }
 
@@ -343,7 +343,7 @@ impl Header {
     pub fn attribute(&self, key: &str) -> Option<&[u8]> {
         match &self.attributes {
             None => None,
-            Some(attrs) => attrs.get(key).map(|value| value.as_slice())
+            Some(attrs) => attrs.get(key).map(|value| value.as_slice()),
         }
     }
 

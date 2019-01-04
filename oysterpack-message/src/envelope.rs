@@ -17,53 +17,11 @@
 //! defines the message envelope layer
 
 use crate::errors;
+use crate::security::Address;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sodiumoxide::crypto::box_;
-use std::{fmt, str::FromStr};
-
-/// Addresses are identified by public-keys.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub struct Address(box_::PublicKey);
-
-impl Address {
-    /// returns the underlying public-key
-    pub fn public_key(&self) -> &box_::PublicKey {
-        &self.0
-    }
-
-    /// computes an intermediate key that can be used to encrypt / decrypt data
-    pub fn precompute_key(&self, secret_key: &box_::SecretKey) -> box_::PrecomputedKey {
-        box_::precompute(&self.0, secret_key)
-    }
-}
-
-impl From<box_::PublicKey> for Address {
-    fn from(address: box_::PublicKey) -> Address {
-        Address(address)
-    }
-}
-
-impl fmt::Display for Address {
-    /// encodes the address using a [Base58](https://en.wikipedia.org/wiki/Base58) encoding - which is used by Bitcoin
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", bs58::encode(&(self.0).0).into_string())
-    }
-}
-
-impl FromStr for Address {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Address, Self::Err> {
-        let bytes = bs58::decode(s)
-            .into_vec()
-            .map_err(|err| op_error!(errors::Base58DecodeError(ErrorMessage(err.to_string()))))?;
-        match box_::PublicKey::from_slice(&bytes) {
-            Some(key) => Ok(Address(key)),
-            None => Err(op_error!(errors::InvalidPublicKeyLength(bytes.len()))),
-        }
-    }
-}
+use std::fmt;
 
 /// A sealed envelope is secured via public-key authenticated encryption. It contains a private message
 /// that is encrypted using the recipient's public-key and the sender's private-key. If the recipient
