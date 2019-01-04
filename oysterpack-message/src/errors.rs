@@ -208,6 +208,38 @@ impl IsError for BincodeDeserializeError {
 
 impl fmt::Display for BincodeDeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "`{:?}` bincode serialization failed: {}", self.0, self.1)
+        write!(
+            f,
+            "`{:?}` bincode deserialization failed: {}",
+            self.0, self.1
+        )
+    }
+}
+
+/// snappy decompression error
+#[derive(Debug)]
+pub struct SnappyDecompressError(pub(crate) ErrorMessage);
+
+impl SnappyDecompressError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1869668521103431848013804724538751291);
+    /// Level::Alert
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
+}
+
+impl IsError for SnappyDecompressError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for SnappyDecompressError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "snappy decompression failed: {}", self.0)
     }
 }

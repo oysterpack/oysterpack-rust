@@ -14,17 +14,4 @@
  *    limitations under the License.
  */
 
-//! OysterPack message features:
-//! 1. messages are secured via public-key encryption
-//!    - messages encrypted by the sender can only be decrypted by the recipient
-//! 2. public keys are used as message addresses
-//! 3. [nng](https://nanomsg.github.io/nng/index.html) message conversion
-
-#![allow(clippy::unreadable_literal)]
-#![deny(missing_docs, missing_debug_implementations, warnings)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_message/0.1.0")]
-
-pub mod envelope;
-pub mod errors;
-pub mod message;
-pub mod protocol;
+//! defines the messaging protocols

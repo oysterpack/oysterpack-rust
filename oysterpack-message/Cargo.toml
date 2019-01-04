@@ -16,17 +16,12 @@ sodiumoxide = "0.2.0"
 bs58 = "0.2.2"
 chrono = "0.4.6"
 
-# serde serializers
 serde = {version = "1", features = ["derive"] }
 bincode = {version = "1", features = ["i128"]}
-serde_cbor = "0.9"
-serde_json = "1"
-
-flate2 = "1.0.6"
-lz4 = "1.23.1"
 parity-snappy = "0.1.0"
 
 nng = "0.3.0"
+crossbeam = "0.6.0"
 
 [dev-dependencies]
 version-sync = "0.5"
