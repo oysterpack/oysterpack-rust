@@ -37,8 +37,10 @@ pub struct DomainId(pub u128);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Domain {
     id: DomainId,
+    #[serde(skip_serializing_if = "Option::is_none")]
     parent_domain_id: Option<DomainId>,
     // (DomainId + signing_public_key) signature
+    #[serde(skip_serializing_if = "Option::is_none")]
     parent_domain_signature: Option<sign::Signature>,
     signing_public_key: sign::PublicKey,
     signing_secret_key: sign::SecretKey,
@@ -62,10 +64,10 @@ impl Domain {
         let (signing_public_key, signing_secret_key) = sign::gen_keypair();
         let id = DomainId::generate();
         Domain {
-            id ,
+            id,
             parent_domain_id: Some(self.id),
             parent_domain_signature: Some(sign::sign_detached(
-                &self.signing_data(id,&signing_public_key),
+                &Domain::signing_data(id, &signing_public_key),
                 &self.signing_secret_key,
             )),
             signing_public_key,
@@ -73,8 +75,8 @@ impl Domain {
         }
     }
 
-    fn signing_data(&self, id: DomainId, key: &sign::PublicKey) -> [u8; 48] {
-        let mut data: [u8; 48] = [0;48];
+    fn signing_data(id: DomainId, key: &sign::PublicKey) -> [u8; 48] {
+        let mut data: [u8; 48] = [0; 48];
         {
             let temp = &mut data[..16];
             temp.copy_from_slice(&id.ulid().to_bytes());
@@ -89,13 +91,54 @@ impl Domain {
     /// If this is a root domain, then true is always returned.
     pub fn verify(&self, parent_domain_key: &sign::PublicKey) -> bool {
         self.parent_domain_signature.map_or(true, |signature| {
-            sign::verify_detached(&signature, &self.signing_data(self.id, &self.signing_public_key), parent_domain_key)
+            sign::verify_detached(
+                &signature,
+                &Domain::signing_data(self.id, &self.signing_public_key),
+                parent_domain_key,
+            )
         })
     }
 
     /// public key used to verify signatures
     pub fn signing_public_key(&self) -> &sign::PublicKey {
         &self.signing_public_key
+    }
+
+    /// DomainId getter
+    pub fn id(&self) -> DomainId {
+        self.id
+    }
+
+    /// If None is returned, then this is a root Domain
+    pub fn parent_domain_id(&self) -> Option<DomainId> {
+        self.parent_domain_id
+    }
+
+    /// returns true if this is a root domain, i.e., it has no parent
+    pub fn is_root_domain(&self) -> bool {
+        self.parent_domain_id.is_none()
+    }
+
+    /// If this Domain has a parent, then the parent Domain signature is returned.
+    /// The parent signs the child to prove that it is the parent's child.
+    pub fn parent_domain_signature(&self) -> Option<&sign::Signature> {
+        self.parent_domain_signature.as_ref()
+    }
+
+    /// constructs a new Domain Service
+    pub fn new_service(&self) -> Service {
+        let id = ServiceId::generate();
+        let (signing_public_key, signing_secret_key) = sign::gen_keypair();
+        Service {
+            id,
+            domain_id: self.id,
+            domain_signature: sign::sign_detached(
+                &Service::signing_data(id, self.id, &signing_public_key),
+                &self.signing_secret_key,
+            ),
+            signing_public_key,
+            signing_secret_key,
+        }
     }
 }
 
@@ -112,6 +155,21 @@ pub struct Service {
     domain_signature: sign::Signature,
     signing_public_key: sign::PublicKey,
     signing_secret_key: sign::SecretKey,
+}
+
+impl Service {
+    fn signing_data(id: ServiceId, domain_id: DomainId, key: &sign::PublicKey) -> [u8; 64] {
+        let mut data: [u8; 64] = [0; 64];
+        {
+            let temp = &mut data[..16];
+            temp.copy_from_slice(&id.ulid().to_bytes());
+            let temp = &mut data[16..32];
+            temp.copy_from_slice(&domain_id.ulid().to_bytes());
+            let temp = &mut data[32..];
+            temp.copy_from_slice(&key.0);
+        }
+        data
+    }
 }
 
 /// Each service instance is assigned a unique service address.

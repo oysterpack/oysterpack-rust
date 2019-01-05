@@ -198,7 +198,7 @@ impl Header {
     pub fn new_for_session(msg_type_id: MessageTypeId, session_id: SessionId) -> Header {
         Header {
             msg_type_id,
-            session_id: session_id,
+            session_id,
             instance_id: InstanceId::generate(),
             correlation_id: None,
             correlation_session_id: None,
@@ -234,7 +234,7 @@ impl Header {
     ) -> Header {
         Header {
             msg_type_id,
-            session_id: session_id,
+            session_id,
             instance_id: InstanceId::generate(),
             correlation_id: Some(request.instance_id),
             correlation_session_id: Some(request.session_id),
