@@ -140,11 +140,12 @@ impl SigningDomain {
     pub fn new_service(&self) -> SigningService {
         let id = ServiceId::generate();
         let (signing_public_key, signing_secret_key) = sign::gen_keypair();
+        let signing_public_key = ServiceSigningKey(signing_public_key);
         let service = Service {
             id,
             domain_id: self.domain.id,
             domain_signature: sign::sign_detached(
-                &Service::signing_data(id, self.domain.id, &signing_public_key),
+                &Service::signing_data(id, self.domain.id, &signing_public_key.0),
                 &self.signing_secret_key,
             ),
             signing_public_key,
@@ -165,7 +166,7 @@ impl SigningDomain {
                 id: service.id,
                 domain_id: self.domain.id,
                 domain_signature: sign::sign_detached(
-                    &Service::signing_data(service.id, self.domain.id, &service.signing_public_key),
+                    &Service::signing_data(service.id, self.domain.id, &service.signing_public_key.0),
                     &self.signing_secret_key,
                 ),
                 signing_public_key: service.signing_public_key,
@@ -326,7 +327,7 @@ pub struct Service {
     domain_id: DomainId,
     // (ServiceId + DomainId + signing_public_key) signature
     domain_signature: sign::Signature,
-    signing_public_key: sign::PublicKey,
+    signing_public_key: ServiceSigningKey,
 }
 
 impl Service {
@@ -358,7 +359,7 @@ impl Service {
     pub fn verify(&self, domain_key: &DomainSigningKey) -> bool {
         sign::verify_detached(
             &self.domain_signature,
-            &Service::signing_data(self.id, self.domain_id, &self.signing_public_key),
+            &Service::signing_data(self.id, self.domain_id, &self.signing_public_key.0),
             &domain_key.0,
         )
     }
@@ -374,7 +375,7 @@ impl Service {
     }
 
     /// signing public key
-    pub fn signing_public_key(&self) -> &sign::PublicKey {
+    pub fn signing_public_key(&self) -> &ServiceSigningKey {
         &self.signing_public_key
     }
 
@@ -461,7 +462,7 @@ impl SigningSubject {
         let (signing_public_key, signing_secret_key) = sign::gen_keypair();
         let subject = Subject {
             id: SubjectId::generate(),
-            signing_public_key,
+            signing_public_key: SubjectSigningKey(signing_public_key),
         };
         SigningSubject {
             subject,
@@ -492,7 +493,7 @@ impl SigningSubject {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Subject {
     id: SubjectId,
-    signing_public_key: sign::PublicKey,
+    signing_public_key: SubjectSigningKey,
 }
 
 impl Subject {
@@ -507,7 +508,7 @@ impl Subject {
     }
 
     /// public key that is used to verify Subject signatures
-    pub fn signing_public_key(&self) -> &sign::PublicKey {
+    pub fn signing_public_key(&self) -> &SubjectSigningKey {
         &self.signing_public_key
     }
 }
@@ -566,9 +567,9 @@ impl ServiceClient {
     }
 
     /// verifies that the ServiceClient was signed by the subject and the service
-    pub fn verify(&self, subject_key: &sign::PublicKey, service_key: &sign::PublicKey) -> bool {
-        sign::verify_detached(&self.service_signature, &self.subject_signature.0, service_key) &&
-        sign::verify_detached(&self.subject_signature,&ServiceClient::signing_data(self.address, self.subject_id,self.service_id), subject_key)
+    pub fn verify(&self, subject_key: &SubjectSigningKey, service_key: &ServiceSigningKey) -> bool {
+        sign::verify_detached(&self.service_signature, &self.subject_signature.0, &service_key.0) &&
+        sign::verify_detached(&self.subject_signature,&ServiceClient::signing_data(self.address, self.subject_id,self.service_id), &subject_key.0)
     }
 }
 
@@ -819,6 +820,23 @@ mod test {
         println!("serialized child domain bytes len = {}", bytes.len());
         let child = SigningDomain::deserialize(&bytes).unwrap();
         assert!(child.domain().verify(root.domain().signing_public_key()));
+    }
+
+    #[test]
+    fn subject() {
+        let root = SigningDomain::new_root_domain();
+        let service = root.new_service();
+        let subject = SigningSubject::generate();
+
+        let (public_key, _) = box_::gen_keypair();
+        let address = Address::from(public_key);
+        let service_client = ServiceClient::new(address,&subject, &service);
+        assert!(service_client.verify(subject.subject().signing_public_key(), service.service().signing_public_key()));
+
+        let service2 = root.new_service();
+        assert!(!service_client.verify(subject.subject().signing_public_key(), service2.service().signing_public_key()));
+        let subject2 = SigningSubject::generate();
+        assert!(!service_client.verify(subject2.subject().signing_public_key(), service.service().signing_public_key()));
     }
 
 }
