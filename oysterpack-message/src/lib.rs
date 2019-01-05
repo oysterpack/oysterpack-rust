@@ -26,6 +26,7 @@
 
 pub mod envelope;
 pub mod errors;
+pub mod marshal;
 pub mod message;
 pub mod protocol;
 pub mod security;

@@ -16,8 +16,10 @@
 
 //! message related errors
 
+use crate::security;
 use oysterpack_errors::{ErrorMessage, IsError};
 use serde::{Deserialize, Serialize};
+use sodiumoxide::crypto::sign;
 use std::fmt;
 
 /// Base58 decoding error
@@ -116,10 +118,14 @@ pub(crate) enum Scope {
     EncryptedMessageBytes,
     SealedEnvelope,
     BytesMessage,
+    SigningDomain,
+    Domain,
+    SigningService,
+    Service,
 }
 
 /// nng:Message related error
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NngMessageError(pub(crate) ErrorMessage);
 
 impl NngMessageError {
@@ -153,7 +159,7 @@ impl fmt::Display for NngMessageError {
 }
 
 /// bincode serialization related error
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BincodeSerializeError(pub(crate) Scope, pub(crate) ErrorMessage);
 
 impl BincodeSerializeError {
@@ -185,7 +191,7 @@ impl fmt::Display for BincodeSerializeError {
 }
 
 /// bincode deserialization related error
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BincodeDeserializeError(pub(crate) Scope, pub(crate) ErrorMessage);
 
 impl BincodeDeserializeError {
@@ -217,7 +223,7 @@ impl fmt::Display for BincodeDeserializeError {
 }
 
 /// snappy decompression error
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SnappyDecompressError(pub(crate) ErrorMessage);
 
 impl SnappyDecompressError {
@@ -241,5 +247,135 @@ impl IsError for SnappyDecompressError {
 impl fmt::Display for SnappyDecompressError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "snappy decompression failed: {}", self.0)
+    }
+}
+
+/// The Domain must be a child.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DomainMustBeChildConstraintError {
+    parent_id: security::DomainId,
+    invalid_child_id: security::DomainId,
+    msg: ErrorMessage,
+}
+
+impl DomainMustBeChildConstraintError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1869845396788067888655278226736804733);
+    /// Level::Error
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+
+    /// constructor
+    pub fn new(
+        parent_id: security::DomainId,
+        invalid_child_id: security::DomainId,
+        msg: &str,
+    ) -> DomainMustBeChildConstraintError {
+        DomainMustBeChildConstraintError {
+            parent_id,
+            invalid_child_id,
+            msg: ErrorMessage(msg.to_string()),
+        }
+    }
+}
+
+impl IsError for DomainMustBeChildConstraintError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for DomainMustBeChildConstraintError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}: domain {} is not a child of {}",
+            self.msg, self.invalid_child_id, self.parent_id
+        )
+    }
+}
+
+/// The service is not owned by the domain
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ServiceNotOwnedByDomainError {
+    domain_id: security::DomainId,
+    service_id: security::ServiceId,
+    msg: ErrorMessage,
+}
+
+impl ServiceNotOwnedByDomainError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1869868324958312490751247039544724835);
+    /// Level::Error
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+
+    /// constructor
+    pub fn new(
+        domain_id: security::DomainId,
+        service_id: security::ServiceId,
+        msg: &str,
+    ) -> ServiceNotOwnedByDomainError {
+        ServiceNotOwnedByDomainError {
+            domain_id,
+            service_id,
+            msg: ErrorMessage(msg.to_string()),
+        }
+    }
+}
+
+impl IsError for ServiceNotOwnedByDomainError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for ServiceNotOwnedByDomainError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}: domain {} does not own service {}",
+            self.msg, self.domain_id, self.service_id,
+        )
+    }
+}
+
+/// The Domain must be a child.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SigningSecretKeyDoesNotMatchPublicKeyError(pub sign::PublicKey);
+
+impl SigningSecretKeyDoesNotMatchPublicKeyError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1869854140619665551699628258648836837);
+    /// Level::Error
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+}
+
+impl IsError for SigningSecretKeyDoesNotMatchPublicKeyError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for SigningSecretKeyDoesNotMatchPublicKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "invalid secret key for public key : {}",
+            bs58::encode(&(self.0).0).into_string()
+        )
     }
 }
