@@ -24,12 +24,8 @@ use serde::{de::DeserializeOwned, Serialize};
 
 /// serialized via bincode and then compressed via snappy
 pub fn serialize<T: Serialize>(o: &T) -> Result<Vec<u8>, Error> {
-    let bytes = bincode::serialize(o).map_err(|err| {
-        op_error!(errors::BincodeSerializeError(
-            errors::Scope::SigningDomain,
-            ErrorMessage(err.to_string())
-        ))
-    })?;
+    let bytes = bincode::serialize(o)
+        .map_err(|err| op_error!(errors::BincodeSerializeError(ErrorMessage(err.to_string()))))?;
     Ok(parity_snappy::compress(&bytes))
 }
 
@@ -38,9 +34,8 @@ pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
     let bytes = parity_snappy::decompress(bytes)
         .map_err(|err| op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string()))))?;
     bincode::deserialize(&bytes).map_err(|err| {
-        op_error!(errors::BincodeDeserializeError(
-            errors::Scope::SigningDomain,
-            ErrorMessage(err.to_string())
-        ))
+        op_error!(errors::BincodeDeserializeError(ErrorMessage(
+            err.to_string()
+        )))
     })
 }

@@ -19,91 +19,74 @@
 //! - snappy is used for compression
 
 use crate::envelope::BytesMessage;
-use crate::errors;
+use crate::marshal;
 use chrono::{DateTime, Utc};
-use oysterpack_errors::{op_error, Error, ErrorMessage};
+use oysterpack_errors::Error;
 use oysterpack_uid::{macros::ulid, ULID};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{collections::HashMap, fmt, marker::PhantomData};
+use std::{collections::HashMap, fmt};
 
-/// Represents a message specification.
-/// - maps a MessageTypeId to type `T`.
-/// - knows how to decode / encode messages
-///   - messages are serialized via [bincode](https://crates.io/crates/bincode) and compressed via [snappy](https://google.github.io/snappy/).
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct Factory<T>(MessageTypeId, PhantomData<T>)
-where
-    T: fmt::Debug + Clone + Send + Serialize + DeserializeOwned;
-
-impl<T> Factory<T>
-where
-    T: fmt::Debug + Clone + Send + Serialize + DeserializeOwned,
-{
-    /// unique message type ID defined as a ULID
-    pub fn type_id(&self) -> MessageTypeId {
-        self.0
-    }
-
-    /// message constructor for new session
-    pub fn new_message(&self, body: &[u8]) -> Result<Message<T>, Error> {
-        let header = Header::new(self.0);
-        let body: T = self.decode(body)?;
-        Ok(Message { header, body })
-    }
-
-    /// message constructor for an existing session
-    pub fn new_message_for_session(
-        &self,
-        body: &[u8],
-        session_id: SessionId,
-    ) -> Result<Message<T>, Error> {
-        let header = Header::new_for_session(self.0, session_id);
-        let body: T = self.decode(body)?;
-        Ok(Message { header, body })
-    }
+/// Used to map a MessageTypeId to a type and provide support for constructing messages
+///
+/// ## Example
+/// ``` rust
+/// # use oysterpack_message::message::*;
+/// # use serde::*;
+/// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// struct GetNextValue;
+///
+/// impl MessageFactory for GetNextValue {
+///    const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869946728962741078614900012219957643);
+/// }
+/// ```
+pub trait MessageFactory: fmt::Debug + Clone + Send + Serialize + DeserializeOwned {
+    /// message type ID
+    const MSG_TYPE_ID: MessageTypeId;
 
     /// message constructor for new session
-    pub fn new_reply_message(&self, body: &[u8], request: &Header) -> Result<Message<T>, Error> {
-        let header = Header::new_reply(request, self.0);
-        let body: T = self.decode(body)?;
-        Ok(Message { header, body })
-    }
-
-    /// message constructor for new session
-    pub fn new_reply_message_for_session(
-        &self,
-        body: &[u8],
-        request: &Header,
-        session_id: SessionId,
-    ) -> Result<Message<T>, Error> {
-        let header = Header::new_reply_for_session(request, self.0, session_id);
-        let body: T = self.decode(body)?;
-        Ok(Message { header, body })
-    }
-
-    /// decompresses the message cia snappy and then deserialize the message via bincode
-    pub fn decode(&self, msg: &[u8]) -> Result<T, Error> {
-        let decompressed_msg = parity_snappy::decompress(msg).map_err(|err| {
-            op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string())))
-        })?;
-        bincode::deserialize(&decompressed_msg).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
+    fn new_message(body: &[u8]) -> Result<Message<Self>, Error> {
+        Ok(Message {
+            header: Header::new(Self::MSG_TYPE_ID),
+            body: Self::decode(body)?,
         })
     }
 
-    /// compresses the bincode serialized message via snappy
-    pub fn encode(&self, msg: &T) -> Result<Vec<u8>, Error> {
-        let bytes = bincode::serialize(msg).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
-        })?;
+    /// message constructor for an existing session
+    fn new_message_for_session(body: &[u8], session_id: SessionId) -> Result<Message<Self>, Error> {
+        Ok(Message {
+            header: Header::new_for_session(Self::MSG_TYPE_ID, session_id),
+            body: Self::decode(body)?,
+        })
+    }
 
-        Ok(parity_snappy::compress(&bytes))
+    /// message constructor for new session
+    fn new_reply_message(body: &[u8], request: &Header) -> Result<Message<Self>, Error> {
+        Ok(Message {
+            header: Header::new_reply(request, Self::MSG_TYPE_ID),
+            body: Self::decode(body)?,
+        })
+    }
+
+    /// message constructor for new session
+    fn new_reply_message_for_session(
+        body: &[u8],
+        request: &Header,
+        session_id: SessionId,
+    ) -> Result<Message<Self>, Error> {
+        Ok(Message {
+            header: Header::new_reply_for_session(request, Self::MSG_TYPE_ID, session_id),
+            body: Self::decode(body)?,
+        })
+    }
+
+    /// decompresses the message cia snappy and then deserialize the message via bincode
+    fn decode(msg: &[u8]) -> Result<Self, Error> {
+        marshal::deserialize(msg)
+    }
+
+    /// compresses the bincode serialized message via snappy
+    fn encode(msg: &Self) -> Result<Vec<u8>, Error> {
+        marshal::serialize(msg)
     }
 }
 
@@ -123,17 +106,20 @@ where
 {
     /// compresses the bincode serialized message via snappy
     pub fn encode(self) -> Result<Message<BytesMessage>, Error> {
-        let bytes = bincode::serialize(&self.body).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
-        })?;
-
         Ok(Message {
             header: self.header,
-            body: BytesMessage(parity_snappy::compress(&bytes)),
+            body: BytesMessage(marshal::serialize(&self.body)?),
         })
+    }
+
+    /// Header
+    pub fn header(&self) -> &Header {
+        &self.header
+    }
+
+    /// Body
+    pub fn body(&self) -> &T {
+        &self.body
     }
 }
 
@@ -143,18 +129,9 @@ impl Message<BytesMessage> {
     where
         T: fmt::Debug + Clone + Send + serde::Serialize + DeserializeOwned,
     {
-        let decompressed_msg = parity_snappy::decompress(self.body.data()).map_err(|err| {
-            op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string())))
-        })?;
-        let body: T = bincode::deserialize(&decompressed_msg).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
-        })?;
         Ok(Message {
             header: self.header,
-            body,
+            body: marshal::deserialize(self.body.data())?,
         })
     }
 }
@@ -398,3 +375,30 @@ pub struct MessageTypeId(pub u128);
 /// Message type ULID
 #[ulid]
 pub struct InstanceId(pub u128);
+
+#[allow(warnings)]
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn req_rep_protocol() {
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        struct GetNextValue;
+
+        impl MessageFactory for GetNextValue {
+            const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869946728962741078614900012219957643);
+        }
+
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        struct NextValue(usize);
+
+        impl MessageFactory for NextValue {
+            const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869947035652420529228505310786809949);
+        }
+
+        let request = marshal::serialize(&GetNextValue).unwrap();
+        let request_message = GetNextValue::new_message(&request);
+    }
+
+}

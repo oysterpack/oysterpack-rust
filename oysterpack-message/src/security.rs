@@ -17,11 +17,19 @@
 //! Defines the security model for secure messaging.
 //! - domains own sub-domains and services
 //! - each service can have multiple service instances, which are identified by unique addresses
-//! - each entity is signed by its owner, which proves ownership
+//! - subjects represent entities that interact with services
+//! - service clients represent relationships between services and subjects
+//!   - a service client maps to an address which is used to encrypt messages between a service instance
+//!     and the service client
+//!   - a service client is dual signed by the subject and the service. It is signed by the subject
+//!     to prove that the service client was authorized by the subject - the subject owns the address.
+//!     It is signed by the service to prove that service has authorized access to the service from
+//!     the service client.
+//! - each entity is signed by its owner, which proves ownership and authenticity
 //!   - domains are signed by its parent domain
 //!   - services are signed by its owning domain
 //!   - service instances are signed by its owning service
-//! - subjects
+//!   - service clients are signed by the subject and service
 
 use crate::errors;
 use crate::marshal;
@@ -166,7 +174,11 @@ impl SigningDomain {
                 id: service.id,
                 domain_id: self.domain.id,
                 domain_signature: sign::sign_detached(
-                    &Service::signing_data(service.id, self.domain.id, &service.signing_public_key.0),
+                    &Service::signing_data(
+                        service.id,
+                        self.domain.id,
+                        &service.signing_public_key.0,
+                    ),
                     &self.signing_secret_key,
                 ),
                 signing_public_key: service.signing_public_key,
@@ -268,15 +280,15 @@ impl Domain {
 }
 
 /// Domain signing public key
-#[derive(Debug, Clone,Copy,Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct DomainSigningKey(pub sign::PublicKey);
 
 /// Service signing public key
-#[derive(Debug, Clone,Copy,Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct ServiceSigningKey(pub sign::PublicKey);
 
 /// Subject signing public key
-#[derive(Debug, Clone,Copy,Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SubjectSigningKey(pub sign::PublicKey);
 
 /// Service ID
@@ -490,6 +502,8 @@ impl SigningSubject {
 /// These are generic terms used to denote the thing requesting access and the thing the request is made against.
 /// When you log onto an application you are the subject and the application is the object.
 /// When someone knocks on your door the visitor is the subject requesting access and your home is the object access is requested of.
+///
+/// - subjects are assigned addresses via ServiceClient
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Subject {
     id: SubjectId,
@@ -568,8 +582,15 @@ impl ServiceClient {
 
     /// verifies that the ServiceClient was signed by the subject and the service
     pub fn verify(&self, subject_key: &SubjectSigningKey, service_key: &ServiceSigningKey) -> bool {
-        sign::verify_detached(&self.service_signature, &self.subject_signature.0, &service_key.0) &&
-        sign::verify_detached(&self.subject_signature,&ServiceClient::signing_data(self.address, self.subject_id,self.service_id), &subject_key.0)
+        sign::verify_detached(
+            &self.service_signature,
+            &self.subject_signature.0,
+            &service_key.0,
+        ) && sign::verify_detached(
+            &self.subject_signature,
+            &ServiceClient::signing_data(self.address, self.subject_id, self.service_id),
+            &subject_key.0,
+        )
     }
 }
 
@@ -830,13 +851,22 @@ mod test {
 
         let (public_key, _) = box_::gen_keypair();
         let address = Address::from(public_key);
-        let service_client = ServiceClient::new(address,&subject, &service);
-        assert!(service_client.verify(subject.subject().signing_public_key(), service.service().signing_public_key()));
+        let service_client = ServiceClient::new(address, &subject, &service);
+        assert!(service_client.verify(
+            subject.subject().signing_public_key(),
+            service.service().signing_public_key()
+        ));
 
         let service2 = root.new_service();
-        assert!(!service_client.verify(subject.subject().signing_public_key(), service2.service().signing_public_key()));
+        assert!(!service_client.verify(
+            subject.subject().signing_public_key(),
+            service2.service().signing_public_key()
+        ));
         let subject2 = SigningSubject::generate();
-        assert!(!service_client.verify(subject2.subject().signing_public_key(), service.service().signing_public_key()));
+        assert!(!service_client.verify(
+            subject2.subject().signing_public_key(),
+            service.service().signing_public_key()
+        ));
     }
 
 }

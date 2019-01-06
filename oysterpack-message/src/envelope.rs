@@ -54,10 +54,9 @@ impl SealedEnvelope {
     /// Converts an nng:Message into a SealedEnvelope.
     pub fn try_from_nng_message(msg: &nng::Message) -> Result<SealedEnvelope, Error> {
         bincode::deserialize(&**msg).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(
-                errors::Scope::SealedEnvelope,
-                ErrorMessage(err.to_string())
-            ))
+            op_error!(errors::BincodeDeserializeError(ErrorMessage(
+                err.to_string()
+            )))
         })
     }
 
@@ -65,10 +64,10 @@ impl SealedEnvelope {
     /// Converts itself into an nng:Message
     pub fn try_into_nng_message(self) -> Result<nng::Message, Error> {
         let bytes = bincode::serialize(&self).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(
-                errors::Scope::SealedEnvelope,
-                ErrorMessage(err.to_string())
-            ))
+            op_error!(errors::BincodeSerializeError(ErrorMessage(format!(
+                "SealedEnvelope : {}",
+                err
+            ))))
         })?;
         let mut msg = nng::Message::with_capacity(bytes.len()).map_err(|err| {
             op_error!(errors::NngMessageError::from(ErrorMessage(format!("Failed to create an empty message with a pre-allocated body buffer (capacity = {}): {}", bytes.len(), err))))
@@ -90,9 +89,9 @@ impl SealedEnvelope {
                 recipient: self.recipient,
                 msg: BytesMessage(msg),
             }),
-            Err(_) => Err(op_error!(errors::DecryptionError(
-                errors::Scope::SealedEnvelope
-            ))),
+            Err(_) => Err(op_error!(errors::DecryptionError(ErrorMessage::from(
+                "SealedEnvelope"
+            )))),
         }
     }
 
@@ -144,9 +143,9 @@ impl EncryptedBytesMessage {
         box_::open_precomputed(&self.0, nonce, key)
             .map(BytesMessage)
             .map_err(|_| {
-                op_error!(errors::DecryptionError(
-                    errors::Scope::EncryptedMessageBytes
-                ))
+                op_error!(errors::DecryptionError(ErrorMessage::from(
+                    "EncryptedBytesMessage"
+                )))
             })
     }
 }
@@ -171,10 +170,10 @@ impl BytesMessage {
     /// serializes the message into a BytesMessage using bincode
     pub fn serialize<T: Serialize>(msg: &T) -> Result<BytesMessage, Error> {
         bincode::serialize(msg).map(BytesMessage).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
+            op_error!(errors::BincodeSerializeError(ErrorMessage(format!(
+                "BytesMessage : {}",
+                err
+            ))))
         })
     }
 
@@ -283,10 +282,10 @@ impl Envelope<BytesMessage> {
     /// deserializes the BytesMessage into `T`
     pub fn deserialize<T: Send + DeserializeOwned>(self) -> Result<Envelope<T>, Error> {
         let msg: T = bincode::deserialize(self.msg.data()).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(
-                errors::Scope::BytesMessage,
-                ErrorMessage(err.to_string())
-            ))
+            op_error!(errors::BincodeDeserializeError(ErrorMessage(format!(
+                "BytesMessage : {}",
+                err
+            ))))
         })?;
         Ok(Envelope {
             sender: self.sender,

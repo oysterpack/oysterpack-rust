@@ -86,7 +86,7 @@ impl fmt::Display for InvalidPublicKeyLength {
 
 /// Base58 decoding error
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct DecryptionError(pub(crate) Scope);
+pub struct DecryptionError(pub(crate) ErrorMessage);
 
 impl DecryptionError {
     /// Error ID
@@ -109,19 +109,8 @@ impl IsError for DecryptionError {
 
 impl fmt::Display for DecryptionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "failed to decrypt: {:?}", self.0)
+        write!(f, "decryption failed: {:?}", self.0)
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub(crate) enum Scope {
-    EncryptedMessageBytes,
-    SealedEnvelope,
-    BytesMessage,
-    SigningDomain,
-    Domain,
-    SigningService,
-    Service,
 }
 
 /// nng:Message related error
@@ -160,7 +149,7 @@ impl fmt::Display for NngMessageError {
 
 /// bincode serialization related error
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct BincodeSerializeError(pub(crate) Scope, pub(crate) ErrorMessage);
+pub struct BincodeSerializeError(pub(crate) ErrorMessage);
 
 impl BincodeSerializeError {
     /// Error Id
@@ -182,17 +171,13 @@ impl IsError for BincodeSerializeError {
 
 impl fmt::Display for BincodeSerializeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "`{:?}` bincode deserialization failed: {}",
-            self.0, self.1
-        )
+        write!(f, "bincode deserialization failed: {}", self.0)
     }
 }
 
 /// bincode deserialization related error
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct BincodeDeserializeError(pub(crate) Scope, pub(crate) ErrorMessage);
+pub struct BincodeDeserializeError(pub(crate) ErrorMessage);
 
 impl BincodeDeserializeError {
     /// Error Id
@@ -214,11 +199,7 @@ impl IsError for BincodeDeserializeError {
 
 impl fmt::Display for BincodeDeserializeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "`{:?}` bincode deserialization failed: {}",
-            self.0, self.1
-        )
+        write!(f, "bincode deserialization failed: {}", self.0,)
     }
 }
 
