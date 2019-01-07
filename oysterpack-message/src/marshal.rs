@@ -59,3 +59,16 @@ pub fn decompress(data: &[u8]) -> Result<Vec<u8>, Error> {
     parity_snappy::decompress(data)
         .map_err(|err| op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string()))))
 }
+
+/// Provides the ability to marshal itself
+pub trait Marshal: Serialize + DeserializeOwned {
+    /// encodes itself into bytes
+    fn encode(&self) -> Result<Vec<u8>, Error> {
+        crate::marshal::encode(self)
+    }
+
+    /// decodes the bytes into an instance of Self
+    fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        crate::marshal::decode(bytes)
+    }
+}

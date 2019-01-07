@@ -17,8 +17,8 @@
 //! defines the message envelope layer
 
 use crate::errors;
-use crate::security::Address;
 use crate::marshal;
+use crate::security::Address;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sodiumoxide::crypto::box_;

@@ -82,12 +82,10 @@ pub trait MessageFactory: fmt::Debug + Clone + Send + Serialize + DeserializeOwn
         let body = Self::decode(&msg.body().0)?;
         Ok(Message {
             header: msg.header.clone(),
-            body
+            body,
         })
     }
 }
-
-
 
 /// Message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +124,7 @@ where
         let body = BytesMessage(marshal::serialize(self.body())?);
         Ok(Message {
             header: self.header,
-            body
+            body,
         })
     }
 
@@ -135,7 +133,7 @@ where
         let body: T = marshal::deserialize(&msg.body().0)?;
         Ok(Message {
             header: msg.header,
-            body
+            body,
         })
     }
 }
@@ -365,9 +363,7 @@ mod test {
     use super::*;
     use crate::envelope;
     use crate::security;
-    use sodiumoxide::crypto::{
-        box_
-    };
+    use sodiumoxide::crypto::box_;
 
     #[test]
     fn message() {
@@ -387,11 +383,21 @@ mod test {
 
         let request_message = GetNextValue::into_message(GetNextValue);
         let response_message = NextValue(10).into_reply_message(request_message.header());
-        assert_eq!(request_message.header().session_id(), response_message.header().session_id());
-        assert_eq!(request_message.header().instance_id(), response_message.header().correlation_id().unwrap());
+        assert_eq!(
+            request_message.header().session_id(),
+            response_message.header().session_id()
+        );
+        assert_eq!(
+            request_message.header().instance_id(),
+            response_message.header().correlation_id().unwrap()
+        );
         let response_bytes_message = response_message.clone().try_into_bytes_message().unwrap();
-        let response_message_2 = Message::<NextValue>::try_from_bytes_message(response_bytes_message).unwrap();
-        assert_eq!(response_message_2.header().instance_id, response_message.header().instance_id());
+        let response_message_2 =
+            Message::<NextValue>::try_from_bytes_message(response_bytes_message).unwrap();
+        assert_eq!(
+            response_message_2.header().instance_id,
+            response_message.header().instance_id()
+        );
         assert_eq!(response_message_2.body().0, 10);
     }
 
@@ -412,38 +418,58 @@ mod test {
         }
 
         let request_message = GetNextValue::into_message(GetNextValue);
+        assert_eq!(request_message.header().message_type_id(), GetNextValue::MSG_TYPE_ID);
+        let client_session_id = request_message.header().session_id();
+        let client_request_instance_id = request_message.header().instance_id();
         let request_message = request_message.try_into_bytes_message().unwrap();
+        assert_eq!(client_session_id, request_message.header().session_id());
+        assert_eq!(client_request_instance_id, request_message.header().instance_id());
 
         let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
         let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
 
         let sender = security::Address::from(client_public_key);
-        let recipient= security::Address::from(server_public_key);
+        let recipient = security::Address::from(server_public_key);
 
         let sender_precomputed_key = box_::precompute(recipient.public_key(), &client_private_key);
         let recipient_precomputed_key = box_::precompute(sender.public_key(), &server_private_key);
 
-        let request_envelope = envelope::Envelope::new(sender, recipient,request_message);
-        let request_envelope = request_envelope.try_into_bytes_message().unwrap();
-        let request_sealed_envelope = request_envelope.seal(&sender_precomputed_key);
-        let request_nng_message = request_sealed_envelope.try_into_nng_message().unwrap();
+        let request_nng_message = {
+            let request_envelope = envelope::Envelope::new(sender, recipient, request_message);
+            let request_envelope = request_envelope.try_into_bytes_message().unwrap();
+            let request_sealed_envelope = request_envelope.seal(&sender_precomputed_key);
+            request_sealed_envelope.try_into_nng_message().unwrap()
+        };
+
         // client sends request_nng_message
         // server receives request_nng_message
-        let request_sealed_envelope = envelope::SealedEnvelope::try_from_nng_message(&request_nng_message).unwrap();
-        let request_envelope = request_sealed_envelope.open(&recipient_precomputed_key).unwrap();
-        let request_envelope = request_envelope.deserialize::<Message<BytesMessage>>().unwrap();
+        let request_sealed_envelope =
+            envelope::SealedEnvelope::try_from_nng_message(&request_nng_message).unwrap();
+        let request_envelope = request_sealed_envelope
+            .open(&recipient_precomputed_key)
+            .unwrap();
+        let request_envelope = request_envelope
+            .deserialize::<Message<BytesMessage>>()
+            .unwrap();
 
         let request_message = GetNextValue::try_decode_message(request_envelope.msg()).unwrap();
         let response_message = NextValue(10).into_reply_message(request_message.header());
+        assert_eq!(response_message.header().message_type_id(), NextValue::MSG_TYPE_ID);
+        assert_eq!(response_message.header().correlation_id().unwrap(), client_request_instance_id);
+        assert_eq!(response_message.header().session_id(), client_session_id);
+        assert_ne!(response_message.header().instance_id(), client_request_instance_id);
         let response_message = response_message.try_into_bytes_message().unwrap();
 
-        let response_envelope = envelope::Envelope::new(*request_envelope.sender(), *request_envelope.recipient(), response_message);
+        let response_envelope = envelope::Envelope::new(
+            *request_envelope.sender(),
+            *request_envelope.recipient(),
+            response_message,
+        );
         let response_envelope = response_envelope.try_into_bytes_message().unwrap();
 
         let sender_precomputed_key = box_::precompute(sender.public_key(), &server_private_key);
         let response_sealed_envelope = response_envelope.seal(&sender_precomputed_key);
         let response_nng_message = response_sealed_envelope.try_into_nng_message().unwrap();
-
     }
 
 }

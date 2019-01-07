@@ -32,7 +32,7 @@
 //!   - service clients are signed by the subject and service
 
 use crate::errors;
-use crate::marshal;
+use crate::marshal::Marshal;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
@@ -48,6 +48,15 @@ pub const ULID_SIZE: u8 = 16;
 #[ulid]
 pub struct DomainId(pub u128);
 
+/// An entity that owns a secret key that can sign data
+pub trait Signer {
+    /// Signs the data and returns the resulting signature
+    fn sign_detached(&self, data: &[u8]) -> sign::Signature;
+
+    /// Signs the data and returns the signed data, which embeds the signature
+    fn sign(&self, data: &[u8]) -> Vec<u8>;
+}
+
 /// Domain that contains the secret key, which can be used for signing purposes
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SigningDomain {
@@ -56,16 +65,6 @@ pub struct SigningDomain {
 }
 
 impl SigningDomain {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<SigningDomain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// creates a new root domain
     pub fn new_root_domain() -> SigningDomain {
         let (signing_public_key, signing_secret_key) = sign::gen_keypair();
@@ -91,10 +90,9 @@ impl SigningDomain {
         let domain = Domain {
             id,
             parent_domain_id: Some(self.domain.id),
-            parent_domain_signature: Some(sign::sign_detached(
-                &Domain::signing_data(id, &signing_public_key),
-                &self.signing_secret_key,
-            )),
+            parent_domain_signature: Some(
+                self.sign_detached(&Domain::signing_data(id, &signing_public_key)),
+            ),
             signing_public_key,
         };
 
@@ -129,10 +127,9 @@ impl SigningDomain {
             Ok(Domain {
                 id: child.id,
                 parent_domain_id: Some(self.domain.id),
-                parent_domain_signature: Some(sign::sign_detached(
-                    &Domain::signing_data(child.id, &child.signing_public_key),
-                    &self.signing_secret_key,
-                )),
+                parent_domain_signature: Some(
+                    self.sign_detached(&Domain::signing_data(child.id, &child.signing_public_key)),
+                ),
                 signing_public_key: child.signing_public_key,
             })
         } else {
@@ -152,10 +149,11 @@ impl SigningDomain {
         let service = Service {
             id,
             domain_id: self.domain.id,
-            domain_signature: sign::sign_detached(
-                &Service::signing_data(id, self.domain.id, &signing_public_key.0),
-                &self.signing_secret_key,
-            ),
+            domain_signature: self.sign_detached(&Service::signing_data(
+                id,
+                self.domain.id,
+                &signing_public_key.0,
+            )),
             signing_public_key,
         };
         SigningService {
@@ -173,14 +171,11 @@ impl SigningDomain {
             Ok(Service {
                 id: service.id,
                 domain_id: self.domain.id,
-                domain_signature: sign::sign_detached(
-                    &Service::signing_data(
-                        service.id,
-                        self.domain.id,
-                        &service.signing_public_key.0,
-                    ),
-                    &self.signing_secret_key,
-                ),
+                domain_signature: self.sign_detached(&Service::signing_data(
+                    service.id,
+                    self.domain.id,
+                    &service.signing_public_key.0,
+                )),
                 signing_public_key: service.signing_public_key,
             })
         } else {
@@ -198,6 +193,18 @@ impl SigningDomain {
     }
 }
 
+impl Signer for SigningDomain {
+    fn sign_detached(&self, data: &[u8]) -> sign::Signature {
+        sign::sign_detached(data, &self.signing_secret_key)
+    }
+
+    fn sign(&self, data: &[u8]) -> Vec<u8> {
+        sign::sign(data, &self.signing_secret_key)
+    }
+}
+
+impl Marshal for SigningDomain {}
+
 /// Domains contain services and sub-domains.
 /// - DomainId is permanently assigned to a Domain
 /// - crypto keys can be re-issued
@@ -211,16 +218,6 @@ pub struct Domain {
 }
 
 impl Domain {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// uses deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// Data that is used for signing: DomainId (16 bytes) + signing_public_key (32 bytes)
     pub fn signing_data(id: DomainId, key: &DomainSigningKey) -> [u8; 48] {
         let mut data: [u8; 48] = [0; 48];
@@ -279,6 +276,8 @@ impl Domain {
     }
 }
 
+impl Marshal for Domain {}
+
 /// Domain signing public key
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct DomainSigningKey(pub sign::PublicKey);
@@ -303,26 +302,14 @@ pub struct SigningService {
 }
 
 impl SigningService {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// uses deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// returns a new service instance
     pub fn new_service_instance(&self, address: Address) -> ServiceInstance {
         ServiceInstance {
             address,
             service_id: self.service.id,
             // (Address + ServiceId) signature
-            service_signature: sign::sign_detached(
-                &ServiceInstance::signing_data(address, self.service().id()),
-                &self.signing_secret_key,
-            ),
+            service_signature: self
+                .sign_detached(&ServiceInstance::signing_data(address, self.service().id())),
         }
     }
 
@@ -331,6 +318,18 @@ impl SigningService {
         &self.service
     }
 }
+
+impl Signer for SigningService {
+    fn sign_detached(&self, data: &[u8]) -> sign::Signature {
+        sign::sign_detached(data, &self.signing_secret_key)
+    }
+
+    fn sign(&self, data: &[u8]) -> Vec<u8> {
+        sign::sign(data, &self.signing_secret_key)
+    }
+}
+
+impl Marshal for SigningService {}
 
 /// Services can only be owned by a single domain, i.e., 1 ServiceId = 1 Service
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -343,16 +342,6 @@ pub struct Service {
 }
 
 impl Service {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// uses deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// Data that is used for signing: ServiceId (16 bytes) + DomainId (16 bytes) + signing_public_key (32 bytes)
     pub fn signing_data(id: ServiceId, domain_id: DomainId, key: &sign::PublicKey) -> [u8; 64] {
         let mut data: [u8; 64] = [0; 64];
@@ -397,6 +386,8 @@ impl Service {
     }
 }
 
+impl Marshal for Service {}
+
 /// Each service instance is assigned a unique service address.
 /// - a new service address is assigned each time a service instance is started
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -408,16 +399,6 @@ pub struct ServiceInstance {
 }
 
 impl ServiceInstance {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// uses deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// Data that is signed = Address(32 bytes) + ServiceId(16 bytes)
     pub fn signing_data(address: Address, service_id: ServiceId) -> [u8; 48] {
         let mut data: [u8; 48] = [0; 48];
@@ -457,6 +438,8 @@ impl ServiceInstance {
     }
 }
 
+impl Marshal for ServiceInstance {}
+
 /// Subject ID
 #[ulid]
 pub struct SubjectId(pub u128);
@@ -486,17 +469,19 @@ impl SigningSubject {
     pub fn subject(&self) -> &Subject {
         &self.subject
     }
+}
 
-    /// sign the specified data
-    pub fn sign(&self, data: &[u8]) -> Vec<u8> {
-        sign::sign(data, &self.signing_secret_key)
-    }
-
-    /// sign the specified data and returns the detached signature
-    pub fn sign_detached(&self, data: &[u8]) -> sign::Signature {
+impl Signer for SigningSubject {
+    fn sign_detached(&self, data: &[u8]) -> sign::Signature {
         sign::sign_detached(data, &self.signing_secret_key)
     }
+
+    fn sign(&self, data: &[u8]) -> Vec<u8> {
+        sign::sign(data, &self.signing_secret_key)
+    }
 }
+
+impl Marshal for SigningSubject {}
 
 /// In a security context, a subject is any entity that requests access to an object.
 /// These are generic terms used to denote the thing requesting access and the thing the request is made against.
@@ -511,16 +496,6 @@ pub struct Subject {
 }
 
 impl Subject {
-    /// serialize
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::encode(self)
-    }
-
-    /// uses deserialize
-    pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::decode(bytes)
-    }
-
     /// SubjectId
     pub fn id(&self) -> SubjectId {
         self.id
@@ -531,6 +506,8 @@ impl Subject {
         &self.signing_public_key
     }
 }
+
+impl Marshal for Subject {}
 
 /// A service client is a subject that is authorized to access a service.
 /// It contains a dual signature - it is signed by the subject and by the service
@@ -552,12 +529,12 @@ impl ServiceClient {
         subject: &SigningSubject,
         service: &SigningService,
     ) -> ServiceClient {
-        let subject_signature = sign::sign_detached(
-            &ServiceClient::signing_data(address, subject.subject.id, service.service.id),
-            &subject.signing_secret_key,
-        );
-        let service_signature =
-            sign::sign_detached(&subject_signature.0, &service.signing_secret_key);
+        let subject_signature = subject.sign_detached(&ServiceClient::signing_data(
+            address,
+            subject.subject.id,
+            service.service.id,
+        ));
+        let service_signature = service.sign_detached(&subject_signature.0);
         ServiceClient {
             address,
             subject_id: subject.subject.id,
@@ -623,6 +600,8 @@ impl ServiceClient {
         &self.subject_signature
     }
 }
+
+impl Marshal for ServiceClient {}
 
 /// Addresses are identified by public-keys.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -862,14 +841,14 @@ mod test {
         let root = SigningDomain::new_root_domain();
         let child = root.new_child_domain();
 
-        let bytes = root.serialize().unwrap();
+        let bytes = root.encode().unwrap();
         println!("serialized root domain bytes len = {}", bytes.len());
-        let root = SigningDomain::deserialize(&bytes).unwrap();
+        let root = SigningDomain::decode(&bytes).unwrap();
         assert!(child.domain().verify(root.domain().signing_public_key()));
 
-        let bytes = child.serialize().unwrap();
+        let bytes = child.encode().unwrap();
         println!("serialized child domain bytes len = {}", bytes.len());
-        let child = SigningDomain::deserialize(&bytes).unwrap();
+        let child = SigningDomain::decode(&bytes).unwrap();
         assert!(child.domain().verify(root.domain().signing_public_key()));
     }
 
