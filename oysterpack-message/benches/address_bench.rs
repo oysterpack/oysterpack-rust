@@ -18,32 +18,56 @@
 extern crate criterion;
 
 use criterion::Criterion;
-use oysterpack_message::Address;
+use oysterpack_message::security::Address;
+
+use std::{
+    fs,
+    io::{prelude::*, BufReader},
+    path::PathBuf,
+};
 
 criterion_group!(benches, crypto_bench);
 
 criterion_main!(benches);
+
+fn data() -> Vec<u8> {
+    let mut cargo_toml_path = PathBuf::new();
+    cargo_toml_path.push(env!("CARGO_MANIFEST_DIR"));
+    cargo_toml_path.push("Cargo.toml");
+    let file = fs::File::open(cargo_toml_path.as_path()).unwrap();
+    let mut buf_reader = BufReader::new(file);
+    let mut contents = String::new();
+    buf_reader.read_to_string(&mut contents).unwrap();
+    println!("data.len() = {}", contents.len());
+    Vec::from(contents)
+}
 
 /// using precomputed keys to encrypt / decrypt is ~10x faster
 fn crypto_bench(c: &mut Criterion) {
     sodiumoxide::init().unwrap();
     let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
-    let data: &[u8] = b"cryptocurrency is the future";
+    let bytes = data();
     let nonce = sodiumoxide::crypto::box_::gen_nonce();
     c.bench_function("seal", move |b| {
         b.iter(|| {
-            sodiumoxide::crypto::box_::seal(data, &nonce, &server_public_key, &client_private_key);
+            sodiumoxide::crypto::box_::seal(
+                &bytes,
+                &nonce,
+                &server_public_key,
+                &client_private_key,
+            );
         })
     });
 
+    let bytes = data();
     let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let server_addr = Address::from(server_public_key);
     let key = server_addr.precompute_key(&client_private_key);
     c.bench_function("seal_precomputed", move |b| {
         b.iter(|| {
-            sodiumoxide::crypto::box_::seal_precomputed(data, &nonce, &key);
+            sodiumoxide::crypto::box_::seal_precomputed(&bytes, &nonce, &key);
         })
     });
 
@@ -51,7 +75,7 @@ fn crypto_bench(c: &mut Criterion) {
     let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let server_addr = Address::from(server_public_key);
     let key = server_addr.precompute_key(&client_private_key);
-    let encrypted_data = sodiumoxide::crypto::box_::seal_precomputed(data, &nonce, &key);
+    let encrypted_data = sodiumoxide::crypto::box_::seal_precomputed(&data(), &nonce, &key);
     c.bench_function("open", move |b| {
         b.iter(|| {
             sodiumoxide::crypto::box_::open(
@@ -68,7 +92,7 @@ fn crypto_bench(c: &mut Criterion) {
     let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let server_addr = Address::from(server_public_key);
     let key = server_addr.precompute_key(&client_private_key);
-    let encrypted_data = sodiumoxide::crypto::box_::seal_precomputed(data, &nonce, &key);
+    let encrypted_data = sodiumoxide::crypto::box_::seal_precomputed(&data(), &nonce, &key);
     let client_addr = Address::from(client_public_key);
     let key = client_addr.precompute_key(&server_private_key);
     c.bench_function("open_precomputed", move |b| {

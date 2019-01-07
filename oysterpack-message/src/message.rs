@@ -418,12 +418,18 @@ mod test {
         }
 
         let request_message = GetNextValue::into_message(GetNextValue);
-        assert_eq!(request_message.header().message_type_id(), GetNextValue::MSG_TYPE_ID);
+        assert_eq!(
+            request_message.header().message_type_id(),
+            GetNextValue::MSG_TYPE_ID
+        );
         let client_session_id = request_message.header().session_id();
         let client_request_instance_id = request_message.header().instance_id();
         let request_message = request_message.try_into_bytes_message().unwrap();
         assert_eq!(client_session_id, request_message.header().session_id());
-        assert_eq!(client_request_instance_id, request_message.header().instance_id());
+        assert_eq!(
+            client_request_instance_id,
+            request_message.header().instance_id()
+        );
 
         let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
         let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
@@ -454,10 +460,19 @@ mod test {
 
         let request_message = GetNextValue::try_decode_message(request_envelope.msg()).unwrap();
         let response_message = NextValue(10).into_reply_message(request_message.header());
-        assert_eq!(response_message.header().message_type_id(), NextValue::MSG_TYPE_ID);
-        assert_eq!(response_message.header().correlation_id().unwrap(), client_request_instance_id);
+        assert_eq!(
+            response_message.header().message_type_id(),
+            NextValue::MSG_TYPE_ID
+        );
+        assert_eq!(
+            response_message.header().correlation_id().unwrap(),
+            client_request_instance_id
+        );
         assert_eq!(response_message.header().session_id(), client_session_id);
-        assert_ne!(response_message.header().instance_id(), client_request_instance_id);
+        assert_ne!(
+            response_message.header().instance_id(),
+            client_request_instance_id
+        );
         let response_message = response_message.try_into_bytes_message().unwrap();
 
         let response_envelope = envelope::Envelope::new(

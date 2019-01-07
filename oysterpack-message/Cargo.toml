@@ -27,15 +27,13 @@ crossbeam = "0.6.0"
 version-sync = "0.5"
 criterion = "0.2.7"
 
-# serde serializers
-serde_cbor = "0.8.2"
-serde_json = "1.0.13"
-bincode = "1.0.0"
-rmp-serde = "0.13.7"
-
 [badges]
 maintenance = { status = "actively-developed" }
 
 [[bench]]
 name = "address_bench"
+harness = false
+
+[[bench]]
+name = "encrypt_bench"
 harness = false
