@@ -44,51 +44,50 @@ pub trait MessageFactory: fmt::Debug + Clone + Send + Serialize + DeserializeOwn
     const MSG_TYPE_ID: MessageTypeId;
 
     /// message constructor for new session
-    fn new_message(body: &[u8]) -> Result<Message<Self>, Error> {
-        Ok(Message {
+    fn into_message(self) -> Message<Self> {
+        Message {
             header: Header::new(Self::MSG_TYPE_ID),
-            body: Self::decode(body)?,
-        })
+            body: self,
+        }
     }
 
     /// message constructor for an existing session
-    fn new_message_for_session(body: &[u8], session_id: SessionId) -> Result<Message<Self>, Error> {
-        Ok(Message {
+    fn into_message_for_session(self, session_id: SessionId) -> Message<Self> {
+        Message {
             header: Header::new_for_session(Self::MSG_TYPE_ID, session_id),
-            body: Self::decode(body)?,
-        })
+            body: self,
+        }
     }
 
     /// message constructor for new session
-    fn new_reply_message(body: &[u8], request: &Header) -> Result<Message<Self>, Error> {
-        Ok(Message {
+    fn into_reply_message(self, request: &Header) -> Message<Self> {
+        Message {
             header: Header::new_reply(request, Self::MSG_TYPE_ID),
-            body: Self::decode(body)?,
-        })
+            body: self,
+        }
     }
 
-    /// message constructor for new session
-    fn new_reply_message_for_session(
-        body: &[u8],
-        request: &Header,
-        session_id: SessionId,
-    ) -> Result<Message<Self>, Error> {
-        Ok(Message {
-            header: Header::new_reply_for_session(request, Self::MSG_TYPE_ID, session_id),
-            body: Self::decode(body)?,
-        })
-    }
-
-    /// decompresses the message cia snappy and then deserialize the message via bincode
+    /// bincode deserialization
     fn decode(msg: &[u8]) -> Result<Self, Error> {
         marshal::deserialize(msg)
     }
 
-    /// compresses the bincode serialized message via snappy
-    fn encode(msg: &Self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(msg)
+    /// bicode serialization
+    fn encode(&self) -> Result<Vec<u8>, Error> {
+        marshal::serialize(self)
+    }
+
+    /// try to decode the BytesMessage
+    fn try_decode_message(msg: &Message<BytesMessage>) -> Result<Message<Self>, Error> {
+        let body = Self::decode(&msg.body().0)?;
+        Ok(Message {
+            header: msg.header.clone(),
+            body
+        })
     }
 }
+
+
 
 /// Message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,7 +107,7 @@ where
     pub fn encode(self) -> Result<Message<BytesMessage>, Error> {
         Ok(Message {
             header: self.header,
-            body: BytesMessage(marshal::serialize(&self.body)?),
+            body: BytesMessage(marshal::encode(&self.body)?),
         })
     }
 
@@ -121,6 +120,24 @@ where
     pub fn body(&self) -> &T {
         &self.body
     }
+
+    /// try to encode the message into a `Message<BytesMessage>`
+    pub fn try_into_bytes_message(self) -> Result<Message<BytesMessage>, Error> {
+        let body = BytesMessage(marshal::serialize(self.body())?);
+        Ok(Message {
+            header: self.header,
+            body
+        })
+    }
+
+    /// tries to deserialize the BytesMessage into this message's type
+    pub fn try_from_bytes_message(msg: Message<BytesMessage>) -> Result<Message<T>, Error> {
+        let body: T = marshal::deserialize(&msg.body().0)?;
+        Ok(Message {
+            header: msg.header,
+            body
+        })
+    }
 }
 
 impl Message<BytesMessage> {
@@ -131,7 +148,7 @@ impl Message<BytesMessage> {
     {
         Ok(Message {
             header: self.header,
-            body: marshal::deserialize(self.body.data())?,
+            body: marshal::decode(self.body.data())?,
         })
     }
 }
@@ -142,15 +159,9 @@ pub struct Header {
     msg_type_id: MessageTypeId,
     session_id: SessionId,
     instance_id: InstanceId,
-    #[serde(skip_serializing_if = "Option::is_none")]
     correlation_id: Option<InstanceId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    correlation_session_id: Option<SessionId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     deadline: Option<Deadline>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     sequence: Option<Sequence>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     attributes: Option<HashMap<String, Vec<u8>>>,
 }
 
@@ -163,7 +174,6 @@ impl Header {
             session_id: SessionId::generate(),
             instance_id: InstanceId::generate(),
             correlation_id: None,
-            correlation_session_id: None,
             deadline: None,
             sequence: None,
             attributes: None,
@@ -178,7 +188,6 @@ impl Header {
             session_id,
             instance_id: InstanceId::generate(),
             correlation_id: None,
-            correlation_session_id: None,
             deadline: None,
             sequence: None,
             attributes: None,
@@ -191,30 +200,9 @@ impl Header {
     pub fn new_reply(request: &Header, msg_type_id: MessageTypeId) -> Header {
         Header {
             msg_type_id,
-            session_id: SessionId::generate(),
+            session_id: request.session_id,
             instance_id: InstanceId::generate(),
             correlation_id: Some(request.instance_id),
-            correlation_session_id: Some(request.session_id),
-            deadline: None,
-            sequence: None,
-            attributes: None,
-        }
-    }
-
-    /// creates a new reply header based off the request header
-    /// - correlates the reply to the request
-    /// - correlates the request session
-    pub fn new_reply_for_session(
-        request: &Header,
-        msg_type_id: MessageTypeId,
-        session_id: SessionId,
-    ) -> Header {
-        Header {
-            msg_type_id,
-            session_id,
-            instance_id: InstanceId::generate(),
-            correlation_id: Some(request.instance_id),
-            correlation_session_id: Some(request.session_id),
             deadline: None,
             sequence: None,
             attributes: None,
@@ -264,11 +252,6 @@ impl Header {
     /// correlation ID getter
     pub fn correlation_id(&self) -> Option<InstanceId> {
         self.correlation_id
-    }
-
-    /// correlation SessionId getter
-    pub fn correlation_session_id(&self) -> Option<SessionId> {
-        self.correlation_session_id
     }
 
     /// Each message type is identified by an ID
@@ -380,6 +363,37 @@ pub struct InstanceId(pub u128);
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::envelope;
+    use crate::security;
+    use sodiumoxide::crypto::{
+        box_
+    };
+
+    #[test]
+    fn message() {
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        struct GetNextValue;
+
+        impl MessageFactory for GetNextValue {
+            const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869946728962741078614900012219957643);
+        }
+
+        #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+        struct NextValue(usize);
+
+        impl MessageFactory for NextValue {
+            const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869947035652420529228505310786809949);
+        }
+
+        let request_message = GetNextValue::into_message(GetNextValue);
+        let response_message = NextValue(10).into_reply_message(request_message.header());
+        assert_eq!(request_message.header().session_id(), response_message.header().session_id());
+        assert_eq!(request_message.header().instance_id(), response_message.header().correlation_id().unwrap());
+        let response_bytes_message = response_message.clone().try_into_bytes_message().unwrap();
+        let response_message_2 = Message::<NextValue>::try_from_bytes_message(response_bytes_message).unwrap();
+        assert_eq!(response_message_2.header().instance_id, response_message.header().instance_id());
+        assert_eq!(response_message_2.body().0, 10);
+    }
 
     #[test]
     fn req_rep_protocol() {
@@ -397,8 +411,39 @@ mod test {
             const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1869947035652420529228505310786809949);
         }
 
-        let request = marshal::serialize(&GetNextValue).unwrap();
-        let request_message = GetNextValue::new_message(&request);
+        let request_message = GetNextValue::into_message(GetNextValue);
+        let request_message = request_message.try_into_bytes_message().unwrap();
+
+        let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+        let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+
+        let sender = security::Address::from(client_public_key);
+        let recipient= security::Address::from(server_public_key);
+
+        let sender_precomputed_key = box_::precompute(recipient.public_key(), &client_private_key);
+        let recipient_precomputed_key = box_::precompute(sender.public_key(), &server_private_key);
+
+        let request_envelope = envelope::Envelope::new(sender, recipient,request_message);
+        let request_envelope = request_envelope.try_into_bytes_message().unwrap();
+        let request_sealed_envelope = request_envelope.seal(&sender_precomputed_key);
+        let request_nng_message = request_sealed_envelope.try_into_nng_message().unwrap();
+        // client sends request_nng_message
+        // server receives request_nng_message
+        let request_sealed_envelope = envelope::SealedEnvelope::try_from_nng_message(&request_nng_message).unwrap();
+        let request_envelope = request_sealed_envelope.open(&recipient_precomputed_key).unwrap();
+        let request_envelope = request_envelope.deserialize::<Message<BytesMessage>>().unwrap();
+
+        let request_message = GetNextValue::try_decode_message(request_envelope.msg()).unwrap();
+        let response_message = NextValue(10).into_reply_message(request_message.header());
+        let response_message = response_message.try_into_bytes_message().unwrap();
+
+        let response_envelope = envelope::Envelope::new(*request_envelope.sender(), *request_envelope.recipient(), response_message);
+        let response_envelope = response_envelope.try_into_bytes_message().unwrap();
+
+        let sender_precomputed_key = box_::precompute(sender.public_key(), &server_private_key);
+        let response_sealed_envelope = response_envelope.seal(&sender_precomputed_key);
+        let response_nng_message = response_sealed_envelope.try_into_nng_message().unwrap();
+
     }
 
 }

@@ -58,12 +58,12 @@ pub struct SigningDomain {
 impl SigningDomain {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<SigningDomain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
     }
 
     /// creates a new root domain
@@ -213,12 +213,12 @@ pub struct Domain {
 impl Domain {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// uses deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
     }
 
     /// Data that is used for signing: DomainId (16 bytes) + signing_public_key (32 bytes)
@@ -305,12 +305,12 @@ pub struct SigningService {
 impl SigningService {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// uses deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
     }
 
     /// returns a new service instance
@@ -345,12 +345,12 @@ pub struct Service {
 impl Service {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// uses deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
     }
 
     /// Data that is used for signing: ServiceId (16 bytes) + DomainId (16 bytes) + signing_public_key (32 bytes)
@@ -410,12 +410,12 @@ pub struct ServiceInstance {
 impl ServiceInstance {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// uses deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
     }
 
     /// Data that is signed = Address(32 bytes) + ServiceId(16 bytes)
@@ -513,12 +513,17 @@ pub struct Subject {
 impl Subject {
     /// serialize
     pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        marshal::serialize(self)
+        marshal::encode(self)
     }
 
     /// uses deserialize
     pub fn deserialize(bytes: &[u8]) -> Result<Domain, Error> {
-        marshal::deserialize(bytes)
+        marshal::decode(bytes)
+    }
+
+    /// SubjectId
+    pub fn id(&self) -> SubjectId {
+        self.id
     }
 
     /// public key that is used to verify Subject signatures
@@ -591,6 +596,31 @@ impl ServiceClient {
             &ServiceClient::signing_data(self.address, self.subject_id, self.service_id),
             &subject_key.0,
         )
+    }
+
+    /// Address
+    pub fn address(&self) -> Address {
+        self.address
+    }
+
+    /// SubjectId
+    pub fn subject_id(&self) -> SubjectId {
+        self.subject_id
+    }
+
+    /// ServiceId
+    pub fn service_id(&self) -> ServiceId {
+        self.service_id
+    }
+
+    /// Service signature, which authorizes the subject to access the service
+    pub fn service_signature(&self) -> &sign::Signature {
+        &self.service_signature
+    }
+
+    /// Subject signature which proves that the address belongs to the Subject
+    pub fn subject_signature(&self) -> &sign::Signature {
+        &self.subject_signature
     }
 }
 

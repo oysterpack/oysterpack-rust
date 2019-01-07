@@ -18,6 +18,7 @@
 
 use crate::errors;
 use crate::security::Address;
+use crate::marshal;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sodiumoxide::crypto::box_;
@@ -169,12 +170,7 @@ pub struct BytesMessage(pub Vec<u8>);
 impl BytesMessage {
     /// serializes the message into a BytesMessage using bincode
     pub fn serialize<T: Serialize>(msg: &T) -> Result<BytesMessage, Error> {
-        bincode::serialize(msg).map(BytesMessage).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(ErrorMessage(format!(
-                "BytesMessage : {}",
-                err
-            ))))
-        })
+        marshal::serialize(msg).map(BytesMessage)
     }
 
     /// returns the message bytes
@@ -238,10 +234,7 @@ impl<T: Send + Serialize> Envelope<T> {
     }
 }
 
-/// Marker trait for any message that is serializable
-pub trait SerializableMessage: Send + Serialize {}
-
-impl<T: SerializableMessage> Envelope<T> {
+impl<T: Send + Serialize> Envelope<T> {
     /// serializes the message into `Envelope<BytesMessage>`
     pub fn try_into_bytes_message(self) -> Result<Envelope<BytesMessage>, Error> {
         let msg = BytesMessage::serialize(&self.msg)?;
@@ -281,12 +274,7 @@ impl Envelope<BytesMessage> {
 
     /// deserializes the BytesMessage into `T`
     pub fn deserialize<T: Send + DeserializeOwned>(self) -> Result<Envelope<T>, Error> {
-        let msg: T = bincode::deserialize(self.msg.data()).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(ErrorMessage(format!(
-                "BytesMessage : {}",
-                err
-            ))))
-        })?;
+        let msg: T = marshal::deserialize(self.msg.data())?;
         Ok(Envelope {
             sender: self.sender,
             recipient: self.recipient,
@@ -563,8 +551,6 @@ mod test {
     fn envelope_try_into_bytes_message() {
         #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
         struct Foo(String);
-
-        impl SerializableMessage for Foo {}
 
         sodiumoxide::init().unwrap();
         let foo = Foo("cryptocurrency is the future".to_string());

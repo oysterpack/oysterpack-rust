@@ -23,19 +23,39 @@ use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// serialized via bincode and then compressed via snappy
-pub fn serialize<T: Serialize>(o: &T) -> Result<Vec<u8>, Error> {
-    let bytes = bincode::serialize(o)
-        .map_err(|err| op_error!(errors::BincodeSerializeError(ErrorMessage(err.to_string()))))?;
-    Ok(parity_snappy::compress(&bytes))
+pub fn encode<T: Serialize>(o: &T) -> Result<Vec<u8>, Error> {
+    let bytes = serialize(o)?;
+    Ok(compress(&bytes))
 }
 
-/// decompressed via snappy and then deserialized via snappy
+/// decompressed via snappy and then deserialized via bincode
+pub fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
+    let bytes = decompress(bytes)?;
+    deserialize(&bytes)
+}
+
+/// bincode serialization
+pub fn serialize<T: Serialize>(o: &T) -> Result<Vec<u8>, Error> {
+    bincode::serialize(o)
+        .map_err(|err| op_error!(errors::BincodeSerializeError(ErrorMessage(err.to_string()))))
+}
+
+/// bincode deserialization
 pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, Error> {
-    let bytes = parity_snappy::decompress(bytes)
-        .map_err(|err| op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string()))))?;
-    bincode::deserialize(&bytes).map_err(|err| {
+    bincode::deserialize(bytes).map_err(|err| {
         op_error!(errors::BincodeDeserializeError(ErrorMessage(
             err.to_string()
         )))
     })
+}
+
+/// snappy compression
+pub fn compress(data: &[u8]) -> Vec<u8> {
+    parity_snappy::compress(data)
+}
+
+/// snappy decompression
+pub fn decompress(data: &[u8]) -> Result<Vec<u8>, Error> {
+    parity_snappy::decompress(data)
+        .map_err(|err| op_error!(errors::SnappyDecompressError(ErrorMessage(err.to_string()))))
 }
