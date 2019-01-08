@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -14,10 +14,6 @@
  *    limitations under the License.
  */
 
-//! Gathers build time information for the crate - see https://crates.io/crates/built
+//! Defines the various supported [nng](https://nanomsg.github.io/nng/index.html) messaging protocols.
 
-extern crate oysterpack_built;
-
-fn main() {
-    oysterpack_built::run();
-}
+pub mod rpc;

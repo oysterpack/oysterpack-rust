@@ -87,6 +87,14 @@ pub trait MessageFactory: fmt::Debug + Clone + Send + Serialize + DeserializeOwn
     }
 }
 
+/// Error message implements MessageFactory. This enables Errors to be returned as messages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorMessage(pub Error);
+
+impl MessageFactory for ErrorMessage {
+    const MSG_TYPE_ID: MessageTypeId = MessageTypeId(1870100579967440604734092722764315794);
+}
+
 /// Message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message<T>
