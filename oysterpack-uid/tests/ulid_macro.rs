@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-use oysterpack_uid::{macros::*, ULID, HasDomain, Domain};
+use oysterpack_uid::{macros::*, Domain, HasDomain, ULID};
 
 use serde::{Deserialize, Serialize};
 

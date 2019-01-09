@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -74,9 +74,7 @@ pub extern crate rusty_ulid;
 
 /// macros
 pub mod macros {
-    pub use oysterpack_uid_macros::{
-        ulid, domain
-    };
+    pub use oysterpack_uid_macros::{domain, ulid};
 }
 pub mod ulid;
 

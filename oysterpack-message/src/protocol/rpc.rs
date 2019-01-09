@@ -16,24 +16,235 @@
 
 //! Provides support for a request/reply RPC-like services.
 
+use log::{error, info};
 use std::thread;
 
 /// Message handler that implements a request/reply protocol pattern
-pub trait MessageHandler {
+pub trait MessageHandler<Req, Rep>: Send + Sync + Sized + 'static
+where
+    Req: Send + 'static,
+    Rep: Send + 'static,
+{
     /// processes the request and returns a response
-    fn handle(&mut self, req: nng::Message) -> nng::Message;
+    fn handle(&mut self, req: Req) -> Rep;
+
+    /// binds the MessageHandler to the channels. The MessageHandler will run in a background thread
+    /// until one of the following events occurs:
+    /// 1. the request sender channel is dropped, i.e., disconnected and after all messages on the request receiver
+    ///    channel have been processed.
+    /// 2. the reply receiver channel is dropped, i.e., disconnected
+    fn bind(self, channels: MessageService<Req, Rep>, thread_config: Option<ThreadConfig>) {
+        let builder =
+            thread_config.map_or_else(thread::Builder::new, |config| match config.stack_size {
+                None => thread::Builder::new().name(config.name),
+                Some(stack_size) => thread::Builder::new()
+                    .name(config.name)
+                    .stack_size(stack_size),
+            });
+
+        builder
+            .spawn(move || {
+                let t = thread::current();
+                info!("MessageHandler started: {} : {:?}", t.name().map_or("",|name| name), t.id());
+                let mut handler = self;
+                for msg in channels.request_channel {
+                    let reply = handler.handle(msg);
+                    if let Err(err) = channels.reply_channel.send(reply) {
+                        // means the
+                        error!("Failed to send reply message: {}", err);
+                    }
+                }
+                info!("MessageHandler stopped: {} : {:?}", t.name().map_or("",|name| name), t.id())
+            })
+            .unwrap();
+    }
 }
 
-/// Represents a logical socket connection
-pub struct Connection {
-    channel_capacity: usize,
-    message_handler_thread: Option<thread::JoinHandle<()>>,
-    message_handler_thread_config: Option<ThreadConfig>
+/// A message service
+#[derive(Debug, Clone)]
+pub struct MessageService<Req, Rep>
+where
+    Req: Send,
+    Rep: Send,
+{
+    request_channel: crossbeam::Receiver<Req>,
+    reply_channel: crossbeam::Sender<Rep>,
+}
+
+impl<Req, Rep> MessageService<Req, Rep>
+where
+    Req: Send,
+    Rep: Send,
+{
+    /// returns the channel that receives requests
+    pub fn request_channel(&self) -> &crossbeam::Receiver<Req> {
+        &self.request_channel
+    }
+
+    /// returns the channel that is used to reply to requests
+    pub fn reply_channel(&self) -> &crossbeam::Sender<Rep> {
+        &self.reply_channel
+    }
+}
+
+/// The MessageClient communicates with the MessageService via a request/reply protocol via channels.
+#[derive(Debug, Clone)]
+pub struct MessageClient<Req, Rep>
+where
+    Req: Send,
+    Rep: Send,
+{
+    request_channel: crossbeam::Sender<Req>,
+    reply_channel: crossbeam::Receiver<Rep>,
+}
+
+impl<Req, Rep> MessageClient<Req, Rep>
+where
+    Req: Send,
+    Rep: Send,
+{
+    /// returns the channel that sends requests
+    pub fn request_channel(&self) -> &crossbeam::Sender<Req> {
+        &self.request_channel
+    }
+
+    /// returns the channel that receives request replies
+    pub fn reply_channel(&self) -> &crossbeam::Receiver<Rep> {
+        &self.reply_channel
+    }
+}
+
+/// constructs a pair of request/reply channels
+/// <pre>
+///     client ---req--> service
+///     client <--rep--- service
+/// </pre>
+///
+/// Each channel is bounded.
+pub fn channels<Req, Rep>(
+    req_cap: usize,
+    rep_cap: usize,
+) -> (MessageClient<Req, Rep>, MessageService<Req, Rep>)
+where
+    Req: Send,
+    Rep: Send,
+{
+    let (s1, r1) = crossbeam::channel::bounded(req_cap);
+    let (s2, r2) = crossbeam::channel::bounded(rep_cap);
+    (
+        MessageClient {
+            request_channel: s1,
+            reply_channel: r2,
+        },
+        MessageService {
+            request_channel: r1,
+            reply_channel: s2,
+        },
+    )
 }
 
 /// Thread config
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ThreadConfig {
     name: String,
-    stack_size: usize
+    stack_size: Option<usize>,
+}
+
+impl ThreadConfig {
+
+    /// constructor
+    pub fn new(name: &str) -> ThreadConfig {
+        ThreadConfig {
+            name: name.to_string(),
+            stack_size: None
+        }
+    }
+
+    /// Sets the size of the stack (in bytes) for the new thread.
+    /// The actual stack size may be greater than this value if the platform specifies minimal stack size.
+    pub fn set_stack_size(self, stack_size: usize) -> ThreadConfig {
+        let mut config = self;
+        config.stack_size = Some(stack_size);
+        config
+    }
+}
+
+#[allow(warnings)]
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn log_config() -> oysterpack_log::LogConfig {
+        oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
+    }
+
+    struct Echo;
+
+    impl MessageHandler<nng::Message, nng::Message> for Echo {
+        fn handle(&mut self, req: nng::Message) -> nng::Message {
+            info!("received msg on {:?}", thread::current().id());
+            req
+        }
+    }
+
+    #[test]
+    fn client_service_messaging_with_multi_clients() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
+        for _ in 0..num_cpus::get() {
+            Echo.bind( service.clone(), None);
+        }
+        let msg = b"some data";
+        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+        nng_msg.push_back(&msg[..]);
+        client.request_channel().send(nng_msg);
+        let reply = client.reply_channel().recv().unwrap();
+        let msg2 = &**reply;
+        info!("{}", std::str::from_utf8(msg2).unwrap());
+        assert_eq!(
+            std::str::from_utf8(&msg[..]).unwrap(),
+            std::str::from_utf8(msg2).unwrap()
+        );
+
+        let mut join_handles = vec![];
+        for i in 1..=100 {
+            let client_2 = client.clone();
+            let join_handle = std::thread::spawn(move || {
+                let msg = format!("message #{}", i);
+                let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+                nng_msg.push_back(msg.as_bytes());
+                client_2.request_channel().send(nng_msg);
+                let reply = client_2.reply_channel().recv().unwrap();
+                let msg2 = &**reply;
+                println!(
+                    "REQ: {} | REPLY: {}",
+                    msg,
+                    std::str::from_utf8(msg2).unwrap()
+                );
+            });
+            join_handles.push(join_handle);
+        }
+        join_handles.into_iter().for_each(|handle| {
+            handle.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn client_service_messaging_with_thread_config() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
+        for _ in 0..num_cpus::get() {
+            Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+        }
+
+        let msg = b"some data";
+        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+        nng_msg.push_back(&msg[..]);
+        for _ in 0..100 {
+            client.request_channel().send(nng_msg.clone());
+            let _ = client.reply_channel().recv().unwrap();
+        }
+    }
 }

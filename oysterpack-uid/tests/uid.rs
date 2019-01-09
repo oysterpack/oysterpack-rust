@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -19,9 +19,7 @@
 use oysterpack_uid::macros::ulid;
 
 // is required because Serialize and Deserialize are derived for Foo via `#[ulid]`
-use serde::{
-    Serialize, Deserialize
-};
+use serde::{Deserialize, Serialize};
 
 #[ulid]
 pub struct Foo(u128);
