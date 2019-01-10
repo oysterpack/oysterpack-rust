@@ -19,6 +19,38 @@
 use log::{error, info};
 use std::thread;
 
+pub mod server;
+
+/// constructs a pair of request/reply channels
+/// <pre>
+///     client ---req--> service
+///     client <--rep--- service
+/// </pre>
+///
+/// Each channel is bounded using the specified capacity. This means sending on the channel will block
+/// when the channel is full.
+pub fn channels<Req, Rep>(
+    req_cap: usize,
+    rep_cap: usize,
+) -> (MessageClient<Req, Rep>, MessageService<Req, Rep>)
+where
+    Req: Send,
+    Rep: Send,
+{
+    let (s1, r1) = crossbeam::channel::bounded(req_cap);
+    let (s2, r2) = crossbeam::channel::bounded(rep_cap);
+    (
+        MessageClient {
+            request_channel: s1,
+            reply_channel: r2,
+        },
+        MessageService {
+            request_channel: r1,
+            reply_channel: s2,
+        },
+    )
+}
+
 /// Message handler that implements a request/reply protocol pattern
 pub trait MessageHandler<Req, Rep>: Send + Sync + Sized + 'static
 where
@@ -45,16 +77,24 @@ where
         builder
             .spawn(move || {
                 let t = thread::current();
-                info!("MessageHandler started: {} : {:?}", t.name().map_or("",|name| name), t.id());
+                info!(
+                    "MessageHandler started: {} : {:?}",
+                    t.name().map_or("", |name| name),
+                    t.id()
+                );
                 let mut handler = self;
                 for msg in channels.request_channel {
                     let reply = handler.handle(msg);
                     if let Err(err) = channels.reply_channel.send(reply) {
-                        // means the
+                        // means the channel has been disconnected
                         error!("Failed to send reply message: {}", err);
                     }
                 }
-                info!("MessageHandler stopped: {} : {:?}", t.name().map_or("",|name| name), t.id())
+                info!(
+                    "MessageHandler stopped: {} : {:?}",
+                    t.name().map_or("", |name| name),
+                    t.id()
+                )
             })
             .unwrap();
     }
@@ -114,35 +154,6 @@ where
     }
 }
 
-/// constructs a pair of request/reply channels
-/// <pre>
-///     client ---req--> service
-///     client <--rep--- service
-/// </pre>
-///
-/// Each channel is bounded.
-pub fn channels<Req, Rep>(
-    req_cap: usize,
-    rep_cap: usize,
-) -> (MessageClient<Req, Rep>, MessageService<Req, Rep>)
-where
-    Req: Send,
-    Rep: Send,
-{
-    let (s1, r1) = crossbeam::channel::bounded(req_cap);
-    let (s2, r2) = crossbeam::channel::bounded(rep_cap);
-    (
-        MessageClient {
-            request_channel: s1,
-            reply_channel: r2,
-        },
-        MessageService {
-            request_channel: r1,
-            reply_channel: s2,
-        },
-    )
-}
-
 /// Thread config
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ThreadConfig {
@@ -151,12 +162,11 @@ pub struct ThreadConfig {
 }
 
 impl ThreadConfig {
-
     /// constructor
     pub fn new(name: &str) -> ThreadConfig {
         ThreadConfig {
             name: name.to_string(),
-            stack_size: None
+            stack_size: None,
         }
     }
 
@@ -173,16 +183,31 @@ impl ThreadConfig {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::time::Duration;
 
     fn log_config() -> oysterpack_log::LogConfig {
         oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
     }
 
-    struct Echo;
+    struct Echo {
+        counter: usize,
+    }
+
+    impl Default for Echo {
+        fn default() -> Echo {
+            Echo { counter: 0 }
+        }
+    }
 
     impl MessageHandler<nng::Message, nng::Message> for Echo {
         fn handle(&mut self, req: nng::Message) -> nng::Message {
-            info!("received msg on {:?}", thread::current().id());
+            self.counter = self.counter + 1;
+            info!(
+                "received msg #{} on {:?}",
+                self.counter,
+                thread::current().id()
+            );
+            thread::sleep_ms(1);
             req
         }
     }
@@ -193,7 +218,7 @@ mod test {
 
         let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
         for _ in 0..num_cpus::get() {
-            Echo.bind( service.clone(), None);
+            Echo::default().bind(service.clone(), None);
         }
         let msg = b"some data";
         let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
@@ -236,7 +261,10 @@ mod test {
 
         let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
         for _ in 0..num_cpus::get() {
-            Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+            Echo::default().bind(
+                service.clone(),
+                Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+            );
         }
 
         let msg = b"some data";
@@ -246,5 +274,54 @@ mod test {
             client.request_channel().send(nng_msg.clone());
             let _ = client.reply_channel().recv().unwrap();
         }
+    }
+
+    #[test]
+    fn message_handler_disconnected() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
+        for _ in 0..num_cpus::get() {
+            Echo::default().bind(
+                service.clone(),
+                Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+            );
+        }
+
+        fn send_requests(
+            client: MessageClient<nng::Message, nng::Message>,
+            count: usize,
+        ) -> crossbeam::Receiver<nng::Message> {
+            let msg = b"some data";
+            let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+            nng_msg.push_back(&msg[..]);
+            for _ in 0..count {
+                client.request_channel().send(nng_msg.clone()).unwrap();
+            }
+            info!("all messages have been sent");
+            client.reply_channel().clone()
+        }
+
+        let count = 10;
+        let reply_channel = send_requests(client, count);
+        let _ = reply_channel.recv().unwrap();
+        info!("received message");
+
+        // after dropping the request channel, all replies should still continue to flow
+        let mut reply_count = 1;
+        loop {
+            match reply_channel.recv_timeout(Duration::from_millis(1)) {
+                Ok(_) => {
+                    reply_count = reply_count + 1;
+                    info!("received reply #{}", reply_count);
+                }
+                Err(err) => {
+                    error!("Failed to receive message: {}", err);
+                    break;
+                }
+            }
+        }
+        info!("reply_count = {}", reply_count);
+        assert_eq!(reply_count, count);
     }
 }

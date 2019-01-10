@@ -63,7 +63,7 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
         nng_msg
     }
 
-    Echo.bind( service.clone(), None);
+    Echo.bind(service.clone(), None);
     let nng_msg = msg();
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 1)", move |b| {
@@ -73,7 +73,7 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
         })
     });
 
-    Echo.bind( service.clone(), None);
+    Echo.bind(service.clone(), None);
     let nng_msg = msg();
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 2)", move |b| {
@@ -83,7 +83,7 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
         })
     });
 
-    Echo.bind( service.clone(), None);
+    Echo.bind(service.clone(), None);
     let nng_msg = msg();
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 3)", move |b| {
@@ -93,7 +93,7 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
         })
     });
 
-    Echo.bind( service.clone(), None);
+    Echo.bind(service.clone(), None);
     let nng_msg = msg();
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 4)", move |b| {
@@ -115,43 +115,67 @@ fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
         nng_msg
     }
 
-    Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+    Echo.bind(
+        service.clone(),
+        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+    );
     let nng_msg = msg();
     let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 1, stack_size = 1024)", move |b| {
-        b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
-        })
-    });
+    c.bench_function(
+        "nng_msg_req_rep_bench(threads = 1, stack_size = 1024)",
+        move |b| {
+            b.iter(|| {
+                client_n.request_channel().send(nng_msg.clone());
+                let _ = client_n.reply_channel().recv().unwrap();
+            })
+        },
+    );
 
-    Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+    Echo.bind(
+        service.clone(),
+        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+    );
     let nng_msg = msg();
     let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 2, stack_size = 1024)", move |b| {
-        b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
-        })
-    });
+    c.bench_function(
+        "nng_msg_req_rep_bench(threads = 2, stack_size = 1024)",
+        move |b| {
+            b.iter(|| {
+                client_n.request_channel().send(nng_msg.clone());
+                let _ = client_n.reply_channel().recv().unwrap();
+            })
+        },
+    );
 
-    Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+    Echo.bind(
+        service.clone(),
+        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+    );
     let nng_msg = msg();
     let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 3, stack_size = 1024)", move |b| {
-        b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
-        })
-    });
+    c.bench_function(
+        "nng_msg_req_rep_bench(threads = 3, stack_size = 1024)",
+        move |b| {
+            b.iter(|| {
+                client_n.request_channel().send(nng_msg.clone());
+                let _ = client_n.reply_channel().recv().unwrap();
+            })
+        },
+    );
 
-    Echo.bind( service.clone(), Some(ThreadConfig::new("Echo").set_stack_size(1024)));
+    Echo.bind(
+        service.clone(),
+        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+    );
     let nng_msg = msg();
     let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 4, stack_size = 1024)", move |b| {
-        b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
-        })
-    });
+    c.bench_function(
+        "nng_msg_req_rep_bench(threads = 4, stack_size = 1024)",
+        move |b| {
+            b.iter(|| {
+                client_n.request_channel().send(nng_msg.clone());
+                let _ = client_n.reply_channel().recv().unwrap();
+            })
+        },
+    );
 }
