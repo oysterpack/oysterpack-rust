@@ -21,44 +21,25 @@ use std::{panic::RefUnwindSafe, thread};
 
 pub mod server;
 
-/// constructs a pair of request/reply channels
-/// <pre>
-///     client ---req--> service
-///     client <--rep--- service
-/// </pre>
-///
-/// Each channel is bounded using the specified capacity. This means sending on the channel will block
-/// when the channel is full.
-pub fn channels<Req, Rep>(
-    req_cap: usize,
-    rep_cap: usize,
-) -> (MessageClient<Req, Rep>, MessageService<Req, Rep>)
+/// MessageProcessor factory
+pub trait MessageProcessorFactory<T, Req, Rep>
 where
-    Req: Send,
-    Rep: Send,
+    Req: Send + 'static,
+    Rep: Send + 'static,
+    T: MessageProcessor<Req, Rep>,
 {
-    let (request_sender, request_receiver) = crossbeam::channel::bounded(req_cap);
-    let (reply_sender, reply_receiver) = crossbeam::channel::bounded(rep_cap);
-    (
-        MessageClient {
-            request_channel: request_sender,
-            reply_channel: reply_receiver,
-        },
-        MessageService {
-            request_channel: request_receiver,
-            reply_channel: reply_sender,
-        },
-    )
+    /// returns a new MessageProcessor instance
+    fn new(&self) -> T;
 }
 
 /// Message handler that implements a request/reply protocol pattern
-pub trait MessageHandler<Req, Rep>: Clone + Send + Sync + Sized + RefUnwindSafe + 'static
+pub trait MessageProcessor<Req, Rep>: Send + Sync + Sized + RefUnwindSafe + 'static
 where
     Req: Send + 'static,
     Rep: Send + 'static,
 {
-    /// processes the request and returns a response
-    fn handle(&mut self, req: Req) -> Rep;
+    /// processes the request message and returns a reply message
+    fn process(&mut self, req: Req) -> Rep;
 
     /// Binds the MessageHandler to the MessageService channels.
     ///
@@ -66,7 +47,7 @@ where
     /// 1. the request sender channel is dropped, i.e., disconnected and after all messages on the request receiver
     ///    channel have been processed.
     /// 2. the reply receiver channel is dropped, i.e., disconnected
-    fn bind(self, channels: MessageService<Req, Rep>, thread_config: Option<ThreadConfig>) {
+    fn bind(self, channels: MessageServiceChannel<Req, Rep>, thread_config: Option<ThreadConfig>) {
         let builder =
             thread_config.map_or_else(thread::Builder::new, |config| match config.stack_size {
                 None => thread::Builder::new().name(config.name),
@@ -85,7 +66,7 @@ where
                 );
                 let mut handler = self;
                 for msg in channels.request_channel {
-                    let reply = handler.handle(msg);
+                    let reply = handler.process(msg);
                     if let Err(err) = channels.reply_channel.send(reply) {
                         // means the channel has been disconnected
                         error!("Failed to send reply message: {}", err);
@@ -131,7 +112,7 @@ where
                 );
                 let mut handler = self;
                 for msg in receiver {
-                    let reply = handler.handle(msg);
+                    let reply = handler.process(msg);
                     handle_reply(reply);
                 }
                 info!(
@@ -144,9 +125,42 @@ where
     }
 }
 
-/// A message service
+/// constructs a pair of request/reply channels
+/// <pre>
+///     client ---req--> service
+///     client <--rep--- service
+/// </pre>
+///
+/// Each channel is bounded using the specified capacity. This means sending on the channel will block
+/// when the channel is full.
+pub fn channels<Req, Rep>(
+    req_cap: usize,
+    rep_cap: usize,
+) -> (
+    MessageClientChannel<Req, Rep>,
+    MessageServiceChannel<Req, Rep>,
+)
+where
+    Req: Send,
+    Rep: Send,
+{
+    let (request_sender, request_receiver) = crossbeam::channel::bounded(req_cap);
+    let (reply_sender, reply_receiver) = crossbeam::channel::bounded(rep_cap);
+    (
+        MessageClientChannel {
+            request_channel: request_sender,
+            reply_channel: reply_receiver,
+        },
+        MessageServiceChannel {
+            request_channel: request_receiver,
+            reply_channel: reply_sender,
+        },
+    )
+}
+
+/// Message service channel
 #[derive(Debug, Clone)]
-pub struct MessageService<Req, Rep>
+pub struct MessageServiceChannel<Req, Rep>
 where
     Req: Send,
     Rep: Send,
@@ -155,25 +169,25 @@ where
     reply_channel: crossbeam::Sender<Rep>,
 }
 
-impl<Req, Rep> MessageService<Req, Rep>
+impl<Req, Rep> MessageServiceChannel<Req, Rep>
 where
     Req: Send,
     Rep: Send,
 {
-    /// returns the channel that receives requests
-    pub fn request_channel(&self) -> &crossbeam::Receiver<Req> {
+    /// used by the service to receive messages
+    pub fn receiver(&self) -> &crossbeam::Receiver<Req> {
         &self.request_channel
     }
 
-    /// returns the channel that is used to reply to requests
-    pub fn reply_channel(&self) -> &crossbeam::Sender<Rep> {
+    /// used by the service to send replies
+    pub fn sender(&self) -> &crossbeam::Sender<Rep> {
         &self.reply_channel
     }
 }
 
-/// The MessageClient communicates with the MessageService via a request/reply protocol via channels.
+/// message client channel
 #[derive(Debug, Clone)]
-pub struct MessageClient<Req, Rep>
+pub struct MessageClientChannel<Req, Rep>
 where
     Req: Send,
     Rep: Send,
@@ -182,18 +196,18 @@ where
     reply_channel: crossbeam::Receiver<Rep>,
 }
 
-impl<Req, Rep> MessageClient<Req, Rep>
+impl<Req, Rep> MessageClientChannel<Req, Rep>
 where
     Req: Send,
     Rep: Send,
 {
-    /// returns the channel that sends requests
-    pub fn request_channel(&self) -> &crossbeam::Sender<Req> {
+    /// used by the client to send requests
+    pub fn sender(&self) -> &crossbeam::Sender<Req> {
         &self.request_channel
     }
 
-    /// returns the channel that receives request replies
-    pub fn reply_channel(&self) -> &crossbeam::Receiver<Rep> {
+    /// used by the client to receive replies
+    pub fn receiver(&self) -> &crossbeam::Receiver<Rep> {
         &self.reply_channel
     }
 }
@@ -244,8 +258,8 @@ mod test {
         }
     }
 
-    impl MessageHandler<nng::Message, nng::Message> for Echo {
-        fn handle(&mut self, req: nng::Message) -> nng::Message {
+    impl MessageProcessor<nng::Message, nng::Message> for Echo {
+        fn process(&mut self, req: nng::Message) -> nng::Message {
             self.counter = self.counter + 1;
             info!(
                 "received msg #{} on {:?}",
@@ -268,8 +282,8 @@ mod test {
         let msg = b"some data";
         let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
         nng_msg.push_back(&msg[..]);
-        client.request_channel().send(nng_msg);
-        let reply = client.reply_channel().recv().unwrap();
+        client.sender().send(nng_msg);
+        let reply = client.receiver().recv().unwrap();
         let msg2 = &**reply;
         info!("{}", std::str::from_utf8(msg2).unwrap());
         assert_eq!(
@@ -284,8 +298,8 @@ mod test {
                 let msg = format!("message #{}", i);
                 let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
                 nng_msg.push_back(msg.as_bytes());
-                client_2.request_channel().send(nng_msg);
-                let reply = client_2.reply_channel().recv().unwrap();
+                client_2.sender().send(nng_msg);
+                let reply = client_2.receiver().recv().unwrap();
                 let msg2 = &**reply;
                 println!(
                     "REQ: {} | REPLY: {}",
@@ -316,8 +330,8 @@ mod test {
         let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
         nng_msg.push_back(&msg[..]);
         for _ in 0..100 {
-            client.request_channel().send(nng_msg.clone());
-            let _ = client.reply_channel().recv().unwrap();
+            client.sender().send(nng_msg.clone());
+            let _ = client.receiver().recv().unwrap();
         }
     }
 
@@ -334,17 +348,17 @@ mod test {
         }
 
         fn send_requests(
-            client: MessageClient<nng::Message, nng::Message>,
+            client: MessageClientChannel<nng::Message, nng::Message>,
             count: usize,
         ) -> crossbeam::Receiver<nng::Message> {
             let msg = b"some data";
             let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
             nng_msg.push_back(&msg[..]);
             for _ in 0..count {
-                client.request_channel().send(nng_msg.clone()).unwrap();
+                client.sender().send(nng_msg.clone()).unwrap();
             }
             info!("all messages have been sent");
-            client.reply_channel().clone()
+            client.receiver().clone()
         }
 
         let count = 10;
@@ -355,7 +369,7 @@ mod test {
         // after dropping the request channel, all replies should still continue to flow
         let mut reply_count = 1;
         loop {
-            match reply_channel.recv_timeout(Duration::from_millis(1)) {
+            match reply_channel.recv_timeout(Duration::from_millis(100)) {
                 Ok(_) => {
                     reply_count = reply_count + 1;
                     info!("received reply #{}", reply_count);

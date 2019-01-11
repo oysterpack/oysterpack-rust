@@ -24,6 +24,10 @@
 #![deny(missing_docs, missing_debug_implementations, warnings)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_message/0.1.0")]
 
+#[cfg(test)]
+#[macro_use]
+extern crate pretty_assertions;
+
 pub mod envelope;
 pub mod errors;
 pub mod marshal;

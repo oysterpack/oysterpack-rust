@@ -42,7 +42,7 @@ criterion_main!(benches);
 
 struct Echo;
 
-impl MessageHandler<nng::Message, nng::Message> for Echo {
+impl MessageProcessor<nng::Message, nng::Message> for Echo {
     fn handle(&mut self, req: nng::Message) -> nng::Message {
         req
     }
@@ -68,8 +68,8 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 1)", move |b| {
         b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
+            client_n.sender().send(nng_msg.clone());
+            let _ = client_n.receiver().recv().unwrap();
         })
     });
 
@@ -78,8 +78,8 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 2)", move |b| {
         b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
+            client_n.sender().send(nng_msg.clone());
+            let _ = client_n.receiver().recv().unwrap();
         })
     });
 
@@ -88,8 +88,8 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 3)", move |b| {
         b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
+            client_n.sender().send(nng_msg.clone());
+            let _ = client_n.receiver().recv().unwrap();
         })
     });
 
@@ -98,8 +98,8 @@ fn nng_msg_req_rep_bench(c: &mut Criterion) {
     let client_n = client.clone();
     c.bench_function("nng_msg_req_rep_bench(threads = 4)", move |b| {
         b.iter(|| {
-            client_n.request_channel().send(nng_msg.clone());
-            let _ = client_n.reply_channel().recv().unwrap();
+            client_n.sender().send(nng_msg.clone());
+            let _ = client_n.receiver().recv().unwrap();
         })
     });
 }
@@ -125,8 +125,8 @@ fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
         "nng_msg_req_rep_bench(threads = 1, stack_size = 1024)",
         move |b| {
             b.iter(|| {
-                client_n.request_channel().send(nng_msg.clone());
-                let _ = client_n.reply_channel().recv().unwrap();
+                client_n.sender().send(nng_msg.clone());
+                let _ = client_n.receiver().recv().unwrap();
             })
         },
     );
@@ -141,8 +141,8 @@ fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
         "nng_msg_req_rep_bench(threads = 2, stack_size = 1024)",
         move |b| {
             b.iter(|| {
-                client_n.request_channel().send(nng_msg.clone());
-                let _ = client_n.reply_channel().recv().unwrap();
+                client_n.sender().send(nng_msg.clone());
+                let _ = client_n.receiver().recv().unwrap();
             })
         },
     );
@@ -157,8 +157,8 @@ fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
         "nng_msg_req_rep_bench(threads = 3, stack_size = 1024)",
         move |b| {
             b.iter(|| {
-                client_n.request_channel().send(nng_msg.clone());
-                let _ = client_n.reply_channel().recv().unwrap();
+                client_n.sender().send(nng_msg.clone());
+                let _ = client_n.receiver().recv().unwrap();
             })
         },
     );
@@ -173,8 +173,8 @@ fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
         "nng_msg_req_rep_bench(threads = 4, stack_size = 1024)",
         move |b| {
             b.iter(|| {
-                client_n.request_channel().send(nng_msg.clone());
-                let _ = client_n.reply_channel().recv().unwrap();
+                client_n.sender().send(nng_msg.clone());
+                let _ = client_n.receiver().recv().unwrap();
             })
         },
     );

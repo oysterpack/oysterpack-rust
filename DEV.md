@@ -31,6 +31,9 @@ There are Valgrind tools that can automatically detect many memory management an
 
 4. [tarpaulin](https://github.com/xd009642/tarpaulin) - code coverage reporting tool for the Cargo build system
 
+5. [cargo-watch](https://crates.io/crates/cargo-watch) - Cargo Watch watches over your project's source for changes, and runs Cargo commands when they occur.
+
+
 ## Tools
 1. [glogg](http://glogg.bonnefon.org/)
 glogg is a multi-platform GUI application to browse and search through long or complex log files.

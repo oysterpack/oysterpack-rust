@@ -16,48 +16,52 @@
 
 //! Provides an RPC nng messaging server
 
-use crate::protocol::rpc::MessageHandler;
+use crate::protocol::rpc::{MessageProcessor, MessageProcessorFactory};
 use log::{error, info};
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize};
+use std::{fmt, num::NonZeroUsize, time::Duration};
 
 /// nng RPC server
 pub struct Server {
     listener: nng::listener::Listener,
-    socket: Socket,
+    //    shutdown_sender: crossbeam::channel::Sender<()>,
 }
 
 impl Server {
-    /// starts the server using the specified settings
-    ///
-    /// ## Notes
-    /// - the message handler is cloned for each aio context
-    pub fn start<H>(
+    /*/// spawns a new server instance in a background thread
+    pub fn spawn<Factory, Processor>(
         listener_settings: ListenerSettings,
         socket: Socket,
-        message_handler: &H,
+        message_processor_factory: &Factory,
+        thread_config: Option<ThreadConfig>,
     ) -> Result<Server, Error>
     where
-        H: MessageHandler<nng::Message, nng::Message>,
+        Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
+        Processor: MessageProcessor<nng::Message, nng::Message>,
     {
+        let (shutdown_sender, shutdown_receiver) = crossbeam::channel::bounded(0);
+
+        let builder =
+            thread_config.map_or_else(thread::Builder::new, |config| match config.stack_size {
+                None => thread::Builder::new().name(config.name),
+                Some(stack_size) => thread::Builder::new()
+                    .name(config.name)
+                    .stack_size(stack_size),
+            });
+
         let workers: Vec<_> = (0..listener_settings.aio_context_count)
             .map(|_| {
                 let mut state = AioState::Recv;
-                let mut message_handler = message_handler.clone();
+                let mut message_processor = message_processor_factory.new();
 
-                let ctx = nng::aio::Context::new(&socket).map_err(|err| {
-                    op_error!(errors::AioContextError(ErrorMessage(err.to_string())))
-                })?;
-
+                let ctx = new_context(&socket)?;
                 let ctx_clone = ctx.clone();
                 let aio = nng::aio::Aio::with_callback(move |aio| {
-                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_handler)
+                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
                 })
-                .map_err(|err| {
-                    op_error!(errors::CreateAioWorkerError(ErrorMessage(err.to_string())))
-                })?;
+                .map_err(|err| op_error!(errors::AioCreateError(ErrorMessage(err.to_string()))))?;
 
                 Ok((aio, ctx))
             })
@@ -73,28 +77,80 @@ impl Server {
         }
         info!("aio context receive operations have been initiated ...");
 
-        Ok(Server { listener, socket })
+        // block until server shutdown is signalled
+        let _ = shutdown.recv();
+        println!("server is shutting down ...");
+
+        Ok(Server {
+            listener,
+            socket,
+            shutdown_sender,
+        })
+    }*/
+
+    /// starts a new server instance
+    pub fn start<Factory, Processor>(
+        listener_settings: ListenerSettings,
+        socket: Socket,
+        message_processor_factory: &Factory,
+        stop: crossbeam::channel::Receiver<()>,
+    ) -> Result<Server, Error>
+    where
+        Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
+        Processor: MessageProcessor<nng::Message, nng::Message>,
+    {
+        let workers: Vec<_> = (0..listener_settings.aio_context_count)
+            .map(|_| {
+                let mut state = AioState::Recv;
+                let mut message_processor = message_processor_factory.new();
+
+                let ctx = Self::new_context(&socket)?;
+                let ctx_clone = ctx.clone();
+                let aio = nng::aio::Aio::with_callback(move |aio| {
+                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
+                })
+                .map_err(|err| op_error!(errors::AioCreateError(ErrorMessage(err.to_string()))))?;
+
+                Ok((aio, ctx))
+            })
+            .collect::<Result<_, _>>()?;
+
+        let listener = listener_settings.start_listener(&socket)?;
+        info!("socket listener has been started");
+
+        // Now start all of the workers listening.
+        for (a, c) in &workers {
+            a.recv(c)
+                .map_err(|err| op_error!(errors::AioReceiveError(ErrorMessage(err.to_string()))))?;
+        }
+        info!("aio context receive operations have been initiated ...");
+
+        // block until server shutdown is signalled
+        let _ = stop.recv();
+        println!("stop signal has been received ...");
+
+        Ok(Server { listener,})
     }
 
-    /// socket settings
-    pub fn socket_settings(&self) -> SocketSettings {
-        SocketSettings::from(&self.socket)
+    fn new_context(socket: &nng::Socket) -> Result<nng::aio::Context, Error> {
+        nng::aio::Context::new(&socket)
+            .map_err(|err| op_error!(errors::AioContextError(ErrorMessage(err.to_string()))))
     }
 
     // TODO: how to best handle aio errors
-    fn handle_aio_event<H>(
+    fn handle_aio_event<T>(
         aio: &nng::aio::Aio,
         ctx: &nng::aio::Context,
         state: &mut AioState,
-        message_handler: &mut H,
+        message_processor: &mut T,
     ) where
-        H: MessageHandler<nng::Message, nng::Message>,
+        T: MessageProcessor<nng::Message, nng::Message>,
     {
         let new_state = match *state {
             AioState::Recv => match aio.result().unwrap() {
                 Ok(_) => match aio.get_msg() {
                     Some(req) => {
-                        let rep = message_handler.handle(req);
+                        let rep = message_processor.process(req);
                         match aio.send(&ctx, rep) {
                             Ok(_) => AioState::Send,
                             Err((_rep, err)) => {
@@ -112,7 +168,11 @@ impl Server {
                     }
                 },
                 Err(err) => {
-                    error!("aio receive error: {}", err);
+                    match err.kind() {
+                        nng::ErrorKind::Closed => info!("aio context is closed"),
+                        _ => error!("aio receive error: {}", err),
+                    }
+
                     AioState::Recv
                 }
             },
@@ -150,10 +210,29 @@ pub enum AioState {
 /// Listener settings
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocketSettings {
+    reconnect_min_time: Option<Duration>,
+    reconnect_max_time: Option<Duration>,
     max_ttl: Option<u8>,
 }
 
 impl SocketSettings {
+    /// The minimum amount of time to wait before attempting to establish a connection after a previous attempt has failed.
+    /// This value becomes the default for new dialers. Individual dialers can then override the setting.
+    pub fn reconnect_min_time(&self) -> Option<Duration> {
+        self.reconnect_min_time
+    }
+
+    /// The maximum amount of time to wait before attempting to establish a connection after a previous
+    /// attempt has failed.
+    ///
+    /// If this is non-zero, then the time between successive connection attempts will start at the
+    /// value of ReconnectMinTime, and grow exponentially, until it reaches this value. If this value
+    /// is zero, then no exponential back-off between connection attempts is done, and each attempt
+    /// will wait the time specified by ReconnectMinTime.
+    pub fn reconnect_max_time(&self) -> Option<Duration> {
+        self.reconnect_max_time
+    }
+
     /// The maximum number of "hops" a message may traverse.
     ///
     /// The intention here is to prevent forwarding loops in device chains. Note that not all protocols
@@ -162,18 +241,15 @@ impl SocketSettings {
     /// Each node along a forwarding path may have its own value for the maximum time-to-live, and
     /// performs its own checks before forwarding a message. Therefore it is helpful if all nodes in
     /// the topology use the same value for this option.
+    ///
+    /// Sockets can use this with the following protocols:
+    /// - Pair v1
+    /// - Rep v0
+    /// - Req v0
+    /// - Surveyor v0
+    /// - Respondent v0
     pub fn max_ttl(&self) -> Option<u8> {
         self.max_ttl
-    }
-
-    // TODO - add the rest of the socket options
-}
-
-impl From<&Socket> for SocketSettings {
-    fn from(socket: &Socket) -> SocketSettings {
-        SocketSettings {
-            max_ttl: socket.get_opt::<nng::options::MaxTtl>().ok(),
-        }
     }
 }
 
@@ -364,11 +440,11 @@ pub mod errors {
         }
     }
 
-    /// Failed to create Aio worker
+    /// Failed to create new asynchronous I/O handle
     #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct CreateAioWorkerError(pub ErrorMessage);
+    pub struct AioCreateError(pub ErrorMessage);
 
-    impl CreateAioWorkerError {
+    impl AioCreateError {
         /// Error Id
         pub const ERROR_ID: oysterpack_errors::Id =
             oysterpack_errors::Id(1870313585057930209197631174282877574);
@@ -376,7 +452,7 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
     }
 
-    impl IsError for CreateAioWorkerError {
+    impl IsError for AioCreateError {
         fn error_id(&self) -> oysterpack_errors::Id {
             Self::ERROR_ID
         }
@@ -386,9 +462,9 @@ pub mod errors {
         }
     }
 
-    impl fmt::Display for CreateAioWorkerError {
+    impl fmt::Display for AioCreateError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "Failed to create Aio worker: {}", self.0)
+            write!(f, "Failed to create new aio handle: {}", self.0)
         }
     }
 
@@ -454,5 +530,108 @@ pub mod errors {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{
+        num::NonZeroUsize,
+        thread,
+        time::{Duration, Instant},
+    };
+
+    #[derive(Clone)]
+    struct Sleep;
+
+    impl MessageProcessorFactory<Sleep, nng::Message, nng::Message> for Sleep {
+        fn new(&self) -> Sleep {
+            Sleep
+        }
+    }
+
+    impl MessageProcessor<nng::Message, nng::Message> for Sleep {
+        fn process(&mut self, req: nng::Message) -> nng::Message {
+            info!("received message on {:?}", thread::current().id());
+            let sleep_ms: u32 = bincode::deserialize(&*req.body()).unwrap();
+            if sleep_ms > 0 {
+                info!(
+                    "handler({:?}) sleeping for {} ms ...",
+                    thread::current().id(),
+                    sleep_ms
+                );
+                thread::sleep_ms(sleep_ms);
+                info!("handler({:?}) has awaken !!!", thread::current().id());
+            }
+            req
+        }
+    }
+
+    fn log_config() -> oysterpack_log::LogConfig {
+        oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
+    }
+
+    /// Run the client portion of the program.
+    fn client(url: &str, sleep_ms: u32) -> Result<(), nng::Error> {
+        let mut s = Socket::new(nng::Protocol::Req0)?;
+        let dialer = nng::dialer::DialerOptions::new(&s, url)?;
+        let dialer = match dialer.start(true) {
+            Ok(dialer) => dialer,
+            Err((_, err)) => panic!(err),
+        };
+
+        let msg_bytes = bincode::serialize(&sleep_ms).unwrap();
+        let mut req = nng::Message::with_capacity(msg_bytes.len()).unwrap();
+        req.push_back(&msg_bytes).unwrap();
+
+        let start = Instant::now();
+        s.send(req)?;
+        s.recv()?;
+        let dur = Instant::now().duration_since(start);
+        info!("Request({}) took {:?}", sleep_ms, dur);
+        Ok(())
+    }
+
+    #[test]
+    fn rpc_server() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        const url: &str = "inproc://test";
+
+        let listener_settings =
+            super::ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
+
+        let (shutdown_trigger, shutdown_receiver) = crossbeam::channel::bounded(0);
+
+        let server = thread::spawn(|| {
+            super::Server::start(
+                listener_settings,
+                Socket::new(nng::Protocol::Rep0).unwrap(),
+                &Sleep,
+                shutdown_receiver,
+            )
+            .unwrap();
+        });
+
+        for _ in 0..10 {
+            client(url, 0).unwrap();
+        }
+
+        let (s, r) = crossbeam::channel::bounded(0);
+        const SLEEP_TIME: u32 = 1000;
+        thread::spawn(move || {
+            s.send(()).unwrap();
+            client(url, SLEEP_TIME).unwrap();
+        });
+        r.recv().unwrap();
+        info!("client with {} ms request has started", SLEEP_TIME);
+        thread::sleep_ms(10);
+
+        thread::spawn(move || {
+            for _ in 0..10 {
+                client(url, 0).unwrap();
+            }
+        })
+        .join();
+        info!("client requests are done.");
+
+        shutdown_trigger.send(()).unwrap();
+        server.join();
+    }
 
 }
