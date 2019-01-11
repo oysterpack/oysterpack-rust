@@ -17,7 +17,7 @@
 //! Provides support for a request/reply RPC-like services.
 
 use log::{error, info};
-use std::thread;
+use std::{panic::RefUnwindSafe, thread};
 
 pub mod server;
 
@@ -37,22 +37,22 @@ where
     Req: Send,
     Rep: Send,
 {
-    let (s1, r1) = crossbeam::channel::bounded(req_cap);
-    let (s2, r2) = crossbeam::channel::bounded(rep_cap);
+    let (request_sender, request_receiver) = crossbeam::channel::bounded(req_cap);
+    let (reply_sender, reply_receiver) = crossbeam::channel::bounded(rep_cap);
     (
         MessageClient {
-            request_channel: s1,
-            reply_channel: r2,
+            request_channel: request_sender,
+            reply_channel: reply_receiver,
         },
         MessageService {
-            request_channel: r1,
-            reply_channel: s2,
+            request_channel: request_receiver,
+            reply_channel: reply_sender,
         },
     )
 }
 
 /// Message handler that implements a request/reply protocol pattern
-pub trait MessageHandler<Req, Rep>: Send + Sync + Sized + 'static
+pub trait MessageHandler<Req, Rep>: Clone + Send + Sync + Sized + RefUnwindSafe + 'static
 where
     Req: Send + 'static,
     Rep: Send + 'static,
@@ -60,8 +60,9 @@ where
     /// processes the request and returns a response
     fn handle(&mut self, req: Req) -> Rep;
 
-    /// binds the MessageHandler to the channels. The MessageHandler will run in a background thread
-    /// until one of the following events occurs:
+    /// Binds the MessageHandler to the MessageService channels.
+    ///
+    /// The MessageHandler will run in a background thread until one of the following events occurs:
     /// 1. the request sender channel is dropped, i.e., disconnected and after all messages on the request receiver
     ///    channel have been processed.
     /// 2. the reply receiver channel is dropped, i.e., disconnected
@@ -89,6 +90,49 @@ where
                         // means the channel has been disconnected
                         error!("Failed to send reply message: {}", err);
                     }
+                }
+                info!(
+                    "MessageHandler stopped: {} : {:?}",
+                    t.name().map_or("", |name| name),
+                    t.id()
+                )
+            })
+            .unwrap();
+    }
+
+    // TODO: test
+    /// Binds the message handler to the receiver channel, which is used to receive request messages.
+    /// The reply callback is invoked to handle the reply message.
+    fn bind_with_reply_handler<F>(
+        self,
+        receiver: crossbeam::channel::Receiver<Req>,
+        thread_config: Option<ThreadConfig>,
+        reply_callback: F,
+    ) where
+        F: FnMut(Rep) + Send + 'static,
+    {
+        let builder =
+            thread_config.map_or_else(thread::Builder::new, |config| match config.stack_size {
+                None => thread::Builder::new().name(config.name),
+                Some(stack_size) => thread::Builder::new()
+                    .name(config.name)
+                    .stack_size(stack_size),
+            });
+
+        let mut handle_reply = reply_callback;
+
+        builder
+            .spawn(move || {
+                let t = thread::current();
+                info!(
+                    "MessageHandler started: {} : {:?}",
+                    t.name().map_or("", |name| name),
+                    t.id()
+                );
+                let mut handler = self;
+                for msg in receiver {
+                    let reply = handler.handle(msg);
+                    handle_reply(reply);
                 }
                 info!(
                     "MessageHandler stopped: {} : {:?}",
@@ -189,6 +233,7 @@ mod test {
         oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
     }
 
+    #[derive(Clone)]
     struct Echo {
         counter: usize,
     }

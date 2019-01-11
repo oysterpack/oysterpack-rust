@@ -16,91 +16,141 @@
 
 //! Provides an RPC nng messaging server
 
+use crate::protocol::rpc::MessageHandler;
+use log::{error, info};
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{Deserialize, Serialize};
-use std::{fmt, sync::Arc, num::NonZeroUsize};
-use super::MessageHandler;
+use std::{fmt, num::NonZeroUsize};
 
 /// nng RPC server
 pub struct Server {
     listener: nng::listener::Listener,
-    socket: Arc<Socket>,
+    socket: Socket,
 }
 
 impl Server {
-
     /// starts the server using the specified settings
-    pub fn start<Handler>(
+    ///
+    /// ## Notes
+    /// - the message handler is cloned for each aio context
+    pub fn start<H>(
         listener_settings: ListenerSettings,
-        socket: Arc<Socket>,
-        message_handler_pool: Vec<Handler>
-    ) -> Result<Server, Error> where Handler: MessageHandler<nng::Message, nng::Message> {
-        let workers: Vec<_> = (0..listener_settings.aio_count)
-            .map(|i| create_worker(i, &s))
+        socket: Socket,
+        message_handler: &H,
+    ) -> Result<Server, Error>
+    where
+        H: MessageHandler<nng::Message, nng::Message>,
+    {
+        let workers: Vec<_> = (0..listener_settings.aio_context_count)
+            .map(|_| {
+                let mut state = AioState::Recv;
+                let mut message_handler = message_handler.clone();
+
+                let ctx = nng::aio::Context::new(&socket).map_err(|err| {
+                    op_error!(errors::AioContextError(ErrorMessage(err.to_string())))
+                })?;
+
+                let ctx_clone = ctx.clone();
+                let aio = nng::aio::Aio::with_callback(move |aio| {
+                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_handler)
+                })
+                .map_err(|err| {
+                    op_error!(errors::CreateAioWorkerError(ErrorMessage(err.to_string())))
+                })?;
+
+                Ok((aio, ctx))
+            })
             .collect::<Result<_, _>>()?;
-        let listener =  listener_settings.start_listener(&socket)?;
+
+        let listener = listener_settings.start_listener(&socket)?;
+        info!("socket listener has been started");
 
         // Now start all of the workers listening.
         for (a, c) in &workers {
-            a.recv(c)?;
+            a.recv(c)
+                .map_err(|err| op_error!(errors::AioReceiveError(ErrorMessage(err.to_string()))))?;
         }
+        info!("aio context receive operations have been initiated ...");
 
-        Ok(Server {
-            listener,
-            socket,
-        })
+        Ok(Server { listener, socket })
     }
 
     /// socket settings
     pub fn socket_settings(&self) -> SocketSettings {
-        SocketSettings::from(&*self.socket)
+        SocketSettings::from(&self.socket)
     }
 
-    fn create_worker(s: &Socket) -> Result<(nng::aio::Aio, nng::aio::Context), Error>
+    // TODO: how to best handle aio errors
+    fn handle_aio_event<H>(
+        aio: &nng::aio::Aio,
+        ctx: &nng::aio::Context,
+        state: &mut AioState,
+        message_handler: &mut H,
+    ) where
+        H: MessageHandler<nng::Message, nng::Message>,
     {
-        let mut state = State::Recv;
+        let new_state = match *state {
+            AioState::Recv => match aio.result().unwrap() {
+                Ok(_) => match aio.get_msg() {
+                    Some(req) => {
+                        let rep = message_handler.handle(req);
+                        match aio.send(&ctx, rep) {
+                            Ok(_) => AioState::Send,
+                            Err((_rep, err)) => {
+                                error!("failed to send reply: {}", err);
+                                aio.cancel();
+                                aio.recv(&ctx).expect("aio.recv() failed");
+                                AioState::Recv
+                            }
+                        }
+                    }
+                    None => {
+                        error!("No message was found ... initiating aio.recv()");
+                        aio.recv(&ctx).expect("aio.recv() failed");
+                        AioState::Recv
+                    }
+                },
+                Err(err) => {
+                    error!("aio receive error: {}", err);
+                    AioState::Recv
+                }
+            },
+            AioState::Send => {
+                if let Err(err) = aio.result().unwrap() {
+                    error!("aio send error: {}", err)
+                }
+                aio.recv(ctx).unwrap();
+                AioState::Recv
+            }
+        };
 
-        let ctx = nng::aio:: Context::new(s)?;
-        let ctx_clone = ctx.clone();
-        let aio = nng::aio::Aio::with_callback(move |aio| worker_callback(aio, &ctx_clone, &mut state))
-            .map_error(|err| {
-                op_error!(CreateAioWorkerError(ErrorMessage(err.to_string())))
-            })?;
-
-        Ok((aio, ctx))
+        *state = new_state;
     }
-
 }
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Server(listener.id={})", self.listener.id())
+        match self.listener.get_opt::<nng::options::Url>() {
+            Ok(url) => write!(f, "Server(url={}, id={})", url, self.listener.id()),
+            Err(_) => write!(f, "Server(id={})", self.listener.id()),
+        }
     }
 }
 
-struct AioWorker {
-    state: AioWorkerState
-}
-
-impl AioWorker {
-    fn callback(&mut self, aio: nng::aio::Aio) {
-        // TODO
-    }
-}
-
-/// State of a request.
+/// Aio state for socket context.
 #[derive(Debug, Copy, Clone)]
-enum AioWorkerState {
+pub enum AioState {
+    /// aio receive operation is in progress
     Recv,
-    Wait,
+    /// aio send operation is in progress
     Send,
 }
 
 /// Listener settings
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocketSettings {
-    max_ttl: Option<u8>
+    max_ttl: Option<u8>,
 }
 
 impl SocketSettings {
@@ -120,10 +170,9 @@ impl SocketSettings {
 }
 
 impl From<&Socket> for SocketSettings {
-
     fn from(socket: &Socket) -> SocketSettings {
         SocketSettings {
-            max_ttl: socket.get_opt::<nng::options::MaxTtl>().ok()
+            max_ttl: socket.get_opt::<nng::options::MaxTtl>().ok(),
         }
     }
 }
@@ -136,7 +185,7 @@ pub struct ListenerSettings {
     no_delay: Option<bool>,
     keep_alive: Option<bool>,
     non_blocking: bool,
-    aio_count: usize
+    aio_context_count: usize,
 }
 
 impl ListenerSettings {
@@ -148,7 +197,7 @@ impl ListenerSettings {
             no_delay: None,
             keep_alive: None,
             non_blocking: false,
-            aio_count: 1
+            aio_context_count: 1,
         }
     }
 
@@ -202,9 +251,10 @@ impl ListenerSettings {
         self.non_blocking
     }
 
-    /// number of async IO operations that can be performed concurrently
-    pub fn aio_count(&self) -> usize {
-        self.aio_count
+    /// number of async IO operations that can be performed concurrently, which corresponds to the number
+    /// of socket contexts that will be created
+    pub fn aio_context_count(&self) -> usize {
+        self.aio_context_count
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -274,7 +324,7 @@ impl ListenerSettings {
     /// set the number of async IO operations that can be performed concurrently
     pub fn set_aio_count(self, count: NonZeroUsize) -> Self {
         let mut settings = self;
-        settings.aio_count = count.get();
+        settings.aio_context_count = count.get();
         settings
     }
 }
@@ -341,5 +391,68 @@ pub mod errors {
             write!(f, "Failed to create Aio worker: {}", self.0)
         }
     }
+
+    /// Aio receive operation failed
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct AioReceiveError(pub ErrorMessage);
+
+    impl AioReceiveError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870374078796088086815067802169113773);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for AioReceiveError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for AioReceiveError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Aio receive operation failed: {}", self.0)
+        }
+    }
+
+    /// Failed to create new socket context
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct AioContextError(pub ErrorMessage);
+
+    impl AioContextError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870374278155759380545373361718947172);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for AioContextError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for AioContextError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Failed to create new socket context: {}", self.0)
+        }
+    }
+
+}
+
+#[allow(warnings)]
+#[cfg(test)]
+mod test {
+    use super::*;
 
 }
