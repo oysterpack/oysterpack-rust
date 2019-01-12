@@ -21,7 +21,14 @@ use log::{error, info};
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{Deserialize, Serialize};
-use std::{fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc, thread, time::Duration};
+use std::{
+    fmt,
+    marker::PhantomData,
+    num::{NonZeroU16, NonZeroUsize},
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
 /// Server builder
 #[derive(Debug)]
@@ -257,22 +264,52 @@ pub enum AioState {
 }
 
 /// Listener settings
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocketSettings {
-    reconnect_min_time: Option<Duration>,
-    reconnect_max_time: Option<Duration>,
+    recv_buffer_size: Option<NonZeroU16>,
+    recv_max_size: Option<NonZeroUsize>,
+    recv_timeout: Option<Duration>,
+    send_timeout: Option<Duration>,
+    send_buffer_size: Option<NonZeroU16>,
     max_ttl: Option<u8>,
+    socket_name: Option<String>,
+    tcp_no_delay: Option<bool>,
+    tcp_keep_alive: Option<bool>,
 }
 
 impl SocketSettings {
     /// set socket options
     pub fn apply(&self, socket: Socket) -> Result<Socket, Error> {
+        if let Some(opt) = self.recv_buffer_size {
+            socket
+                .set_opt::<nng::options::RecvBufferSize>(opt.get() as i32)
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
+        if let Some(opt) = self.send_buffer_size {
+            socket
+                .set_opt::<nng::options::SendBufferSize>(opt.get() as i32)
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
+        if let Some(opt) = self.recv_max_size {
+            socket
+                .set_opt::<nng::options::RecvMaxSize>(opt.get())
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
         socket
-            .set_opt::<nng::options::ReconnectMinTime>(self.reconnect_min_time)
+            .set_opt::<nng::options::RecvTimeout>(self.recv_timeout)
             .map_err(|err| op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string()))))?;
 
         socket
-            .set_opt::<nng::options::ReconnectMaxTime>(self.reconnect_max_time)
+            .set_opt::<nng::options::SendTimeout>(self.send_timeout)
             .map_err(|err| op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string()))))?;
 
         if let Some(opt) = self.max_ttl {
@@ -281,24 +318,113 @@ impl SocketSettings {
             })?;
         }
 
+        if let Some(opt) = self.socket_name.as_ref() {
+            socket
+                .set_opt::<nng::options::SocketName>(opt.clone())
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
+        if let Some(opt) = self.tcp_no_delay {
+            socket
+                .set_opt::<nng::options::transport::tcp::NoDelay>(opt)
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
+        if let Some(opt) = self.tcp_keep_alive {
+            socket
+                .set_opt::<nng::options::transport::tcp::KeepAlive>(opt)
+                .map_err(|err| {
+                    op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+                })?;
+        }
+
         Ok(socket)
     }
 
-    /// The minimum amount of time to wait before attempting to establish a connection after a previous attempt has failed.
-    /// This value becomes the default for new dialers. Individual dialers can then override the setting.
-    pub fn reconnect_min_time(&self) -> Option<Duration> {
-        self.reconnect_min_time
+    /// Enable the sending of keep-alive messages on the underlying TCP stream.
+    ///
+    /// This option is false by default. When enabled, if no messages are seen for a period of time,
+    /// then a zero length TCP message is sent with the ACK flag set in an attempt to tickle some
+    /// traffic from the peer. If none is still seen (after some platform-specific number of retries
+    /// and timeouts), then the remote peer is presumed dead, and the connection is closed.
+    ///
+    /// his option has two purposes. First, it can be used to detect dead peers on an otherwise
+    /// quiescent network. Second, it can be used to keep connection table entries in NAT and other
+    /// middleware from being expiring due to lack of activity.
+    pub fn tcp_keep_alive(&self) -> Option<bool> {
+        self.tcp_keep_alive
     }
 
-    /// The maximum amount of time to wait before attempting to establish a connection after a previous
-    /// attempt has failed.
+    /// Disable (or enable) the use of Nagle's algorithm for TCP connections.
     ///
-    /// If this is non-zero, then the time between successive connection attempts will start at the
-    /// value of ReconnectMinTime, and grow exponentially, until it reaches this value. If this value
-    /// is zero, then no exponential back-off between connection attempts is done, and each attempt
-    /// will wait the time specified by ReconnectMinTime.
-    pub fn reconnect_max_time(&self) -> Option<Duration> {
-        self.reconnect_max_time
+    /// When true (the default), messages are sent immediately by the underlying TCP stream without
+    /// waiting to gather more data. When false, Nagle's algorithm is enabled, and the TCP stream may
+    /// wait briefly in attempt to coalesce messages. Nagle's algorithm is useful on low-bandwidth
+    /// connections to reduce overhead, but it comes at a cost to latency.
+    pub fn tcp_no_delay(&self) -> Option<bool> {
+        self.tcp_no_delay
+    }
+
+    /// By default this is a string corresponding to the value of the socket.
+    /// The string must fit within 63-bytes but it can be changed for other application uses.
+    pub fn socket_name(&self) -> Option<&str> {
+        self.socket_name.as_ref().map(|s| &*s.as_str())
+    }
+
+    /// The maximum message size that the will be accepted from a remote peer.
+    /// If a peer attempts to send a message larger than this, then the message will be discarded.
+    /// This option exists to prevent certain kinds of denial-of-service attacks, where a malicious
+    /// agent can claim to want to send an extraordinarily large message, without sending any data.
+    pub fn recv_max_size(&self) -> Option<usize> {
+        self.recv_max_size.map(|n| n.get())
+    }
+
+    /// The depth of the socket's receive buffer as a number of messages.
+    /// Messages received by the transport may be buffered until the application has accepted them for delivery.
+    pub fn recv_buffer_size(&self) -> Option<u16> {
+        self.recv_buffer_size.map(|n| n.get())
+    }
+
+    /// The depth of the socket send buffer as a number of messages.
+    ///
+    /// Messages sent by an application may be buffered by the socket until a transport is ready to
+    /// accept them for delivery. This value must be an integer between 1 and 8192, inclusive.
+    pub fn send_buffer_size(&self) -> Option<u16> {
+        self.send_buffer_size.map(|n| n.get())
+    }
+
+    /// maximum allowed setting for send buffer size
+    pub const MAX_SEND_BUFFER_SIZE: u16 = 8192;
+
+    /// if the size is greater than 8192, then it will be set to 8192
+    pub fn set_send_buffer_size(self, size: NonZeroU16) -> SocketSettings {
+        let mut settings = self;
+        if size.get() > SocketSettings::MAX_SEND_BUFFER_SIZE {
+            settings.send_buffer_size =
+                Some(NonZeroU16::new(SocketSettings::MAX_SEND_BUFFER_SIZE).unwrap());
+        } else {
+            settings.send_buffer_size = Some(size);
+        }
+
+        settings
+    }
+
+    /// When no message is available for receiving at the socket for this period of time, receive operations
+    /// will fail with a timeout error.
+    pub fn recv_timeout(&self) -> Option<Duration> {
+        self.recv_timeout
+    }
+
+    /// The socket send timeout.
+    ///
+    /// When a message cannot be queued for delivery by the socket for this period of time (such as
+    /// if send buffers are full), the operation will fail with with a timeout error.
+    pub fn send_timeout(&self) -> Option<Duration> {
+        self.send_timeout
     }
 
     /// The maximum number of "hops" a message may traverse.
