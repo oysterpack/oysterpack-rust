@@ -282,7 +282,7 @@ impl SocketSettings {
     pub fn apply(&self, socket: Socket) -> Result<Socket, Error> {
         if let Some(opt) = self.recv_buffer_size {
             socket
-                .set_opt::<nng::options::RecvBufferSize>(opt.get() as i32)
+                .set_opt::<nng::options::RecvBufferSize>(i32::from(opt.get()))
                 .map_err(|err| {
                     op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
                 })?;
@@ -290,7 +290,7 @@ impl SocketSettings {
 
         if let Some(opt) = self.send_buffer_size {
             socket
-                .set_opt::<nng::options::SendBufferSize>(opt.get() as i32)
+                .set_opt::<nng::options::SendBufferSize>(i32::from(opt.get()))
                 .map_err(|err| {
                     op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
                 })?;
@@ -359,6 +359,13 @@ impl SocketSettings {
         self.tcp_keep_alive
     }
 
+    /// enable / disable tcp keep alive
+    pub fn set_tcp_keep_alive(self, opt: bool) -> SocketSettings {
+        let mut s = self;
+        s.tcp_keep_alive = Some(opt);
+        s
+    }
+
     /// Disable (or enable) the use of Nagle's algorithm for TCP connections.
     ///
     /// When true (the default), messages are sent immediately by the underlying TCP stream without
@@ -369,10 +376,31 @@ impl SocketSettings {
         self.tcp_no_delay
     }
 
+    /// enable / disable tcp no delay
+    pub fn set_tcp_no_delay(self, opt: bool) -> SocketSettings {
+        let mut s = self;
+        s.tcp_no_delay = Some(opt);
+        s
+    }
+
     /// By default this is a string corresponding to the value of the socket.
     /// The string must fit within 63-bytes but it can be changed for other application uses.
     pub fn socket_name(&self) -> Option<&str> {
         self.socket_name.as_ref().map(|s| &*s.as_str())
+    }
+
+    /// max socket name length
+    pub const MAX_SOCKET_NAME_LEN: usize = 63;
+
+    /// sets the socket name and must fit within 63-bytes. It will be truncated if longer than 63 bytes.
+    pub fn set_socket_name(self, name: &str) -> SocketSettings {
+        let mut s = self;
+        if name.len() > SocketSettings::MAX_SOCKET_NAME_LEN {
+            s.socket_name = Some(name[..63].to_string());
+        } else {
+            s.socket_name = Some(name.to_string());
+        }
+        s
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -383,10 +411,24 @@ impl SocketSettings {
         self.recv_max_size.map(|n| n.get())
     }
 
+    /// configures the maximum message size that the will be accepted from a remote peer.
+    pub fn set_recv_max_size(self, size: NonZeroUsize) -> SocketSettings {
+        let mut s = self;
+        s.recv_max_size = Some(size);
+        s
+    }
+
     /// The depth of the socket's receive buffer as a number of messages.
     /// Messages received by the transport may be buffered until the application has accepted them for delivery.
     pub fn recv_buffer_size(&self) -> Option<u16> {
         self.recv_buffer_size.map(|n| n.get())
+    }
+
+    /// configures the depth of the socket's receive buffer as a number of messages.
+    pub fn set_recv_buffer_size(self, size: NonZeroU16) -> SocketSettings {
+        let mut s = self;
+        s.recv_buffer_size = Some(size);
+        s
     }
 
     /// The depth of the socket send buffer as a number of messages.
@@ -419,12 +461,26 @@ impl SocketSettings {
         self.recv_timeout
     }
 
+    /// configures receive timeout
+    pub fn set_recv_timeout(self, timeout: Duration) -> SocketSettings {
+        let mut s = self;
+        s.recv_timeout = Some(timeout);
+        s
+    }
+
     /// The socket send timeout.
     ///
     /// When a message cannot be queued for delivery by the socket for this period of time (such as
     /// if send buffers are full), the operation will fail with with a timeout error.
     pub fn send_timeout(&self) -> Option<Duration> {
         self.send_timeout
+    }
+
+    /// configures send timeout
+    pub fn set_send_timeout(self, timeout: Duration) -> SocketSettings {
+        let mut s = self;
+        s.send_timeout = Some(timeout);
+        s
     }
 
     /// The maximum number of "hops" a message may traverse.
@@ -444,6 +500,13 @@ impl SocketSettings {
     /// - Respondent v0
     pub fn max_ttl(&self) -> Option<u8> {
         self.max_ttl
+    }
+
+    /// configures send timeout
+    pub fn set_max_ttl(self, ttl: u8) -> SocketSettings {
+        let mut s = self;
+        s.max_ttl = Some(ttl);
+        s
     }
 }
 
