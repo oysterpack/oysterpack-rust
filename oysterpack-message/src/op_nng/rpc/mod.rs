@@ -24,6 +24,7 @@ use std::{
     thread,
 };
 
+pub mod client;
 pub mod server;
 
 /// MessageProcessor factory
@@ -90,7 +91,7 @@ where
     // TODO: test
     /// Binds the message handler to the receiver channel, which is used to receive request messages.
     /// The reply callback is invoked to handle the reply message.
-    fn bind_with_reply_handler<F>(
+    fn bind_with_reply_callback<F>(
         self,
         receiver: crossbeam::channel::Receiver<Req>,
         thread_config: Option<ThreadConfig>,

@@ -14,6 +14,10 @@
  *    limitations under the License.
  */
 
-//! Defines the various supported [nng](https://nanomsg.github.io/nng/index.html) messaging protocols.
+//! nng RPC client
 
-pub mod rpc;
+/// nng RPC client
+#[derive(Debug)]
+pub struct Client {}
+
+impl Client {}

@@ -14,11 +14,13 @@
  *    limitations under the License.
  */
 
-//! provides nng support
+//! Provides support for [nng](https://nanomsg.github.io/nng/index.html) messaging protocols.
 
 use crate::errors;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Serialize};
+
+pub mod rpc;
 
 // TODO: implement TryFrom when it bocomes stable
 /// Converts an nng:Message into a SealedEnvelope.
