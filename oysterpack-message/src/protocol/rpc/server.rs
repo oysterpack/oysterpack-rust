@@ -264,7 +264,7 @@ pub enum AioState {
 }
 
 /// Listener settings
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct SocketSettings {
     recv_buffer_size: Option<NonZeroU16>,
     recv_max_size: Option<NonZeroUsize>,
