@@ -17,7 +17,12 @@
 //! Provides support for a request/reply RPC-like services.
 
 use log::{error, info};
-use std::{panic::RefUnwindSafe, thread};
+use oysterpack_uid::ULID;
+use std::{
+    num::NonZeroUsize,
+    panic::{RefUnwindSafe, UnwindSafe},
+    thread,
+};
 
 pub mod server;
 
@@ -33,7 +38,8 @@ where
 }
 
 /// Message handler that implements a request/reply protocol pattern
-pub trait MessageProcessor<Req, Rep>: Send + Sync + Sized + RefUnwindSafe + 'static
+pub trait MessageProcessor<Req, Rep>:
+    Send + Sync + Sized + RefUnwindSafe + UnwindSafe + 'static
 where
     Req: Send + 'static,
     Rep: Send + 'static,
@@ -221,18 +227,30 @@ pub struct ThreadConfig {
 
 impl ThreadConfig {
     /// constructor
+    /// - name is trimmed
+    /// - if the name is blank then it will be replaced with a ULID
+    ///   - creating a thread with blank name would trigger a panic. In order to avoid to always
+    ///     having to handle the error case for this edge case, a random thread name will be used
     pub fn new(name: &str) -> ThreadConfig {
+        let name = {
+            if name.trim().is_empty() {
+                ULID::generate().to_string()
+            } else {
+                name.to_string()
+            }
+        };
+
         ThreadConfig {
-            name: name.to_string(),
+            name,
             stack_size: None,
         }
     }
 
     /// Sets the size of the stack (in bytes) for the new thread.
     /// The actual stack size may be greater than this value if the platform specifies minimal stack size.
-    pub fn set_stack_size(self, stack_size: usize) -> ThreadConfig {
+    pub fn set_stack_size(self, stack_size: NonZeroUsize) -> ThreadConfig {
         let mut config = self;
-        config.stack_size = Some(stack_size);
+        config.stack_size = Some(stack_size.get());
         config
     }
 
@@ -251,7 +269,7 @@ impl ThreadConfig {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::time::Duration;
+    use std::{num::NonZeroUsize, time::Duration};
 
     fn log_config() -> oysterpack_log::LogConfig {
         oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
@@ -332,7 +350,49 @@ mod test {
         for _ in 0..num_cpus::get() {
             Echo::default().bind(
                 service.clone(),
-                Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+                Some(ThreadConfig::new("Echo").set_stack_size(NonZeroUsize::new(1024).unwrap())),
+            );
+        }
+
+        let msg = b"some data";
+        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+        nng_msg.push_back(&msg[..]);
+        for _ in 0..100 {
+            client.sender().send(nng_msg.clone());
+            let _ = client.receiver().recv().unwrap();
+        }
+    }
+
+    #[test]
+    fn client_service_messaging_with_thread_config_with_blank_name() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
+        for _ in 0..num_cpus::get() {
+            Echo::default().bind(
+                service.clone(),
+                Some(ThreadConfig::new("   ").set_stack_size(NonZeroUsize::new(1024).unwrap())),
+            );
+        }
+
+        let msg = b"some data";
+        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
+        nng_msg.push_back(&msg[..]);
+        for _ in 0..100 {
+            client.sender().send(nng_msg.clone());
+            let _ = client.receiver().recv().unwrap();
+        }
+    }
+
+    #[test]
+    fn client_service_messaging_with_thread_config_with_empty_name() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
+        for _ in 0..num_cpus::get() {
+            Echo::default().bind(
+                service.clone(),
+                Some(ThreadConfig::new("").set_stack_size(NonZeroUsize::new(1024).unwrap())),
             );
         }
 
@@ -353,7 +413,7 @@ mod test {
         for _ in 0..num_cpus::get() {
             Echo::default().bind(
                 service.clone(),
-                Some(ThreadConfig::new("Echo").set_stack_size(1024)),
+                Some(ThreadConfig::new("Echo").set_stack_size(NonZeroUsize::new(1024).unwrap())),
             );
         }
 

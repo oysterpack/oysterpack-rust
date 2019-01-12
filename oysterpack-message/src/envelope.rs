@@ -18,6 +18,7 @@
 
 use crate::errors;
 use crate::marshal;
+use crate::op_nng::{try_from_nng_message, try_into_nng_message};
 use crate::security::Address;
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -54,32 +55,13 @@ impl SealedEnvelope {
     // TODO: implement TryFrom when it bocomes stable
     /// Converts an nng:Message into a SealedEnvelope.
     pub fn try_from_nng_message(msg: &nng::Message) -> Result<SealedEnvelope, Error> {
-        bincode::deserialize(&**msg).map_err(|err| {
-            op_error!(errors::BincodeDeserializeError(ErrorMessage(
-                err.to_string()
-            )))
-        })
+        try_from_nng_message(msg)
     }
 
     // TODO: implement TryInto when it becomes stable
     /// Converts itself into an nng:Message
     pub fn try_into_nng_message(self) -> Result<nng::Message, Error> {
-        let bytes = bincode::serialize(&self).map_err(|err| {
-            op_error!(errors::BincodeSerializeError(ErrorMessage(format!(
-                "SealedEnvelope : {}",
-                err
-            ))))
-        })?;
-        let mut msg = nng::Message::with_capacity(bytes.len()).map_err(|err| {
-            op_error!(errors::NngMessageError::from(ErrorMessage(format!("Failed to create an empty message with a pre-allocated body buffer (capacity = {}): {}", bytes.len(), err))))
-        })?;
-        msg.push_back(&bytes).map_err(|err| {
-            op_error!(errors::NngMessageError::from(ErrorMessage(format!(
-                "Failed to append data to the back of the message body: {}",
-                err
-            ))))
-        })?;
-        Ok(msg)
+        try_into_nng_message(&self)
     }
 
     /// open the envelope using the specified precomputed key
