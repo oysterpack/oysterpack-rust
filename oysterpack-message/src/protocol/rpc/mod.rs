@@ -22,7 +22,7 @@ use std::{panic::RefUnwindSafe, thread};
 pub mod server;
 
 /// MessageProcessor factory
-pub trait MessageProcessorFactory<T, Req, Rep>
+pub trait MessageProcessorFactory<T, Req, Rep>: Send + Sync + 'static
 where
     Req: Send + 'static,
     Rep: Send + 'static,
@@ -234,6 +234,16 @@ impl ThreadConfig {
         let mut config = self;
         config.stack_size = Some(stack_size);
         config
+    }
+
+    /// thread builder constructor
+    pub fn builder(&self) -> thread::Builder {
+        match self.stack_size {
+            None => thread::Builder::new().name(self.name.clone()),
+            Some(stack_size) => thread::Builder::new()
+                .name(self.name.clone())
+                .stack_size(stack_size),
+        }
     }
 }
 

@@ -16,120 +16,112 @@
 
 //! Provides an RPC nng messaging server
 
-use crate::protocol::rpc::{MessageProcessor, MessageProcessorFactory};
+use crate::protocol::rpc::{MessageProcessor, MessageProcessorFactory, ThreadConfig};
 use log::{error, info};
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, time::Duration};
+use std::{fmt, num::NonZeroUsize, sync::Arc, thread, time::Duration};
 
 /// nng RPC server
 pub struct Server {
-    listener: nng::listener::Listener,
-    //    shutdown_sender: crossbeam::channel::Sender<()>,
+    stop_trigger: crossbeam::channel::Sender<()>,
+    stopped_signal: crossbeam::channel::Receiver<()>,
 }
 
 impl Server {
-    /*/// spawns a new server instance in a background thread
+    /// Spawns a new server instance in a background thread
     pub fn spawn<Factory, Processor>(
         listener_settings: ListenerSettings,
-        socket: Socket,
-        message_processor_factory: &Factory,
+        socket_settings: Option<SocketSettings>,
+        message_processor_factory: Arc<Factory>,
         thread_config: Option<ThreadConfig>,
     ) -> Result<Server, Error>
     where
         Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
         Processor: MessageProcessor<nng::Message, nng::Message>,
     {
-        let (shutdown_sender, shutdown_receiver) = crossbeam::channel::bounded(0);
+        let socket = nng::Socket::new(nng::Protocol::Rep0)
+            .map_err(|err| op_error!(errors::SocketCreateError(ErrorMessage(err.to_string()))))?;
+        let socket = {
+            match socket_settings {
+                Some(socket_settings) => socket_settings.apply(socket)?,
+                None => socket,
+            }
+        };
 
-        let builder =
-            thread_config.map_or_else(thread::Builder::new, |config| match config.stack_size {
-                None => thread::Builder::new().name(config.name),
-                Some(stack_size) => thread::Builder::new()
-                    .name(config.name)
-                    .stack_size(stack_size),
-            });
+        let (stop_sender, stop_receiver) = crossbeam::channel::bounded(0);
+        let (stopped_sender, stopped_receiver) = crossbeam::channel::bounded::<()>(1);
 
-        let workers: Vec<_> = (0..listener_settings.aio_context_count)
-            .map(|_| {
-                let mut state = AioState::Recv;
-                let mut message_processor = message_processor_factory.new();
+        let builder = thread_config.map_or_else(thread::Builder::new, |config| config.builder());
 
-                let ctx = new_context(&socket)?;
-                let ctx_clone = ctx.clone();
-                let aio = nng::aio::Aio::with_callback(move |aio| {
-                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
-                })
-                .map_err(|err| op_error!(errors::AioCreateError(ErrorMessage(err.to_string()))))?;
+        builder
+            .spawn(move || {
+                let workers = (0..listener_settings.aio_context_count)
+                    .map(|_| {
+                        let mut state = AioState::Recv;
+                        let mut message_processor = message_processor_factory.new();
 
-                Ok((aio, ctx))
+                        let ctx: nng::aio::Context = Server::new_context(&socket)
+                            .expect("failed to create aio socket context");
+                        let ctx_clone = ctx.clone();
+                        let aio = nng::aio::Aio::with_callback(move |aio| {
+                            Server::handle_aio_event(
+                                aio,
+                                &ctx_clone,
+                                &mut state,
+                                &mut message_processor,
+                            )
+                        })
+                        .expect("nng::aio::Aio::with_callback() failed");
+
+                        (aio, ctx)
+                    })
+                    .collect::<Vec<(nng::aio::Aio, nng::aio::Context)>>();
+
+                let _listener = listener_settings.start_listener(&socket).unwrap();
+                info!("socket listener has been started");
+
+                // Now start all of the workers listening.
+                for (a, c) in &workers {
+                    a.recv(c)
+                        .map_err(|err| {
+                            op_error!(errors::AioReceiveError(ErrorMessage(err.to_string())))
+                        })
+                        .unwrap();
+                }
+                info!("aio context receive operations have been initiated");
+
+                // block until stop signal is received
+                let _ = stop_receiver.recv();
+                // send notification that the server has stopped
+                let _ = stopped_sender.send(());
             })
-            .collect::<Result<_, _>>()?;
-
-        let listener = listener_settings.start_listener(&socket)?;
-        info!("socket listener has been started");
-
-        // Now start all of the workers listening.
-        for (a, c) in &workers {
-            a.recv(c)
-                .map_err(|err| op_error!(errors::AioReceiveError(ErrorMessage(err.to_string()))))?;
-        }
-        info!("aio context receive operations have been initiated ...");
-
-        // block until server shutdown is signalled
-        let _ = shutdown.recv();
-        println!("server is shutting down ...");
+            .expect("failed to spawn server thread");
 
         Ok(Server {
-            listener,
-            socket,
-            shutdown_sender,
+            stop_trigger: stop_sender,
+            stopped_signal: stopped_receiver,
         })
-    }*/
+    }
 
-    /// starts a new server instance
-    pub fn start<Factory, Processor>(
-        listener_settings: ListenerSettings,
-        socket: Socket,
-        message_processor_factory: &Factory,
-        stop: crossbeam::channel::Receiver<()>,
-    ) -> Result<Server, Error>
-    where
-        Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
-        Processor: MessageProcessor<nng::Message, nng::Message>,
-    {
-        let workers: Vec<_> = (0..listener_settings.aio_context_count)
-            .map(|_| {
-                let mut state = AioState::Recv;
-                let mut message_processor = message_processor_factory.new();
+    /// Triggers the server to stop async
+    pub fn stop(&self) {
+        let _ = self.stop_trigger.send(());
+    }
 
-                let ctx = Self::new_context(&socket)?;
-                let ctx_clone = ctx.clone();
-                let aio = nng::aio::Aio::with_callback(move |aio| {
-                    Server::handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
-                })
-                .map_err(|err| op_error!(errors::AioCreateError(ErrorMessage(err.to_string()))))?;
+    /// Waits until the server stops, which will block the current thread
+    pub fn wait(&self) {
+        let _ = self.stopped_signal.recv();
+    }
 
-                Ok((aio, ctx))
-            })
-            .collect::<Result<_, _>>()?;
-
-        let listener = listener_settings.start_listener(&socket)?;
-        info!("socket listener has been started");
-
-        // Now start all of the workers listening.
-        for (a, c) in &workers {
-            a.recv(c)
-                .map_err(|err| op_error!(errors::AioReceiveError(ErrorMessage(err.to_string()))))?;
+    /// Waits for the server to stop, but only for a limited time.
+    pub fn wait_timeout(&self, timeout: Duration) -> bool {
+        match self.stopped_signal.recv_timeout(timeout) {
+            Ok(_) => true,
+            Err(crossbeam::channel::RecvTimeoutError::Disconnected) => true,
+            Err(crossbeam::channel::RecvTimeoutError::Timeout) => false,
         }
-        info!("aio context receive operations have been initiated ...");
-
-        // block until server shutdown is signalled
-        let _ = stop.recv();
-        println!("stop signal has been received ...");
-
-        Ok(Server { listener,})
     }
 
     fn new_context(socket: &nng::Socket) -> Result<nng::aio::Context, Error> {
@@ -191,10 +183,7 @@ impl Server {
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.listener.get_opt::<nng::options::Url>() {
-            Ok(url) => write!(f, "Server(url={}, id={})", url, self.listener.id()),
-            Err(_) => write!(f, "Server(id={})", self.listener.id()),
-        }
+        f.write_str("Server")
     }
 }
 
@@ -208,7 +197,7 @@ pub enum AioState {
 }
 
 /// Listener settings
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SocketSettings {
     reconnect_min_time: Option<Duration>,
     reconnect_max_time: Option<Duration>,
@@ -216,6 +205,25 @@ pub struct SocketSettings {
 }
 
 impl SocketSettings {
+    /// set socket options
+    pub fn apply(&self, socket: Socket) -> Result<Socket, Error> {
+        socket
+            .set_opt::<nng::options::ReconnectMinTime>(self.reconnect_min_time)
+            .map_err(|err| op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string()))))?;
+
+        socket
+            .set_opt::<nng::options::ReconnectMaxTime>(self.reconnect_max_time)
+            .map_err(|err| op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string()))))?;
+
+        if let Some(opt) = self.max_ttl {
+            socket.set_opt::<nng::options::MaxTtl>(opt).map_err(|err| {
+                op_error!(errors::SocketSetOptError(ErrorMessage(err.to_string())))
+            })?;
+        }
+
+        Ok(socket)
+    }
+
     /// The minimum amount of time to wait before attempting to establish a connection after a previous attempt has failed.
     /// This value becomes the default for new dialers. Individual dialers can then override the setting.
     pub fn reconnect_min_time(&self) -> Option<Duration> {
@@ -287,34 +295,36 @@ impl ListenerSettings {
     /// The returned handle controls the life of the listener. If it is dropped, the listener is shut
     /// down and no more messages will be received on it.
     pub fn start_listener(self, socket: &Socket) -> Result<Listener, Error> {
-        let map_err = |err: nng::Error| -> errors::ListenerStartError {
-            errors::ListenerStartError(self.clone(), ErrorMessage(err.to_string()))
-        };
-
         let options = nng::listener::ListenerOptions::new(socket, self.url())
-            .map_err(|err| op_error!(map_err(err)))?;
+            .map_err(|err| op_error!(errors::ListenerCreateError(ErrorMessage(err.to_string()))))?;
 
         if let Some(option) = self.recv_max_size.as_ref() {
             options
                 .set_opt::<nng::options::RecvMaxSize>(*option)
-                .map_err(|err| op_error!(map_err(err)))?;
+                .map_err(|err| {
+                    op_error!(errors::ListenerSetOptError(ErrorMessage(err.to_string())))
+                })?;
         }
 
         if let Some(option) = self.no_delay.as_ref() {
             options
                 .set_opt::<nng::options::transport::tcp::NoDelay>(*option)
-                .map_err(|err| op_error!(map_err(err)))?;
+                .map_err(|err| {
+                    op_error!(errors::ListenerSetOptError(ErrorMessage(err.to_string())))
+                })?;
         }
 
         if let Some(option) = self.keep_alive.as_ref() {
             options
                 .set_opt::<nng::options::transport::tcp::KeepAlive>(*option)
-                .map_err(|err| op_error!(map_err(err)))?;
+                .map_err(|err| {
+                    op_error!(errors::ListenerSetOptError(ErrorMessage(err.to_string())))
+                })?;
         }
 
-        options
-            .start(self.non_blocking)
-            .map_err(|(_options, err)| op_error!(map_err(err)))
+        options.start(self.non_blocking).map_err(|(_options, err)| {
+            op_error!(errors::ListenerStartError(ErrorMessage(err.to_string())))
+        })
     }
 
     /// the address that the server is listening on
@@ -412,14 +422,70 @@ pub mod errors {
     use oysterpack_errors::IsError;
     use std::fmt;
 
-    /// Failed to start listener
+    /// Failed to create socket
     #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-    pub struct ListenerStartError(pub ListenerSettings, pub ErrorMessage);
+    pub struct SocketCreateError(pub ErrorMessage);
+
+    impl SocketCreateError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870511279758140964159435436428736321);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for SocketCreateError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for SocketCreateError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Failed to create socket: {:?}", self.0)
+        }
+    }
+
+    /// An error occurred when setting a socket option.
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct SocketSetOptError(pub ErrorMessage);
+
+    impl SocketSetOptError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870511354278148346409496152407634279);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for SocketSetOptError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for SocketSetOptError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Failed to set socket option: {:?}", self.0)
+        }
+    }
+
+    /// Failed to start listener instance
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct ListenerStartError(pub ErrorMessage);
 
     impl ListenerStartError {
         /// Error Id
         pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1870302624499038905208367552914704572);
+            oysterpack_errors::Id(1870510777469481547545613773325104910);
         /// Level::Error
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
     }
@@ -436,7 +502,63 @@ pub mod errors {
 
     impl fmt::Display for ListenerStartError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "Failed to start listener: {} : {:?}", self.1, self.0)
+            write!(f, "Failed to start listener: {:?}", self.0)
+        }
+    }
+
+    /// Failed to create listener instance
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct ListenerCreateError(pub ErrorMessage);
+
+    impl ListenerCreateError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870302624499038905208367552914704572);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for ListenerCreateError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for ListenerCreateError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Failed to create listener instance: {:?}", self.0)
+        }
+    }
+
+    /// An error occurred when setting a listener option.
+    #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+    pub struct ListenerSetOptError(pub ErrorMessage);
+
+    impl ListenerSetOptError {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870302624499038905208367552914704572);
+        /// Level::Error
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+    }
+
+    impl IsError for ListenerSetOptError {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    impl fmt::Display for ListenerSetOptError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Failed to set listener option: {:?}", self.0)
         }
     }
 
@@ -447,7 +569,7 @@ pub mod errors {
     impl AioCreateError {
         /// Error Id
         pub const ERROR_ID: oysterpack_errors::Id =
-            oysterpack_errors::Id(1870313585057930209197631174282877574);
+            oysterpack_errors::Id(1870510443603468311033495279443790945);
         /// Level::Error
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
     }
@@ -567,7 +689,7 @@ mod test {
     }
 
     /// Run the client portion of the program.
-    fn client(url: &str, sleep_ms: u32) -> Result<(), nng::Error> {
+    fn client(url: &str, sleep_ms: u32) -> Result<Duration, nng::Error> {
         let mut s = Socket::new(nng::Protocol::Req0)?;
         let dialer = nng::dialer::DialerOptions::new(&s, url)?;
         let dialer = match dialer.start(true) {
@@ -579,12 +701,13 @@ mod test {
         let mut req = nng::Message::with_capacity(msg_bytes.len()).unwrap();
         req.push_back(&msg_bytes).unwrap();
 
+        info!("sending client request ...");
         let start = Instant::now();
         s.send(req)?;
         s.recv()?;
         let dur = Instant::now().duration_since(start);
         info!("Request({}) took {:?}", sleep_ms, dur);
-        Ok(())
+        Ok(dur)
     }
 
     #[test]
@@ -593,25 +716,23 @@ mod test {
 
         const url: &str = "inproc://test";
 
+        // the client should be able to connect async after the server has started
+        let client_thread_handle = thread::spawn(|| client(url, 0).unwrap());
+
+        // start a server with 2 aio contexts
         let listener_settings =
             super::ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
 
-        let (shutdown_trigger, shutdown_receiver) = crossbeam::channel::bounded(0);
+        let server = super::Server::spawn(listener_settings, None, Arc::new(Sleep), None).unwrap();
 
-        let server = thread::spawn(|| {
-            super::Server::start(
-                listener_settings,
-                Socket::new(nng::Protocol::Rep0).unwrap(),
-                &Sleep,
-                shutdown_receiver,
-            )
-            .unwrap();
-        });
+        // wait for the client background request completes
+        client_thread_handle.join();
 
         for _ in 0..10 {
             client(url, 0).unwrap();
         }
 
+        // submit a long running request, which will block one of the aio contexts for 1 sec
         let (s, r) = crossbeam::channel::bounded(0);
         const SLEEP_TIME: u32 = 1000;
         thread::spawn(move || {
@@ -620,18 +741,68 @@ mod test {
         });
         r.recv().unwrap();
         info!("client with {} ms request has started", SLEEP_TIME);
+        // give the client a chance to send the request
         thread::sleep_ms(10);
 
-        thread::spawn(move || {
-            for _ in 0..10 {
-                client(url, 0).unwrap();
-            }
-        })
-        .join();
+        // requests should still be able to flow through because one of aio contexts is available
+        for _ in 0..10 {
+            let duration = client(url, 0).unwrap();
+            assert!(duration < Duration::from_millis(50));
+        }
+
         info!("client requests are done.");
 
-        shutdown_trigger.send(()).unwrap();
-        server.join();
+        server.stop();
+        server.wait();
+    }
+
+    #[test]
+    fn rpc_server_all_contexts_busy() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        const url: &str = "inproc://test";
+
+        // the client should be able to connect async after the server has started
+        let client_thread_handle = thread::spawn(|| client(url, 0).unwrap());
+
+        // start a server with 2 aio contexts
+        let listener_settings =
+            super::ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
+
+        let server = super::Server::spawn(listener_settings, None, Arc::new(Sleep), None).unwrap();
+
+        // wait for the client background request completes
+        client_thread_handle.join();
+
+        // submit long running request, which will block one of the aio contexts for 1 sec
+        let (s1, r1) = crossbeam::channel::bounded(0);
+        let (s2, r2) = crossbeam::channel::bounded(0);
+        const SLEEP_TIME: u32 = 1000;
+        thread::spawn(move || {
+            s1.send(()).unwrap();
+            client(url, SLEEP_TIME).unwrap();
+        });
+        thread::spawn(move || {
+            s2.send(()).unwrap();
+            client(url, SLEEP_TIME).unwrap();
+        });
+        r1.recv().unwrap();
+        r2.recv().unwrap();
+        info!(
+            "client requests with {} ms request have started",
+            SLEEP_TIME
+        );
+        // give the client a chance to send the request
+        thread::sleep_ms(10);
+
+        let duration = client(url, 0).unwrap();
+        assert!(
+            duration > Duration::from_millis(500),
+            "client request should have been blocked waiting for aio context to become available"
+        );
+
+        server.stop();
+        server.wait();
     }
 
 }
