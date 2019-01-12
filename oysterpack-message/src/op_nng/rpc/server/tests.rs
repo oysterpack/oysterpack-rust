@@ -160,6 +160,7 @@ fn rpc_server() {
 
     // wait for the client background request completes
     client_thread_handle.join();
+    assert!(server.running());
 
     for _ in 0..10 {
         send_sleep_request(&*url.as_str(), 0).unwrap();
@@ -189,7 +190,7 @@ fn rpc_server() {
     info!("client requests are done.");
 
     server.stop();
-    server.wait();
+    server.join().unwrap();
 }
 
 /// when all aio contexts are busy, client requests will be blocked waiting for an aio context to
@@ -249,7 +250,7 @@ fn rpc_server_all_contexts_busy() {
     );
 
     server.stop();
-    server.wait();
+    server.join().unwrap();
 }
 
 /// build a server via the server Builder
@@ -278,8 +279,8 @@ fn rpc_server_builder() {
     client_thread_handle.join();
     send_sleep_request(&*url.as_str(), 0).unwrap();
 
-    server.stop();
-    server.wait();
+    server.stop_signal().stop();
+    server.join().unwrap();
 }
 
 /// when a message processor panics, the aio context is terminated - this means that over time,
@@ -329,6 +330,20 @@ fn message_processor_panics() {
         Err(err) => assert_eq!(err.kind(), nng::ErrorKind::TimedOut),
     }
 
+    info!(
+        "all aio contexts are terminated, and server running = {}",
+        server.running()
+    );
+
     server.stop();
-    server.wait();
+    info!(
+        "after stop was signalled, server running = {}",
+        server.running()
+    );
+    thread::sleep_ms(100);
+    info!(
+        "100 ms after stop was signalled, server running = {}",
+        server.running()
+    );
+    server.join().unwrap();
 }

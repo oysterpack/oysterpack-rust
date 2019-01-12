@@ -21,3 +21,77 @@
 pub struct Client {}
 
 impl Client {}
+
+#[allow(warnings)]
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::op_nng::rpc::{server::*, MessageProcessor, MessageProcessorFactory};
+    use log::*;
+    use oysterpack_uid::ULID;
+    use serde::{Deserialize, Serialize};
+    use std::{num::NonZeroUsize, sync::Arc, thread};
+
+    #[derive(Debug, Clone, Default)]
+    struct TestProcessor;
+
+    impl MessageProcessorFactory<TestProcessor, nng::Message, nng::Message> for TestProcessor {
+        fn new(&self) -> TestProcessor {
+            TestProcessor
+        }
+    }
+
+    impl MessageProcessor<nng::Message, nng::Message> for TestProcessor {
+        fn process(&mut self, req: nng::Message) -> nng::Message {
+            match bincode::deserialize::<Request>(&*req.body()).unwrap() {
+                Request::Sleep(sleep_ms) if sleep_ms > 0 => {
+                    info!(
+                        "handler({:?}) sleeping for {} ms ...",
+                        thread::current().id(),
+                        sleep_ms
+                    );
+                    thread::sleep_ms(sleep_ms);
+                    info!("handler({:?}) has awaken !!!", thread::current().id());
+                }
+                Request::Sleep(_) => {
+                    info!("received Sleep message on {:?}", thread::current().id())
+                }
+                Request::Panic(msg) => {
+                    error!("received Panic message on {:?}", thread::current().id());
+                    panic!(msg)
+                }
+            }
+            req
+        }
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    enum Request {
+        Sleep(u32),
+        Panic(String),
+    }
+
+    fn log_config() -> oysterpack_log::LogConfig {
+        oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
+    }
+
+    #[test]
+    fn sync_client() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+        // start a server with 2 aio contexts
+        let listener_settings =
+            ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(2).unwrap());
+        let server = Server::builder(listener_settings, TestProcessor)
+            .spawn()
+            .unwrap();
+
+        // TODO
+
+        server.stop();
+        server.join();
+    }
+
+}

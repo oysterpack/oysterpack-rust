@@ -25,6 +25,7 @@ use std::{
     fmt,
     marker::PhantomData,
     num::{NonZeroU16, NonZeroUsize},
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -43,7 +44,8 @@ mod tests;
 ///     issue (which may cause the resource issue)
 pub struct Server {
     stop_trigger: crossbeam::channel::Sender<()>,
-    stopped_signal: crossbeam::channel::Receiver<()>,
+    running: Arc<Mutex<bool>>,
+    join_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl Server {
@@ -184,8 +186,6 @@ impl Server {
 
         // used to send a stop signal to the server
         let (stop_sender, stop_receiver) = crossbeam::channel::bounded(0);
-        // used to send a notification when the server has stopped
-        let (stopped_sender, stopped_receiver) = crossbeam::channel::bounded::<()>(1);
 
         let aio_contexts = create_aio_contexts(
             &socket,
@@ -193,30 +193,38 @@ impl Server {
             listener_settings.aio_context_count,
         )?;
 
+        #[allow(clippy::mutex_atomic)]
+        let running = Arc::new(Mutex::new(false));
+        let running_ref = Running(running.clone());
         // spawn the server in a background thread
         // - when the listener falls out of scope, then the listener will be closed
         // - when the aio context fall out of scope, then the context will be closed
         //   - the aio callback run in nng managed threads - if the thread panics, then the aio context
         //     will be closed. nng will log an error when the panic occurs, but there currently is
         //     is no mechanism for the app to be notified of the error.
-        thread_config
+        let join_handle = thread_config
             .map_or_else(thread::Builder::new, |config| config.builder())
             .spawn(move || {
                 let _listener = listener_settings.start_listener(&socket).unwrap();
                 info!("socket listener has been started");
 
                 start_aio_contexts(&aio_contexts);
+                {
+                    let mut running = running_ref.0.lock().unwrap();
+                    *running = true;
+                }
 
                 // block until stop signal is received
                 let _ = stop_receiver.recv();
-                // send notification that the server has stopped
-                let _ = stopped_sender.send(());
+                // when the thread exits, the socket listener and aio contexts will will be closed
+                info!("stopping server");
             })
             .expect("failed to spawn server thread");
 
         Ok(Server {
             stop_trigger: stop_sender,
-            stopped_signal: stopped_receiver,
+            running,
+            join_handle: Some(join_handle),
         })
     }
 
@@ -225,24 +233,51 @@ impl Server {
         let _ = self.stop_trigger.send(());
     }
 
-    /// Waits until the server stops, which will block the current thread
-    pub fn wait(&self) {
-        let _ = self.stopped_signal.recv();
+    /// Retuns a detached stop signal
+    pub fn stop_signal(&self) -> StopSignal {
+        StopSignal(self.stop_trigger.clone())
     }
 
-    /// Waits for the server to stop, but only for a limited time.
-    pub fn wait_timeout(&self, timeout: Duration) -> bool {
-        match self.stopped_signal.recv_timeout(timeout) {
-            Ok(_) => true,
-            Err(crossbeam::channel::RecvTimeoutError::Disconnected) => true,
-            Err(crossbeam::channel::RecvTimeoutError::Timeout) => false,
+    /// Attempts to join the server thread
+    ///
+    /// ## Note
+    pub fn join(self) -> thread::Result<()> {
+        let mut this = self;
+        match this.join_handle.take() {
+            Some(handle) => handle.join(),
+            None => Ok(()),
         }
+    }
+
+    /// is the server running
+    pub fn running(&self) -> bool {
+        *self.running.lock().unwrap()
     }
 }
 
 impl fmt::Debug for Server {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("Server")
+    }
+}
+
+/// Used to send the server a stop signal.
+#[derive(Debug)]
+pub struct StopSignal(crossbeam::channel::Sender<()>);
+
+impl StopSignal {
+    /// Signal the server to stop. It doesn't matter if the server is already stopped.
+    pub fn stop(&self) {
+        let _ = self.0.send(());
+    }
+}
+
+#[derive(Debug)]
+struct Running(Arc<Mutex<bool>>);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        *self.0.lock().unwrap() = false;
     }
 }
 
