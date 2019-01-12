@@ -21,7 +21,68 @@ use log::{error, info};
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, sync::Arc, thread, time::Duration};
+use std::{fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc, thread, time::Duration};
+
+/// Server builder
+#[derive(Debug)]
+pub struct Builder<Factory, Processor>
+where
+    Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
+    Processor: MessageProcessor<nng::Message, nng::Message>,
+{
+    listener_settings: Option<ListenerSettings>,
+    message_processor_factory: Option<Arc<Factory>>,
+    socket_settings: Option<SocketSettings>,
+    thread_config: Option<ThreadConfig>,
+    _processor_phantom_data: PhantomData<Processor>,
+}
+
+impl<Factory, Processor> Builder<Factory, Processor>
+where
+    Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
+    Processor: MessageProcessor<nng::Message, nng::Message>,
+{
+    /// constructor
+    pub fn new(
+        listener_settings: ListenerSettings,
+        message_processor_factory: Arc<Factory>,
+    ) -> Builder<Factory, Processor> {
+        Builder {
+            listener_settings: Some(listener_settings),
+            message_processor_factory: Some(message_processor_factory),
+            socket_settings: None,
+            thread_config: None,
+            _processor_phantom_data: PhantomData,
+        }
+    }
+
+    /// Configures the socket
+    pub fn socket_settings(self, socket_settings: SocketSettings) -> Builder<Factory, Processor> {
+        let mut builder = self;
+        builder.socket_settings = Some(socket_settings);
+        builder
+    }
+
+    /// Configures the thread that will be used to host the server
+    pub fn thread_config(self, thread_config: ThreadConfig) -> Builder<Factory, Processor> {
+        let mut builder = self;
+        builder.thread_config = Some(thread_config);
+        builder
+    }
+
+    /// Spawns a new server instance in a background thread
+    ///
+    /// ## Panics
+    pub fn spawn(self) -> Result<Server, Error> {
+        let mut builder = self;
+        Server::spawn(
+            builder.listener_settings.take().unwrap(),
+            builder.message_processor_factory.take().unwrap(),
+            builder.socket_settings.take(),
+            builder.thread_config.take(),
+        )
+    }
+}
 
 /// nng RPC server
 pub struct Server {
@@ -33,8 +94,8 @@ impl Server {
     /// Spawns a new server instance in a background thread
     pub fn spawn<Factory, Processor>(
         listener_settings: ListenerSettings,
-        socket_settings: Option<SocketSettings>,
         message_processor_factory: Arc<Factory>,
+        socket_settings: Option<SocketSettings>,
         thread_config: Option<ThreadConfig>,
     ) -> Result<Server, Error>
     where
@@ -53,9 +114,8 @@ impl Server {
         let (stop_sender, stop_receiver) = crossbeam::channel::bounded(0);
         let (stopped_sender, stopped_receiver) = crossbeam::channel::bounded::<()>(1);
 
-        let builder = thread_config.map_or_else(thread::Builder::new, |config| config.builder());
-
-        builder
+        thread_config
+            .map_or_else(thread::Builder::new, |config| config.builder())
             .spawn(move || {
                 let workers = (0..listener_settings.aio_context_count)
                     .map(|_| {
@@ -652,8 +712,10 @@ pub mod errors {
 #[cfg(test)]
 mod test {
     use super::*;
+    use oysterpack_uid::ULID;
     use std::{
         num::NonZeroUsize,
+        sync::Arc,
         thread,
         time::{Duration, Instant},
     };
@@ -714,31 +776,37 @@ mod test {
     fn rpc_server() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        const url: &str = "inproc://test";
+        let url = Arc::new(format!("inproc://{}", ULID::generate()));
 
         // the client should be able to connect async after the server has started
-        let client_thread_handle = thread::spawn(|| client(url, 0).unwrap());
+        let client_thread_handle = {
+            let url = url.clone();
+            thread::spawn(move || client(&*url.as_str(), 0).unwrap())
+        };
 
         // start a server with 2 aio contexts
-        let listener_settings =
-            super::ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
+        let listener_settings = super::ListenerSettings::new(&*url.as_str())
+            .set_aio_count(NonZeroUsize::new(2).unwrap());
 
-        let server = super::Server::spawn(listener_settings, None, Arc::new(Sleep), None).unwrap();
+        let server = super::Server::spawn(listener_settings, Arc::new(Sleep), None, None).unwrap();
 
         // wait for the client background request completes
         client_thread_handle.join();
 
         for _ in 0..10 {
-            client(url, 0).unwrap();
+            client(&*url.as_str(), 0).unwrap();
         }
 
         // submit a long running request, which will block one of the aio contexts for 1 sec
         let (s, r) = crossbeam::channel::bounded(0);
         const SLEEP_TIME: u32 = 1000;
-        thread::spawn(move || {
-            s.send(()).unwrap();
-            client(url, SLEEP_TIME).unwrap();
-        });
+        {
+            let url = url.clone();
+            thread::spawn(move || {
+                s.send(()).unwrap();
+                client(&*url.as_str(), SLEEP_TIME).unwrap();
+            });
+        }
         r.recv().unwrap();
         info!("client with {} ms request has started", SLEEP_TIME);
         // give the client a chance to send the request
@@ -746,7 +814,7 @@ mod test {
 
         // requests should still be able to flow through because one of aio contexts is available
         for _ in 0..10 {
-            let duration = client(url, 0).unwrap();
+            let duration = client(&*url.as_str(), 0).unwrap();
             assert!(duration < Duration::from_millis(50));
         }
 
@@ -760,16 +828,19 @@ mod test {
     fn rpc_server_all_contexts_busy() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        const url: &str = "inproc://test";
+        let url = format!("inproc://{}", ULID::generate());
 
         // the client should be able to connect async after the server has started
-        let client_thread_handle = thread::spawn(|| client(url, 0).unwrap());
+        let client_thread_handle = {
+            let url = url.clone();
+            thread::spawn(move || client(&*url.as_str(), 0).unwrap())
+        };
 
         // start a server with 2 aio contexts
-        let listener_settings =
-            super::ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
+        let listener_settings = super::ListenerSettings::new(&*url.as_str())
+            .set_aio_count(NonZeroUsize::new(2).unwrap());
 
-        let server = super::Server::spawn(listener_settings, None, Arc::new(Sleep), None).unwrap();
+        let server = super::Server::spawn(listener_settings, Arc::new(Sleep), None, None).unwrap();
 
         // wait for the client background request completes
         client_thread_handle.join();
@@ -778,14 +849,20 @@ mod test {
         let (s1, r1) = crossbeam::channel::bounded(0);
         let (s2, r2) = crossbeam::channel::bounded(0);
         const SLEEP_TIME: u32 = 1000;
-        thread::spawn(move || {
-            s1.send(()).unwrap();
-            client(url, SLEEP_TIME).unwrap();
-        });
-        thread::spawn(move || {
-            s2.send(()).unwrap();
-            client(url, SLEEP_TIME).unwrap();
-        });
+        {
+            let url = url.clone();
+            thread::spawn(move || {
+                s1.send(()).unwrap();
+                client(&*url.as_str(), SLEEP_TIME).unwrap();
+            });
+        }
+        {
+            let url = url.clone();
+            thread::spawn(move || {
+                s2.send(()).unwrap();
+                client(&*url.as_str(), SLEEP_TIME).unwrap();
+            });
+        }
         r1.recv().unwrap();
         r2.recv().unwrap();
         info!(
@@ -795,11 +872,40 @@ mod test {
         // give the client a chance to send the request
         thread::sleep_ms(10);
 
-        let duration = client(url, 0).unwrap();
+        let duration = client(&*url.as_str(), 0).unwrap();
         assert!(
             duration > Duration::from_millis(500),
             "client request should have been blocked waiting for aio context to become available"
         );
+
+        server.stop();
+        server.wait();
+    }
+
+    #[test]
+    fn rpc_server_builder() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let url = format!("inproc://{}", ULID::generate());
+        info!("url = {}", url);
+
+        // the client should be able to connect async after the server has started
+        let client_thread_handle = {
+            let url = url.clone();
+            thread::spawn(move || client(&*url.as_str(), 0).unwrap())
+        };
+
+        // start a server with 2 aio contexts
+        let listener_settings = super::ListenerSettings::new(&*url.as_str())
+            .set_aio_count(NonZeroUsize::new(2).unwrap());
+
+        let server = super::Builder::new(listener_settings, Arc::new(Sleep))
+            .spawn()
+            .unwrap();
+
+        // wait for the client background request completes
+        client_thread_handle.join();
+        client(&*url.as_str(), 0).unwrap();
 
         server.stop();
         server.wait();
