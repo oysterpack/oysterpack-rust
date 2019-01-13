@@ -437,9 +437,9 @@ impl SocketSettings {
 
     /// enable / disable tcp keep alive
     pub fn set_tcp_keep_alive(self, opt: bool) -> SocketSettings {
-        let mut s = self;
-        s.tcp_keep_alive = Some(opt);
-        s
+        let mut this = self;
+        this.tcp_keep_alive = Some(opt);
+        this
     }
 
     /// Disable (or enable) the use of Nagle's algorithm for TCP connections.
@@ -454,9 +454,9 @@ impl SocketSettings {
 
     /// enable / disable tcp no delay
     pub fn set_tcp_no_delay(self, opt: bool) -> SocketSettings {
-        let mut s = self;
-        s.tcp_no_delay = Some(opt);
-        s
+        let mut this = self;
+        this.tcp_no_delay = Some(opt);
+        this
     }
 
     /// By default this is a string corresponding to the value of the socket.
@@ -470,13 +470,13 @@ impl SocketSettings {
 
     /// sets the socket name and must fit within 63-bytes. It will be truncated if longer than 63 bytes.
     pub fn set_socket_name(self, name: &str) -> SocketSettings {
-        let mut s = self;
+        let mut this = self;
         if name.len() > SocketSettings::MAX_SOCKET_NAME_LEN {
-            s.socket_name = Some(name[..63].to_string());
+            this.socket_name = Some(name[..63].to_string());
         } else {
-            s.socket_name = Some(name.to_string());
+            this.socket_name = Some(name.to_string());
         }
-        s
+        this
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -489,9 +489,9 @@ impl SocketSettings {
 
     /// configures the maximum message size that the will be accepted from a remote peer.
     pub fn set_recv_max_size(self, size: NonZeroUsize) -> SocketSettings {
-        let mut s = self;
-        s.recv_max_size = Some(size);
-        s
+        let mut this = self;
+        this.recv_max_size = Some(size);
+        this
     }
 
     /// The depth of the socket's receive buffer as a number of messages.
@@ -502,9 +502,9 @@ impl SocketSettings {
 
     /// configures the depth of the socket's receive buffer as a number of messages.
     pub fn set_recv_buffer_size(self, size: NonZeroU16) -> SocketSettings {
-        let mut s = self;
-        s.recv_buffer_size = Some(size);
-        s
+        let mut this = self;
+        this.recv_buffer_size = Some(size);
+        this
     }
 
     /// The depth of the socket send buffer as a number of messages.
@@ -520,15 +520,15 @@ impl SocketSettings {
 
     /// if the size is greater than 8192, then it will be set to 8192
     pub fn set_send_buffer_size(self, size: NonZeroU16) -> SocketSettings {
-        let mut settings = self;
+        let mut this = self;
         if size.get() > SocketSettings::MAX_SEND_BUFFER_SIZE {
-            settings.send_buffer_size =
+            this.send_buffer_size =
                 Some(NonZeroU16::new(SocketSettings::MAX_SEND_BUFFER_SIZE).unwrap());
         } else {
-            settings.send_buffer_size = Some(size);
+            this.send_buffer_size = Some(size);
         }
 
-        settings
+        this
     }
 
     /// When no message is available for receiving at the socket for this period of time, receive operations
@@ -539,9 +539,9 @@ impl SocketSettings {
 
     /// configures receive timeout
     pub fn set_recv_timeout(self, timeout: Duration) -> SocketSettings {
-        let mut s = self;
-        s.recv_timeout = Some(timeout);
-        s
+        let mut this = self;
+        this.recv_timeout = Some(timeout);
+        this
     }
 
     /// The socket send timeout.
@@ -554,9 +554,9 @@ impl SocketSettings {
 
     /// configures send timeout
     pub fn set_send_timeout(self, timeout: Duration) -> SocketSettings {
-        let mut s = self;
-        s.send_timeout = Some(timeout);
-        s
+        let mut this = self;
+        this.send_timeout = Some(timeout);
+        this
     }
 
     /// The maximum number of "hops" a message may traverse.
@@ -580,9 +580,9 @@ impl SocketSettings {
 
     /// configures send timeout
     pub fn set_max_ttl(self, ttl: u8) -> SocketSettings {
-        let mut s = self;
-        s.max_ttl = Some(ttl);
-        s
+        let mut this = self;
+        this.max_ttl = Some(ttl);
+        this
     }
 }
 
@@ -610,7 +610,7 @@ impl ListenerSettings {
         }
     }
 
-    /// Cause the listener to start listening on the address with which it was created.
+    /// Starts a socket listener.
     ///
     /// Normally, the act of "binding" to the address indicated by url is done synchronously, including
     /// any necessary name resolution. As a result, a failure, such as if the address is already in use,

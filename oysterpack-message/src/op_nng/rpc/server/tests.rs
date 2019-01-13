@@ -66,8 +66,8 @@ fn log_config() -> oysterpack_log::LogConfig {
 }
 
 fn send_sleep_request(url: &str, sleep_ms: u32) -> Result<Duration, nng::Error> {
-    let mut s = Socket::new(nng::Protocol::Req0)?;
-    let dialer = nng::dialer::DialerOptions::new(&s, url)?;
+    let mut socket = Socket::new(nng::Protocol::Req0)?;
+    let dialer = nng::dialer::DialerOptions::new(&socket, url)?;
     let dialer = match dialer.start(true) {
         Ok(dialer) => dialer,
         Err((_, err)) => panic!(err),
@@ -79,8 +79,8 @@ fn send_sleep_request(url: &str, sleep_ms: u32) -> Result<Duration, nng::Error> 
 
     info!("sending client request ...");
     let start = Instant::now();
-    s.send(req)?;
-    s.recv()?;
+    socket.send(req)?;
+    socket.recv()?;
     let dur = Instant::now().duration_since(start);
     info!("Request::Sleep({}) took {:?}", sleep_ms, dur);
     Ok(dur)
