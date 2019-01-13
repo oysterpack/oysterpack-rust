@@ -33,4 +33,5 @@ pub mod errors;
 pub mod marshal;
 pub mod message;
 pub mod op_nng;
+pub mod op_thread;
 pub mod security;

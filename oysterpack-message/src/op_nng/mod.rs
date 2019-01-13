@@ -16,37 +16,31 @@
 
 //! Provides support for [nng](https://nanomsg.github.io/nng/index.html) messaging protocols.
 
-use crate::errors;
+use crate::{errors, marshal};
 use oysterpack_errors::{op_error, Error, ErrorMessage};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub mod rpc;
 
-// TODO: implement TryFrom when it bocomes stable
-/// Converts an nng:Message into a SealedEnvelope.
+/// Tries to decode the message into the specified type
 pub fn try_from_nng_message<T>(msg: &nng::Message) -> Result<T, Error>
 where
     T: Serialize + DeserializeOwned,
 {
-    bincode::deserialize(&**msg).map_err(|err| {
+    marshal::decode(&**msg).map_err(|err| {
         op_error!(errors::BincodeDeserializeError(ErrorMessage(
             err.to_string()
         )))
     })
 }
 
-// TODO: implement TryInto when it becomes stable
-/// Converts itself into an nng:Message
+/// Tries to encode the message into an nng message
 pub fn try_into_nng_message<T>(msg: &T) -> Result<nng::Message, Error>
 where
     T: Serialize + DeserializeOwned,
 {
-    let bytes = bincode::serialize(msg).map_err(|err| {
-        op_error!(errors::BincodeSerializeError(ErrorMessage(format!(
-            "SealedEnvelope : {}",
-            err
-        ))))
-    })?;
+    let bytes = marshal::encode(msg)?;
+
     let mut msg = nng::Message::with_capacity(bytes.len()).map_err(|err| {
         op_error!(errors::NngMessageError::from(ErrorMessage(format!(
             "Failed to create an empty message with capacity = {}: {}",

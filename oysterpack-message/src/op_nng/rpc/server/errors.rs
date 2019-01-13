@@ -29,73 +29,7 @@ use std::fmt;
 pub struct SocketCreateError(nng::Error);
 */
 
-/// Failed to create socket
-#[derive(Debug)]
-pub struct SocketCreateError(nng::Error);
-
-impl SocketCreateError {
-    /// Error Id
-    pub const ERROR_ID: oysterpack_errors::Id =
-        oysterpack_errors::Id(1870511279758140964159435436428736321);
-    /// Level::Alert
-    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-}
-
-impl IsError for SocketCreateError {
-    fn error_id(&self) -> oysterpack_errors::Id {
-        Self::ERROR_ID
-    }
-
-    fn error_level(&self) -> oysterpack_errors::Level {
-        Self::ERROR_LEVEL
-    }
-}
-
-impl fmt::Display for SocketCreateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create socket: {}", self.0)
-    }
-}
-
-impl From<nng::Error> for SocketCreateError {
-    fn from(err: nng::Error) -> SocketCreateError {
-        SocketCreateError(err)
-    }
-}
-
-/// An error occurred when setting a socket option.
-#[derive(Debug)]
-pub struct SocketSetOptError(nng::Error);
-
-impl SocketSetOptError {
-    /// Error Id
-    pub const ERROR_ID: oysterpack_errors::Id =
-        oysterpack_errors::Id(1870511354278148346409496152407634279);
-    /// Level::Alert
-    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-}
-
-impl IsError for SocketSetOptError {
-    fn error_id(&self) -> oysterpack_errors::Id {
-        Self::ERROR_ID
-    }
-
-    fn error_level(&self) -> oysterpack_errors::Level {
-        Self::ERROR_LEVEL
-    }
-}
-
-impl fmt::Display for SocketSetOptError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to set socket option: {}", self.0)
-    }
-}
-
-impl From<nng::Error> for SocketSetOptError {
-    fn from(err: nng::Error) -> SocketSetOptError {
-        SocketSetOptError(err)
-    }
-}
+pub use crate::op_nng::rpc::errors::{SocketCreateError, SocketSetOptError};
 
 /// Failed to start listener instance
 #[derive(Debug)]
