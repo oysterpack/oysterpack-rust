@@ -29,7 +29,9 @@ use std::fmt;
 pub struct SocketCreateError(nng::Error);
 */
 
-pub use crate::op_nng::rpc::errors::{SocketCreateError, SocketSetOptError};
+pub use crate::op_nng::errors::{
+    AioContextCreateError, AioCreateError, AioReceiveError, SocketCreateError, SocketSetOptError,
+};
 
 /// Failed to start listener instance
 #[derive(Debug)]
@@ -130,107 +132,5 @@ impl fmt::Display for ListenerSetOptError {
 impl From<nng::Error> for ListenerSetOptError {
     fn from(err: nng::Error) -> ListenerSetOptError {
         ListenerSetOptError(err)
-    }
-}
-
-/// Failed to create new asynchronous I/O handle
-#[derive(Debug)]
-pub struct AioCreateError(nng::Error);
-
-impl AioCreateError {
-    /// Error Id
-    pub const ERROR_ID: oysterpack_errors::Id =
-        oysterpack_errors::Id(1870510443603468311033495279443790945);
-    /// Level::Alert
-    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
-}
-
-impl IsError for AioCreateError {
-    fn error_id(&self) -> oysterpack_errors::Id {
-        Self::ERROR_ID
-    }
-
-    fn error_level(&self) -> oysterpack_errors::Level {
-        Self::ERROR_LEVEL
-    }
-}
-
-impl fmt::Display for AioCreateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create new aio handle: {}", self.0)
-    }
-}
-
-impl From<nng::Error> for AioCreateError {
-    fn from(err: nng::Error) -> AioCreateError {
-        AioCreateError(err)
-    }
-}
-
-/// Aio receive operation failed
-#[derive(Debug)]
-pub struct AioReceiveError(nng::Error);
-
-impl AioReceiveError {
-    /// Error Id
-    pub const ERROR_ID: oysterpack_errors::Id =
-        oysterpack_errors::Id(1870374078796088086815067802169113773);
-    /// Level::Error
-    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
-}
-
-impl IsError for AioReceiveError {
-    fn error_id(&self) -> oysterpack_errors::Id {
-        Self::ERROR_ID
-    }
-
-    fn error_level(&self) -> oysterpack_errors::Level {
-        Self::ERROR_LEVEL
-    }
-}
-
-impl fmt::Display for AioReceiveError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Aio receive operation failed: {}", self.0)
-    }
-}
-
-impl From<nng::Error> for AioReceiveError {
-    fn from(err: nng::Error) -> AioReceiveError {
-        AioReceiveError(err)
-    }
-}
-
-/// Failed to create new socket context
-#[derive(Debug)]
-pub struct AioContextCreateError(nng::Error);
-
-impl AioContextCreateError {
-    /// Error Id
-    pub const ERROR_ID: oysterpack_errors::Id =
-        oysterpack_errors::Id(1870374278155759380545373361718947172);
-    /// Level::Error
-    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
-}
-
-impl IsError for AioContextCreateError {
-    fn error_id(&self) -> oysterpack_errors::Id {
-        Self::ERROR_ID
-    }
-
-    fn error_level(&self) -> oysterpack_errors::Level {
-        Self::ERROR_LEVEL
-    }
-}
-
-impl fmt::Display for AioContextCreateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create new socket context: {}", self.0)
-    }
-}
-
-impl From<nng::Error> for AioContextCreateError {
-    fn from(err: nng::Error) -> AioContextCreateError {
-        AioContextCreateError(err)
     }
 }

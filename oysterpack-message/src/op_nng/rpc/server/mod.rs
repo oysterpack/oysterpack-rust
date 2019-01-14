@@ -17,7 +17,11 @@
 //! Provides an RPC nng messaging server
 
 use crate::{
-    op_nng::rpc::{MessageProcessor, MessageProcessorFactory, SocketSettings},
+    op_nng::{
+        new_aio_context,
+        rpc::{MessageProcessor, MessageProcessorFactory},
+        SocketSettings,
+    },
     op_thread::ThreadConfig,
 };
 
@@ -145,7 +149,7 @@ impl Server {
                     let mut state = AioState::Recv;
                     let mut message_processor = message_processor_factory.new();
 
-                    let ctx: nng::aio::Context = new_context(socket)?;
+                    let ctx: nng::aio::Context = new_aio_context(socket)?;
                     let ctx_clone = ctx.clone();
                     let aio = nng::aio::Aio::with_callback(move |aio| {
                         handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
@@ -175,11 +179,6 @@ impl Server {
                     .unwrap();
             }
             info!("aio context receive operations have been initiated");
-        }
-
-        fn new_context(socket: &nng::Socket) -> Result<nng::aio::Context, Error> {
-            nng::aio::Context::new(&socket)
-                .map_err(|err| op_error!(errors::AioContextCreateError::from(err)))
         }
 
         /***************************/

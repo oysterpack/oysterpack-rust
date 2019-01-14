@@ -20,7 +20,7 @@ use super::*;
 use oysterpack_errors::IsError;
 use std::fmt;
 
-pub use crate::op_nng::rpc::errors::{
+pub use crate::op_nng::errors::{
     SocketCreateError, SocketRecvError, SocketSendError, SocketSetOptError,
 };
 

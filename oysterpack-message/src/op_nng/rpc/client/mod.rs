@@ -17,7 +17,10 @@
 //! nng RPC client
 
 use crate::op_nng::{
-    rpc::SocketSettings as RpcSocketSettings, try_from_nng_message, try_into_nng_message,
+    //    errors::AioReceiveError, new_aio_context,
+    try_from_nng_message,
+    try_into_nng_message,
+    SocketSettings,
 };
 use nng::{
     self,
@@ -28,12 +31,79 @@ use nng::{
 use oysterpack_errors::{op_error, Error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fmt, num::NonZeroUsize, time::Duration};
+//use crossbeam::{
+//    channel
+//};
 
 pub mod errors;
 
 #[allow(warnings)]
 #[cfg(test)]
 mod tests;
+
+//pub struct AsyncClient {
+//    dialer: nng::dialer::Dialer,
+//    socket: nng::Socket,
+//}
+//
+//impl AsyncClient {
+//    /// Sends the request and invokes the callback with the reply asynchronously
+//    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
+//    /// - if the req
+//    pub fn send_with_callback<Req, Rep, Callback>(&mut self, req: &Req, cb: Callback) -> Result<(), Error>
+//    where
+//        Req: Serialize + DeserializeOwned,
+//        Rep: Serialize + DeserializeOwned,
+//        Callback: FnOnce(Result<Rep, Error>) + Send,
+//    {
+//        let msg = try_into_nng_message(req)?;
+//        let ctx: nng::aio::Context = new_aio_context(socket)?;
+//        let aio = nng::aio::Aio::with_callback(move |aio| {
+//            match aio.result().unwrap() {
+//                Ok(_) => {
+//                    // since the aio receive operation was successful, then there will always be a message to get
+//                    // thus it is safe to invoke unwrap
+//                    cb(Ok(aio.get_msg().unwrap()));
+//                },
+//                Err(err) => {
+//                    cb(Err(op_error!(AioReceiveError::from(err))));
+//                }
+//            }
+//        })
+//            .map_err(|err| op_error!(errors::AioCreateError::from(err)))?;
+//        // TODO: store the aio and cotext
+//    }
+//}
+//
+//impl fmt::Debug for AsyncClient {
+//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//        match self.dialer.get_opt::<nng::options::Url>() {
+//            Ok(url) => write!(f, "AsyncClient(Socket({}), Url({}))", self.socket.id(), url),
+//            Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
+//        }
+//    }
+//}
+
+//struct AioWorker {
+//    aio: Aio,
+//    ctx: Context,
+//    reply_receiver: channel::Receiver<AioReply>,
+//    reply_sender: channel::Sender<AioReply>
+//}
+//
+//enum AioReply {
+//    Message(nng::Message),
+//    Error(nng::Error)
+//}
+//
+//impl fmt::Debug for AioReply {
+//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//        match self {
+//            AioReply::Message(_) => f.write_str("Message"),
+//            AioReply::Error(err) => write!(f,"Error({})", err)
+//        }
+//    }
+//}
 
 /// nng RPC client
 pub struct SyncClient {
@@ -74,7 +144,7 @@ impl SyncClient {
     /// constructor
     pub fn new_with_socket_settings(
         dialer_settings: DialerSettings,
-        socket_settings: SocketSettings,
+        socket_settings: ClientSocketSettings,
     ) -> Result<Self, Error> {
         Builder::new(dialer_settings)
             .socket_settings(socket_settings)
@@ -85,8 +155,8 @@ impl SyncClient {
 impl fmt::Debug for SyncClient {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.dialer.get_opt::<nng::options::Url>() {
-            Ok(url) => write!(f, "Client(Socket({}), Url({}))", self.socket.id(), url),
-            Err(err) => write!(f, "Client(Socket({}), Err({}))", self.socket.id(), err),
+            Ok(url) => write!(f, "SyncClient(Socket({}), Url({}))", self.socket.id(), url),
+            Err(err) => write!(f, "SyncClient(Socket({}), Err({}))", self.socket.id(), err),
         }
     }
 }
@@ -95,7 +165,7 @@ impl fmt::Debug for SyncClient {
 #[derive(Debug)]
 pub struct Builder {
     dialer_settings: DialerSettings,
-    socket_settings: Option<SocketSettings>,
+    socket_settings: Option<ClientSocketSettings>,
 }
 
 impl Builder {
@@ -108,7 +178,7 @@ impl Builder {
     }
 
     /// Configures the socket
-    pub fn socket_settings(self, socket_settings: SocketSettings) -> Builder {
+    pub fn socket_settings(self, socket_settings: ClientSocketSettings) -> Builder {
         let mut builder = self;
         builder.socket_settings = Some(socket_settings);
         builder
@@ -116,7 +186,9 @@ impl Builder {
 
     /// builds a new SyncClient
     pub fn sync_client(self) -> Result<SyncClient, Error> {
-        fn create_socket(socket_settings: Option<SocketSettings>) -> Result<nng::Socket, Error> {
+        fn create_socket(
+            socket_settings: Option<ClientSocketSettings>,
+        ) -> Result<nng::Socket, Error> {
             let socket = nng::Socket::new(nng::Protocol::Req0)
                 .map_err(|err| op_error!(errors::SocketCreateError::from(err)))?;
             match socket_settings {
@@ -134,14 +206,14 @@ impl Builder {
 
 /// Socket Settings
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SocketSettings {
+pub struct ClientSocketSettings {
     reconnect_min_time: Option<Duration>,
     reconnect_max_time: Option<Duration>,
     resend_time: Option<Duration>,
-    socket_settings: Option<RpcSocketSettings>,
+    socket_settings: Option<SocketSettings>,
 }
 
-impl SocketSettings {
+impl ClientSocketSettings {
     /// set socket options
     pub(crate) fn apply(&self, socket: Socket) -> Result<Socket, Error> {
         let socket = if let Some(settings) = self.socket_settings.as_ref() {
@@ -165,8 +237,8 @@ impl SocketSettings {
         Ok(socket)
     }
 
-    /// RPC socket settings
-    pub fn rpc_socket_settings(&self) -> Option<&RpcSocketSettings> {
+    /// Socket settings
+    pub fn socket_settings(&self) -> Option<&SocketSettings> {
         self.socket_settings.as_ref()
     }
 
@@ -224,8 +296,8 @@ impl SocketSettings {
         this
     }
 
-    /// Apply RPC socket settings
-    pub fn set_rpc_socket_settings(self, settings: RpcSocketSettings) -> Self {
+    /// Apply socket settings
+    pub fn set_socket_settings(self, settings: SocketSettings) -> Self {
         let mut this = self;
         this.socket_settings = Some(settings);
         this

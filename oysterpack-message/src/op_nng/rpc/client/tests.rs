@@ -48,19 +48,16 @@ impl MessageProcessor<nng::Message, nng::Message> for TestProcessor {
                 info!("handler({:?}) has awaken !!!", thread::current().id());
             }
             Request::Sleep(_) => info!("received Sleep message on {:?}", thread::current().id()),
-            Request::Panic(msg) => {
-                error!("received Panic message on {:?}", thread::current().id());
-                panic!(msg)
-            }
+            Request::Panic => panic!("received Panic message on {:?}", thread::current().id()),
         }
         req
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum Request {
     Sleep(u32),
-    Panic(String),
+    Panic,
 }
 
 fn log_config() -> oysterpack_log::LogConfig {
@@ -83,15 +80,60 @@ fn sync_client() {
         .set_non_blocking(true)
         .set_reconnect_min_time(Duration::from_millis(100))
         .set_reconnect_max_time(Duration::from_millis(100));
-    let mut client = SyncClient::dial(dialer_settings).unwrap();
+    let mut client1 = SyncClient::dial(dialer_settings.clone()).unwrap();
+    let mut client2 = SyncClient::dial(dialer_settings.clone()).unwrap();
 
     let req = Request::Sleep(0);
     for _ in 0..10 {
-        info!("sending Request::Sleep(0) ...");
         info!(
-            "received reply: {:?}",
-            client.send::<_, Request>(&req).unwrap()
+            "client1 reply: {:?}",
+            client1.send::<_, Request>(&req).unwrap()
         );
+        info!(
+            "client2 reply: {:?}",
+            client2.send::<_, Request>(&req).unwrap()
+        );
+    }
+
+    server.stop();
+    server.join();
+}
+
+#[test]
+fn sync_client_shared_between_threads() {
+    use std::sync::{Arc, Mutex};
+
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+    let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+    // start a server with 2 aio contexts
+    let listener_settings =
+        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(2).unwrap());
+    let server = Server::builder(listener_settings, TestProcessor)
+        .spawn()
+        .unwrap();
+
+    let dialer_settings = DialerSettings::new(url.as_str())
+        .set_non_blocking(true)
+        .set_reconnect_min_time(Duration::from_millis(100))
+        .set_reconnect_max_time(Duration::from_millis(100));
+    let client = SyncClient::dial(dialer_settings.clone()).unwrap();
+    // wrap the client in an Arc<Mutex<_>> to make access threadsafe
+    let client = Arc::new(Mutex::new(client));
+
+    let mut client_thread_handles = vec![];
+    for _ in 0..10 {
+        let client = client.clone();
+        let handle = thread::spawn(move || {
+            let mut client = client.lock().unwrap();
+            let req = Request::Sleep(0);
+            client.send::<_, Request>(&req).unwrap()
+        });
+        client_thread_handles.push(handle);
+    }
+
+    for handle in client_thread_handles {
+        info!("{:?}", handle.join().unwrap());
     }
 
     server.stop();
