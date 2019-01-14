@@ -150,9 +150,9 @@ impl Server {
                     let mut message_processor = message_processor_factory.new();
 
                     let ctx: nng::aio::Context = new_aio_context(socket)?;
-                    let ctx_clone = ctx.clone();
+                    let callback_context = ctx.clone();
                     let aio = nng::aio::Aio::with_callback(move |aio| {
-                        handle_aio_event(aio, &ctx_clone, &mut state, &mut message_processor)
+                        handle_aio_event(aio, &callback_context, &mut state, &mut message_processor)
                     })
                     .map_err(|err| op_error!(errors::AioCreateError::from(err)))?;
 

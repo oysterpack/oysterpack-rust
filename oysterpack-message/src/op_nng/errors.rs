@@ -256,3 +256,37 @@ impl From<nng::Error> for AioReceiveError {
         AioReceiveError(err)
     }
 }
+
+/// Aio send operation failed
+#[derive(Debug)]
+pub struct AioSendError(nng::Error);
+
+impl AioSendError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1870731804758238792469857071507712508);
+    /// Level::Error
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+}
+
+impl IsError for AioSendError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for AioSendError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Aio send operation failed: {}", self.0)
+    }
+}
+
+impl From<nng::Error> for AioSendError {
+    fn from(err: nng::Error) -> AioSendError {
+        AioSendError(err)
+    }
+}

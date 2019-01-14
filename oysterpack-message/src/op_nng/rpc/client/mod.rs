@@ -17,23 +17,20 @@
 //! nng RPC client
 
 use crate::op_nng::{
-    //    errors::AioReceiveError, new_aio_context,
-    try_from_nng_message,
-    try_into_nng_message,
-    SocketSettings,
+    errors::{AioCreateError, AioReceiveError, AioSendError},
+    new_aio_context, try_from_nng_message, try_into_nng_message, SocketSettings,
 };
+use crossbeam::stack::TreiberStack;
 use nng::{
     self,
+    aio::{Aio, Context},
     dialer::{Dialer, DialerOptions},
     options::Options,
     Socket,
 };
 use oysterpack_errors::{op_error, Error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, time::Duration};
-//use crossbeam::{
-//    channel
-//};
+use std::{fmt, num::NonZeroUsize, panic::RefUnwindSafe, time::Duration};
 
 pub mod errors;
 
@@ -41,69 +38,116 @@ pub mod errors;
 #[cfg(test)]
 mod tests;
 
-//pub struct AsyncClient {
-//    dialer: nng::dialer::Dialer,
-//    socket: nng::Socket,
-//}
-//
-//impl AsyncClient {
-//    /// Sends the request and invokes the callback with the reply asynchronously
-//    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-//    /// - if the req
-//    pub fn send_with_callback<Req, Rep, Callback>(&mut self, req: &Req, cb: Callback) -> Result<(), Error>
-//    where
-//        Req: Serialize + DeserializeOwned,
-//        Rep: Serialize + DeserializeOwned,
-//        Callback: FnOnce(Result<Rep, Error>) + Send,
-//    {
-//        let msg = try_into_nng_message(req)?;
-//        let ctx: nng::aio::Context = new_aio_context(socket)?;
-//        let aio = nng::aio::Aio::with_callback(move |aio| {
-//            match aio.result().unwrap() {
-//                Ok(_) => {
-//                    // since the aio receive operation was successful, then there will always be a message to get
-//                    // thus it is safe to invoke unwrap
-//                    cb(Ok(aio.get_msg().unwrap()));
-//                },
-//                Err(err) => {
-//                    cb(Err(op_error!(AioReceiveError::from(err))));
-//                }
-//            }
-//        })
-//            .map_err(|err| op_error!(errors::AioCreateError::from(err)))?;
-//        // TODO: store the aio and cotext
-//    }
-//}
-//
-//impl fmt::Debug for AsyncClient {
-//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//        match self.dialer.get_opt::<nng::options::Url>() {
-//            Ok(url) => write!(f, "AsyncClient(Socket({}), Url({}))", self.socket.id(), url),
-//            Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
-//        }
-//    }
-//}
+/// Async reply handler that is used as a callback by the AsyncClient
+pub trait ReplyHandler<Rep>: Send + Sized + RefUnwindSafe + 'static
+where
+    Rep: Serialize + DeserializeOwned,
+{
+    /// reply callback
+    fn on_reply(&mut self, result: Result<Rep, Error>);
+}
 
-//struct AioWorker {
-//    aio: Aio,
-//    ctx: Context,
-//    reply_receiver: channel::Receiver<AioReply>,
-//    reply_sender: channel::Sender<AioReply>
-//}
-//
-//enum AioReply {
-//    Message(nng::Message),
-//    Error(nng::Error)
-//}
-//
-//impl fmt::Debug for AioReply {
-//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//        match self {
-//            AioReply::Message(_) => f.write_str("Message"),
-//            AioReply::Error(err) => write!(f,"Error({})", err)
-//        }
-//    }
-//}
+/// nng async client
+pub struct AsyncClient {
+    dialer: nng::dialer::Dialer,
+    socket: nng::Socket,
+    aio_contexts: TreiberStack<AioContext>,
+}
+
+impl AsyncClient {
+    /// Sends the request and invokes the callback with the reply asynchronously
+    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
+    /// - if the req
+    pub fn send_with_callback<Req, Rep, Callback>(
+        &mut self,
+        req: &Req,
+        cb: Callback,
+    ) -> Result<(), Error>
+    where
+        Req: Serialize + DeserializeOwned,
+        Rep: Serialize + DeserializeOwned,
+        Callback: ReplyHandler<Rep>,
+    {
+        let mut cb = cb;
+        let msg = try_into_nng_message(req)?;
+        let ctx: nng::aio::Context = new_aio_context(&self.socket)?;
+        let aio = nng::aio::Aio::with_callback(move |aio| {
+            match aio.result().unwrap() {
+                Ok(_) => {
+                    // since the aio receive operation was successful, then there will always be a message to get
+                    // thus it is safe to invoke unwrap
+                    let rep = aio.get_msg().unwrap();
+                    match try_from_nng_message::<Rep>(&rep) {
+                        Ok(rep) => {
+                            cb.on_reply(Ok(rep));
+                        }
+                        Err(err) => {
+                            cb.on_reply(Err(err));
+                        }
+                    }
+                }
+                Err(err) => {
+                    cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
+                }
+            }
+        })
+        .map_err(|err| op_error!(AioCreateError::from(err)))?;
+
+        let mut aio_context = AioContext {
+            aio,
+            ctx
+        };
+        aio_context.send(msg)?;
+
+        self.aio_contexts.push(aio_context);
+
+        Ok(())
+    }
+
+    /// constructor
+    pub fn dial(dialer_settings: DialerSettings) -> Result<Self, Error> {
+        Builder::new(dialer_settings).async_client()
+    }
+
+    /// constructor
+    pub fn dial_with_socket_settings(
+        dialer_settings: DialerSettings,
+        socket_settings: ClientSocketSettings,
+    ) -> Result<Self, Error> {
+        Builder::new(dialer_settings)
+            .socket_settings(socket_settings)
+            .async_client()
+    }
+}
+
+impl fmt::Debug for AsyncClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.dialer.get_opt::<nng::options::Url>() {
+            Ok(url) => write!(f, "AsyncClient(Socket({}), Url({}))", self.socket.id(), url),
+            Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
+        }
+    }
+}
+
+struct AioContext {
+    aio: Aio,
+    ctx: Context,
+}
+
+impl AioContext {
+
+    fn send(&mut self, msg: nng::Message) -> Result<(), Error> {
+        self.aio.send(&self.ctx, msg)
+            .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))
+    }
+}
+
+
+impl fmt::Debug for AioContext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AioWorker({})", self.ctx.id())
+    }
+}
 
 /// nng RPC client
 pub struct SyncClient {
@@ -142,7 +186,7 @@ impl SyncClient {
     }
 
     /// constructor
-    pub fn new_with_socket_settings(
+    pub fn dial_with_socket_settings(
         dialer_settings: DialerSettings,
         socket_settings: ClientSocketSettings,
     ) -> Result<Self, Error> {
@@ -186,21 +230,33 @@ impl Builder {
 
     /// builds a new SyncClient
     pub fn sync_client(self) -> Result<SyncClient, Error> {
-        fn create_socket(
-            socket_settings: Option<ClientSocketSettings>,
-        ) -> Result<nng::Socket, Error> {
-            let socket = nng::Socket::new(nng::Protocol::Req0)
-                .map_err(|err| op_error!(errors::SocketCreateError::from(err)))?;
-            match socket_settings {
-                Some(socket_settings) => socket_settings.apply(socket),
-                None => Ok(socket),
-            }
-        }
-
         let mut this = self;
-        let socket = create_socket(this.socket_settings.take())?;
+        let socket = Builder::create_socket(this.socket_settings.take())?;
         let dialer = this.dialer_settings.start_dialer(&socket)?;
         Ok(SyncClient { socket, dialer })
+    }
+
+    /// builds a new AsyncClient
+    pub fn async_client(self) -> Result<AsyncClient, Error> {
+        let mut this = self;
+        let socket = Builder::create_socket(this.socket_settings.take())?;
+        let dialer = this.dialer_settings.start_dialer(&socket)?;
+        Ok(AsyncClient {
+            socket,
+            dialer,
+            aio_contexts: TreiberStack::new()
+        })
+    }
+
+    fn create_socket(
+        socket_settings: Option<ClientSocketSettings>,
+    ) -> Result<nng::Socket, Error> {
+        let socket = nng::Socket::new(nng::Protocol::Req0)
+            .map_err(|err| op_error!(errors::SocketCreateError::from(err)))?;
+        match socket_settings {
+            Some(socket_settings) => socket_settings.apply(socket),
+            None => Ok(socket),
+        }
     }
 }
 
