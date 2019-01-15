@@ -70,6 +70,12 @@ pub fn new_aio_context(socket: &nng::Socket) -> Result<nng::aio::Context, Error>
         .map_err(|err| op_error!(errors::AioContextCreateError::from(err)))
 }
 
+/// Sends the message asynchronously and maps the nng error over to an OysterPack Error
+pub fn send_request_async(aio: &nng::aio::Aio, ctx: &nng::aio::Context, msg: nng::Message) -> Result<(), Error> {
+    aio.send(ctx, msg)
+        .map_err(|(_msg, err)| op_error!(errors::AioSendError::from(err)))
+}
+
 /// Socket settings
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
 pub struct SocketSettings {

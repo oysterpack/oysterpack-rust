@@ -125,7 +125,7 @@ impl Server {
                         },
                         Err(err) => {
                             match err.kind() {
-                                nng::ErrorKind::Closed => info!("aio context is closed"),
+                                nng::ErrorKind::Closed => info!("server aio context is closed"),
                                 _ => error!("aio receive error: {}", err),
                             }
 

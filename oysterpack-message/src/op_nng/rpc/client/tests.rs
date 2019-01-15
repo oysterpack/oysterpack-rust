@@ -18,7 +18,9 @@
 
 use super::*;
 use crate::op_nng::{
-    rpc::{server::*, MessageProcessor, MessageProcessorFactory},
+    rpc::{server::{
+        Server, ListenerSettings
+    }, MessageProcessor, MessageProcessorFactory},
     try_from_nng_message, try_into_nng_message,
 };
 use log::*;
@@ -140,29 +142,67 @@ fn sync_client_shared_between_threads() {
     server.join();
 }
 
-struct ReplyForwarder {
-    chan: crossbeam::channel::Sender<Result<Request, Error>>
+struct FooHandler;
+
+impl ReplyHandler for FooHandler {
+    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
+        info!("Foo reply: {:?}", result);
+    }
 }
 
-impl ReplyHandler<Request> for ReplyForwarder {
+struct Bar {
+    handler: Option<Box<dyn ReplyHandler>>
+}
 
-    fn on_reply(&mut self, result: Result<Request, Error>) {
+#[test]
+fn trait_object_invoked_across_threads() {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+    let handler: Box<dyn ReplyHandler> = Box::new(FooHandler);
+    let handler = Mutex::new(handler);
+
+    let handle = thread::spawn(move || {
+        let mut handler = handler.lock().unwrap();
+        handler.on_reply(Ok(nng::Message::new().unwrap()));
+    });
+
+    handle.join().unwrap();
+}
+
+#[test]
+fn chashmap_stored_trait_object_invoked_across_threads() {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+    let handler: Box<dyn ReplyHandler> = Box::new(FooHandler);
+    let bar = Bar{handler: Some(handler)};
+    let map = Arc::new(chashmap::CHashMap::new());
+    const KEY: usize = 1;
+    map.insert(KEY,bar);
+
+    let queue = Arc::new(crossbeam::queue::SegQueue::new());
+    let queue_2 = Arc::clone(&queue);
+
+    let handle = thread::spawn(move || {
+        let mut bar = map.remove(&KEY).unwrap();
+        let mut handler = bar.handler.take().unwrap();
+        handler.on_reply(Ok(nng::Message::new().unwrap()));
+        queue_2.push(bar);
+    });
+
+    handle.join().unwrap();
+    let bar = queue.try_pop().unwrap();
+    assert!(bar.handler.is_none());
+}
+
+struct ReplyForwarder {
+    chan: crossbeam::channel::Sender<Result<nng::Message, Error>>,
+}
+
+impl ReplyHandler for ReplyForwarder {
+    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
         info!("reply: {:?}", result);
         if let Err(err) = self.chan.send(result) {
             error!("failed to forward message")
         }
     }
-}
-
-/// Aio state for socket context.
-#[derive(Debug, Copy, Clone)]
-enum AioState {
-    /// aio receive operation is in progress
-    Recv,
-    /// aio send operation is in progress
-    Send,
-    /// aio context is idle
-    Idle,
 }
 
 #[test]
@@ -185,64 +225,150 @@ fn async_client_poc() {
 
     // POC
     let (tx, rx) = crossbeam::channel::bounded(10);
-    let mut cb = ReplyForwarder {chan: tx};
-    use std::sync::{
-        Arc, Mutex
-    };
+    let mut cb = ReplyForwarder { chan: tx };
+    use std::sync::{Arc, Mutex};
     let mut ctx_state = Arc::new(Mutex::new(AioState::Idle));
     let mut call_back_ctx_state = Arc::clone(&ctx_state);
-    let req = Request::Sleep(0);
-    let msg = try_into_nng_message(&req).unwrap();
     let ctx: nng::aio::Context = new_aio_context(&client.socket).unwrap();
     let callback_ctx = ctx.clone();
     let aio = nng::aio::Aio::with_callback(move |aio| {
+        info!("aio event on context({})", callback_ctx.id());
         match aio.result().unwrap() {
             Ok(_) => {
                 let mut ctx_state = call_back_ctx_state.lock().unwrap();
                 match *ctx_state {
                     AioState::Send => {
-                        // send the request was successful
+                        // sending the request was successful
                         // now lets wait for the reply
                         aio.recv(&callback_ctx).unwrap();
                         *ctx_state = AioState::Recv;
-                    },
+                    }
                     AioState::Recv => {
                         // reply has been successfully received
-                        // thus it is safe to invoke unwrap
+                        // thus it is safe to invoke unwrap n
                         let rep = aio.get_msg().unwrap();
-                        match try_from_nng_message::<Request>(&rep) {
-                            Ok(rep) => {
-                                cb.on_reply(Ok(rep));
-                            }
-                            Err(err) => {
-                                cb.on_reply(Err(err));
-                            }
-                        }
+                        cb.on_reply(Ok(rep));
                         *ctx_state = AioState::Idle;
-                    },
+                    }
                     AioState::Idle => {
                         warn!("did not expect to be invoked while idle");
                     }
                 }
-
             }
             Err(err) => {
                 cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 
+    for i in 0..10 {
+        let req = Request::Sleep(0);
+        let msg = try_into_nng_message(&req).unwrap();
+        {
+            let mut ctx_state = ctx_state.lock().unwrap();
+            *ctx_state = AioState::Send;
+            aio.send(&ctx, msg).unwrap();
+        }
+        match rx.recv() {
+            Ok(rep) => info!("received forwarded reply #{} : {:?}", i, rep),
+            Err(err) => panic!("recv failed: {}", err),
+        }
+    }
+
+    server.stop();
+    server.join();
+}
+
+#[test]
+fn async_client_poc_restart_server() {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+    let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+    fn start_server(url: &str) -> Server {
+        // start a server with 2 aio contexts
+        let listener_settings =
+            ListenerSettings::new(url).set_aio_count(NonZeroUsize::new(2).unwrap());
+        Server::builder(listener_settings, TestProcessor)
+            .spawn()
+            .unwrap()
+    }
+
+    let server = start_server(&*url.as_str());
+
+    let dialer_settings = DialerSettings::new(url.as_str())
+        .set_non_blocking(true)
+        .set_reconnect_min_time(Duration::from_millis(100))
+        .set_reconnect_max_time(Duration::from_millis(100));
+    let client = AsyncClient::dial(dialer_settings.clone()).unwrap();
+
+    // POC
+    let (tx, rx) = crossbeam::channel::bounded(10);
+    let mut cb = ReplyForwarder { chan: tx };
+    use std::sync::{Arc, Mutex};
+    let mut ctx_state = Arc::new(Mutex::new(AioState::Idle));
+    let mut call_back_ctx_state = Arc::clone(&ctx_state);
+    let ctx: nng::aio::Context = new_aio_context(&client.socket).unwrap();
+    let callback_ctx = ctx.clone();
+    let aio = nng::aio::Aio::with_callback(move |aio| {
+        info!("aio event on context({})", callback_ctx.id());
+        match aio.result().unwrap() {
+            Ok(_) => {
+                let mut ctx_state = call_back_ctx_state.lock().unwrap();
+                match *ctx_state {
+                    AioState::Send => {
+                        // sending the request was successful
+                        // now lets wait for the reply
+                        aio.recv(&callback_ctx).unwrap();
+                        *ctx_state = AioState::Recv;
+                    }
+                    AioState::Recv => {
+                        // reply has been successfully received
+                        // thus it is safe to invoke unwrap n
+                        let rep = aio.get_msg().unwrap();
+                        cb.on_reply(Ok(rep));
+                        *ctx_state = AioState::Idle;
+                    }
+                    AioState::Idle => {
+                        warn!("did not expect to be invoked while idle");
+                    }
+                }
+            }
+            Err(err) => {
+                cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
+            }
+        }
+    })
+    .unwrap();
+
+    let req = Request::Sleep(0);
+    let msg = try_into_nng_message(&req).unwrap();
     {
         let mut ctx_state = ctx_state.lock().unwrap();
         *ctx_state = AioState::Send;
         aio.send(&ctx, msg).unwrap();
     }
     match rx.recv() {
-        Ok(rep) => info!("received forwarded reply: {:?}", rep),
-        Err(err) => panic!("recv failed: {}", err)
+        Ok(rep) => info!("received forwarded reply : {:?}", rep),
+        Err(err) => panic!("recv failed: {}", err),
     }
 
+    server.stop();
+    server.join();
 
+    let server = start_server(&*url.as_str());
+    // after restarting the server, the client should reconnect automatically
+    let req = Request::Sleep(0);
+    let msg = try_into_nng_message(&req).unwrap();
+    {
+        let mut ctx_state = ctx_state.lock().unwrap();
+        *ctx_state = AioState::Send;
+        aio.send(&ctx, msg).unwrap();
+    }
+    match rx.recv() {
+        Ok(rep) => info!("received forwarded reply after restarting the server : {:?}", rep),
+        Err(err) => panic!("recv failed: {}", err),
+    }
 
     server.stop();
     server.join();
@@ -271,3 +397,5 @@ fn async_client() {
     server.stop();
     server.join();
 }
+
+

@@ -16,11 +16,13 @@
 
 //! nng RPC client
 
+#![allow(warnings)]
+
 use crate::op_nng::{
     errors::{AioCreateError, AioReceiveError, AioSendError},
     new_aio_context, try_from_nng_message, try_into_nng_message, SocketSettings,
 };
-use crossbeam::stack::TreiberStack;
+use crossbeam::queue::SegQueue;
 use nng::{
     self,
     aio::{Aio, Context},
@@ -30,7 +32,9 @@ use nng::{
 };
 use oysterpack_errors::{op_error, Error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, panic::RefUnwindSafe, time::Duration};
+use std::{fmt, num::NonZeroUsize, panic::RefUnwindSafe, time::Duration, collections::HashMap, sync::{
+    Arc, Mutex
+}};
 
 pub mod errors;
 
@@ -39,69 +43,31 @@ pub mod errors;
 mod tests;
 
 /// Async reply handler that is used as a callback by the AsyncClient
-pub trait ReplyHandler<Rep>: Send + Sized + RefUnwindSafe + 'static
-where
-    Rep: Serialize + DeserializeOwned,
+pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static
 {
     /// reply callback
-    fn on_reply(&mut self, result: Result<Rep, Error>);
+    fn on_reply(&mut self, result: Result<nng::Message, Error>);
 }
 
 /// nng async client
 pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
-    aio_contexts: TreiberStack<AioContext>,
 }
 
 impl AsyncClient {
     /// Sends the request and invokes the callback with the reply asynchronously
     /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
     /// - if the req
-    pub fn send_with_callback<Req, Rep, Callback>(
+    pub fn send_with_callback<Callback>(
         &mut self,
-        req: &Req,
+        req: nng::Message,
         cb: Callback,
     ) -> Result<(), Error>
     where
-        Req: Serialize + DeserializeOwned,
-        Rep: Serialize + DeserializeOwned,
-        Callback: ReplyHandler<Rep>,
+        Callback: ReplyHandler,
     {
-        let mut cb = cb;
-        let msg = try_into_nng_message(req)?;
-        let ctx: nng::aio::Context = new_aio_context(&self.socket)?;
-        let aio = nng::aio::Aio::with_callback(move |aio| {
-            match aio.result().unwrap() {
-                Ok(_) => {
-                    // since the aio receive operation was successful, then there will always be a message to get
-                    // thus it is safe to invoke unwrap
-                    let rep = aio.get_msg().unwrap();
-                    match try_from_nng_message::<Rep>(&rep) {
-                        Ok(rep) => {
-                            cb.on_reply(Ok(rep));
-                        }
-                        Err(err) => {
-                            cb.on_reply(Err(err));
-                        }
-                    }
-                }
-                Err(err) => {
-                    cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
-                }
-            }
-        })
-        .map_err(|err| op_error!(AioCreateError::from(err)))?;
-
-        let mut aio_context = AioContext {
-            aio,
-            ctx
-        };
-        aio_context.send(msg)?;
-
-        self.aio_contexts.push(aio_context);
-
-        Ok(())
+        unimplemented!()
     }
 
     /// constructor
@@ -129,24 +95,15 @@ impl fmt::Debug for AsyncClient {
     }
 }
 
-struct AioContext {
-    aio: Aio,
-    ctx: Context,
-}
-
-impl AioContext {
-
-    fn send(&mut self, msg: nng::Message) -> Result<(), Error> {
-        self.aio.send(&self.ctx, msg)
-            .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))
-    }
-}
-
-
-impl fmt::Debug for AioContext {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AioWorker({})", self.ctx.id())
-    }
+/// Aio state for socket context.
+#[derive(Debug, Copy, Clone)]
+enum AioState {
+    /// aio receive operation is in progress
+    Recv,
+    /// aio send operation is in progress
+    Send,
+    /// aio context is idle
+    Idle,
 }
 
 /// nng RPC client
@@ -154,7 +111,7 @@ pub struct SyncClient {
     // the order is important because Rust will drop fields in the order listed
     // the dialer must be dropped before the socket, otherwise the following error occurs
     //
-    // thread 'op_nng::rpc::client::tests::sync_client' panicked at 'Unexpected error code while closing dialer (12)', /home/alfio/.cargo/registry/src/github.com-1ecc6299db9ec823/nng-0.3.0/src/dialer.rs:104:3
+    // thread 'op_nng::rpc::client::tests::sync_client' panicked at 'Unexpected error code while closing dialer (12)', ... /nng-0.3.0/src/dialer.rs:104:3
     //
     // i.e., the dialer must be closed before the socket is closed
     dialer: nng::dialer::Dialer,
@@ -243,14 +200,11 @@ impl Builder {
         let dialer = this.dialer_settings.start_dialer(&socket)?;
         Ok(AsyncClient {
             socket,
-            dialer,
-            aio_contexts: TreiberStack::new()
+            dialer
         })
     }
 
-    fn create_socket(
-        socket_settings: Option<ClientSocketSettings>,
-    ) -> Result<nng::Socket, Error> {
+    fn create_socket(socket_settings: Option<ClientSocketSettings>) -> Result<nng::Socket, Error> {
         let socket = nng::Socket::new(nng::Protocol::Req0)
             .map_err(|err| op_error!(errors::SocketCreateError::from(err)))?;
         match socket_settings {
@@ -365,7 +319,7 @@ impl ClientSocketSettings {
 pub struct DialerSettings {
     url: String,
     non_blocking: bool,
-    aio_context_count: Option<usize>,
+    aio_context_pool_size: Option<usize>,
     recv_max_size: Option<usize>,
     no_delay: Option<bool>,
     keep_alive: Option<bool>,
@@ -382,7 +336,7 @@ impl DialerSettings {
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
-            aio_context_count: None,
+            aio_context_pool_size: None,
             reconnect_min_time: None,
             reconnect_max_time: None,
         }
@@ -448,10 +402,10 @@ impl DialerSettings {
 
     /// Number of async IO operations that can be performed concurrently, which corresponds to the number
     /// of socket contexts that will be created.
-    ///
-    /// If None is returned or count is zero, then IO will be synchronous.
-    pub fn aio_context_count(&self) -> Option<usize> {
-        self.aio_context_count
+    /// - this setting only applies to AsyncClient(s)
+    ///   - if not specified, then it will default to 1
+    pub fn aio_context_pool_size(&self) -> Option<usize> {
+        self.aio_context_pool_size
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -542,7 +496,7 @@ impl DialerSettings {
     /// set the number of async IO operations that can be performed concurrently
     pub fn set_aio_count(self, count: NonZeroUsize) -> Self {
         let mut settings = self;
-        settings.aio_context_count = Some(count.get());
+        settings.aio_context_pool_size = Some(count.get());
         settings
     }
 
