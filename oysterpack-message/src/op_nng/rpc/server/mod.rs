@@ -118,7 +118,7 @@ impl Server {
                                 }
                             }
                             None => {
-                                error!("No message was found ... initiating aio.recv()");
+                                debug!("No message was found ... initiating aio.recv()");
                                 aio.recv(&ctx).expect("aio.recv() failed");
                                 AioState::Recv
                             }

@@ -170,8 +170,18 @@ impl AsyncClient {
 
     /// returns the max number of concurrent async requests
     /// - this never return 0 - if it does, then there is a bug
-    pub fn context_capacity(&self) -> usize {
+    pub fn max_capacity(&self) -> usize {
         self.aio_context_tickets.capacity().unwrap_or(0)
+    }
+
+    /// returns the available capacity for submitting additional requests
+    pub fn available_capacity(&self) -> usize {
+        self.aio_context_tickets.len()
+    }
+
+    /// returns the available capacity for submitting additional requests
+    pub fn used_capacity(&self) -> usize {
+        self.max_capacity() - self.available_capacity()
     }
 }
 
@@ -226,8 +236,8 @@ impl Builder {
         let socket = ClientSocketSettings::create_socket(this.socket_settings.take())?;
         let dialer = this.dialer_settings.start_dialer(&socket)?;
 
-        let (tx, rx) = crossbeam::channel::bounded(max_context_count * 2);
         let (tx_tickets, rx_tickets) = crossbeam::channel::bounded(max_context_count);
+        let (tx, rx) = crossbeam::channel::bounded(max_context_count * 2);
         for _ in 0..max_context_count {
             tx_tickets.send(()).unwrap();
         }

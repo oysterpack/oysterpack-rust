@@ -17,10 +17,8 @@
 //! Synchronous client
 
 use super::{errors, ClientSocketSettings, DialerSettings};
-use crate::op_nng::{try_from_nng_message, try_into_nng_message};
 use nng::options::Options;
 use oysterpack_errors::{op_error, Error};
-use serde::{de::DeserializeOwned, Serialize};
 use std::fmt;
 
 /// nng RPC client
@@ -38,20 +36,15 @@ pub struct SyncClient {
 impl SyncClient {
     /// Sends the request and wait for a reply synchronously
     /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-    pub fn send<Req, Rep>(&mut self, req: &Req) -> Result<Rep, Error>
-    where
-        Req: Serialize + DeserializeOwned,
-        Rep: Serialize + DeserializeOwned,
+    pub fn send(&mut self, req: nng::Message) -> Result<nng::Message, Error>
     {
-        let msg = try_into_nng_message(req)?;
         self.socket
-            .send(msg)
+            .send(req)
             .map_err(|err| op_error!(errors::SocketSendError::from(err)))?;
-        let rep = self
+        self
             .socket
             .recv()
-            .map_err(|err| op_error!(errors::SocketRecvError::from(err)))?;
-        try_from_nng_message(&rep)
+            .map_err(|err| op_error!(errors::SocketRecvError::from(err)))
     }
 
     /// constructor

@@ -45,8 +45,8 @@ fn data() -> Vec<u8> {
 /// using precomputed keys to encrypt / decrypt is ~10x faster
 fn crypto_bench(c: &mut Criterion) {
     sodiumoxide::init().unwrap();
-    let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
-    let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+    let (_client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+    let (server_public_key, _server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let bytes = data();
     let nonce = sodiumoxide::crypto::box_::gen_nonce();
     c.bench_function("seal", move |b| {
@@ -61,8 +61,8 @@ fn crypto_bench(c: &mut Criterion) {
     });
 
     let bytes = data();
-    let (client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
-    let (server_public_key, server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+    let (_client_public_key, client_private_key) = sodiumoxide::crypto::box_::gen_keypair();
+    let (server_public_key, _server_private_key) = sodiumoxide::crypto::box_::gen_keypair();
     let server_addr = Address::from(server_public_key);
     let key = server_addr.precompute_key(&client_private_key);
     c.bench_function("seal_precomputed", move |b| {

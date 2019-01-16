@@ -77,7 +77,10 @@ enum Request {
 
 fn log_config() -> oysterpack_log::LogConfig {
     oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)
-        .target_level(oysterpack_log::Target::from(env!("CARGO_PKG_NAME")), Level::Debug)
+        .target_level(
+            oysterpack_log::Target::from(env!("CARGO_PKG_NAME")),
+            Level::Debug,
+        )
         .build()
 }
 
@@ -104,11 +107,11 @@ fn sync_client() {
     for _ in 0..10 {
         info!(
             "client1 reply: {:?}",
-            client1.send::<_, Request>(&req).unwrap()
+            client1.send(try_into_nng_message(&req).unwrap()).unwrap()
         );
         info!(
             "client2 reply: {:?}",
-            client2.send::<_, Request>(&req).unwrap()
+            client2.send(try_into_nng_message(&req).unwrap()).unwrap()
         );
     }
 
@@ -144,7 +147,8 @@ fn sync_client_shared_between_threads() {
         let handle = thread::spawn(move || {
             let mut client = client.lock().unwrap();
             let req = Request::Sleep(0);
-            client.send::<_, Request>(&req).unwrap()
+            let req = try_into_nng_message(&req).unwrap();
+            client.send(req).unwrap()
         });
         client_thread_handles.push(handle);
     }
@@ -413,6 +417,8 @@ fn async_client_send_with_callback() {
         thread::sleep_ms(1);
     }
     assert_eq!(client.context_count(), 0);
+    assert_eq!(client.max_capacity(), client.available_capacity());
+    assert_eq!(client.used_capacity(), 0);
 
     server.stop();
     server.join();

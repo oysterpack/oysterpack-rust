@@ -28,22 +28,44 @@ use std::{
     fs,
     io::{prelude::*, BufReader},
     path::PathBuf,
+    thread,
+    sync::Arc,
+    time::Duration,
+    num::NonZeroUsize
 };
 
-use oysterpack_message::protocol::rpc::*;
+use oysterpack_message::op_nng::rpc::{client::{
+    DialerSettings,
+    syncio::{
+        SyncClient
+    },
+    asyncio::{
+        AsyncClient, ReplyHandler
+    }
+}, server::*, MessageProcessor, MessageProcessorFactory};
+use oysterpack_uid::ULID;
+use oysterpack_errors::Error;
+use log::*;
 
 criterion_group!(
     benches,
-    nng_msg_req_rep_bench,
-    nng_msg_req_rep_bench_custom_stack_size
+    nng_sync_client_context_bench,
+    nng_async_client_context_bench
 );
 
 criterion_main!(benches);
 
-struct Echo;
+#[derive(Debug, Clone, Default)]
+struct EchoProcessor;
 
-impl MessageProcessor<nng::Message, nng::Message> for Echo {
-    fn handle(&mut self, req: nng::Message) -> nng::Message {
+impl MessageProcessorFactory<EchoProcessor, nng::Message, nng::Message> for EchoProcessor {
+    fn new(&self) -> EchoProcessor {
+        EchoProcessor
+    }
+}
+
+impl MessageProcessor<nng::Message, nng::Message> for EchoProcessor {
+    fn process(&mut self, req: nng::Message) -> nng::Message {
         req
     }
 }
@@ -52,130 +74,108 @@ fn log_config() -> oysterpack_log::LogConfig {
     oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
 }
 
-fn nng_msg_req_rep_bench(c: &mut Criterion) {
-    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
-    let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
-
-    fn msg() -> nng::Message {
-        let msg = b"some data";
-        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
-        nng_msg.push_back(&msg[..]);
-        nng_msg
-    }
-
-    Echo.bind(service.clone(), None);
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 1)", move |b| {
-        b.iter(|| {
-            client_n.sender().send(nng_msg.clone());
-            let _ = client_n.receiver().recv().unwrap();
-        })
-    });
-
-    Echo.bind(service.clone(), None);
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 2)", move |b| {
-        b.iter(|| {
-            client_n.sender().send(nng_msg.clone());
-            let _ = client_n.receiver().recv().unwrap();
-        })
-    });
-
-    Echo.bind(service.clone(), None);
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 3)", move |b| {
-        b.iter(|| {
-            client_n.sender().send(nng_msg.clone());
-            let _ = client_n.receiver().recv().unwrap();
-        })
-    });
-
-    Echo.bind(service.clone(), None);
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function("nng_msg_req_rep_bench(threads = 4)", move |b| {
-        b.iter(|| {
-            client_n.sender().send(nng_msg.clone());
-            let _ = client_n.receiver().recv().unwrap();
-        })
-    });
+fn nng_sync_client_context_bench(c: &mut Criterion) {
+    sync_client_context_bench(c, 1);
+    sync_client_context_bench(c, 2);
+    sync_client_context_bench(c, num_cpus::get());
 }
 
-fn nng_msg_req_rep_bench_custom_stack_size(c: &mut Criterion) {
+fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize) {
     oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
-    let (client, service) = channels::<nng::Message, nng::Message>(10, 10);
 
-    fn msg() -> nng::Message {
-        let msg = b"some data";
-        let mut nng_msg = nng::Message::with_capacity(msg.len()).unwrap();
-        nng_msg.push_back(&msg[..]);
-        nng_msg
+    let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+    // start a server with 2 aio contexts
+    let listener_settings =
+        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
+    let server = Server::builder(listener_settings, EchoProcessor)
+        .spawn()
+        .unwrap();
+
+    let dialer_settings = DialerSettings::new(url.as_str())
+        .set_non_blocking(true)
+        .set_reconnect_min_time(Duration::from_millis(10))
+        .set_reconnect_max_time(Duration::from_millis(10));
+
+    let mut client = SyncClient::dial(dialer_settings.clone()).unwrap();
+    info!("received reply: {:?}",client.send(nng::Message::new().unwrap()));
+
+    let bench_function_id = format!("nng_sync_client_bench(server aio context count = {})", server_aio_context_count);
+    c.bench_function(bench_function_id.as_str(), move |b| {
+        b.iter(|| {
+            client.send(nng::Message::new().unwrap()).unwrap();
+        })
+    });
+
+    server.stop();
+    server.join();
+}
+
+fn nng_async_client_context_bench(c: &mut Criterion) {
+    async_client_context_bench(c, 1,1);
+    async_client_context_bench(c, 2,1);
+    async_client_context_bench(c, num_cpus::get(),1);
+    async_client_context_bench(c, num_cpus::get(),num_cpus::get()/2);
+//    async_client_context_bench(c, 1,2);
+//    async_client_context_bench(c, 1,4);
+//    async_client_context_bench(c, 1,num_cpus::get());
+//    async_client_context_bench(c, 2);
+//    async_client_context_bench(c, num_cpus::get());
+}
+
+struct NoopReplyHandler;
+
+impl ReplyHandler for NoopReplyHandler {
+    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
+        if let Err(err) = result {
+            error!("request failed: {}", err);
+        }
+    }
+}
+
+fn async_client_context_bench(c: &mut Criterion, server_aio_context_count: usize, client_aio_context_count: usize) {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+    let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+    // start a server with 2 aio contexts
+    let listener_settings =
+        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
+    let server = Server::builder(listener_settings, EchoProcessor)
+        .spawn()
+        .unwrap();
+
+    let dialer_settings = DialerSettings::new(url.as_str())
+        .set_non_blocking(true)
+        .set_reconnect_min_time(Duration::from_millis(10))
+        .set_reconnect_max_time(Duration::from_millis(10))
+        .set_capacity(NonZeroUsize::new(client_aio_context_count).unwrap());
+
+    let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
+    client.send_with_callback(nng::Message::new().unwrap(),NoopReplyHandler).unwrap();
+    info!("sent async request");
+    thread::yield_now();
+    loop {
+        if client.available_capacity() > 0 {
+            break;
+        }
+        thread::yield_now();
     }
 
-    Echo.bind(
-        service.clone(),
-        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
-    );
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function(
-        "nng_msg_req_rep_bench(threads = 1, stack_size = 1024)",
-        move |b| {
-            b.iter(|| {
-                client_n.sender().send(nng_msg.clone());
-                let _ = client_n.receiver().recv().unwrap();
-            })
-        },
-    );
+    let bench_function_id = format!("nng_async_client_bench(aio context counts: server = {}, client = {} )", server_aio_context_count, client_aio_context_count);
+    c.bench_function(bench_function_id.as_str(), move |b| {
+        b.iter(|| {
+            if let Err(err) = client.send_with_callback(nng::Message::new().unwrap(),NoopReplyHandler) {
+                loop {
+                    if client.available_capacity() > 0 {
+                        break;
+                    }
+                    thread::yield_now();
+                }
+            }
+        })
+    });
 
-    Echo.bind(
-        service.clone(),
-        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
-    );
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function(
-        "nng_msg_req_rep_bench(threads = 2, stack_size = 1024)",
-        move |b| {
-            b.iter(|| {
-                client_n.sender().send(nng_msg.clone());
-                let _ = client_n.receiver().recv().unwrap();
-            })
-        },
-    );
-
-    Echo.bind(
-        service.clone(),
-        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
-    );
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function(
-        "nng_msg_req_rep_bench(threads = 3, stack_size = 1024)",
-        move |b| {
-            b.iter(|| {
-                client_n.sender().send(nng_msg.clone());
-                let _ = client_n.receiver().recv().unwrap();
-            })
-        },
-    );
-
-    Echo.bind(
-        service.clone(),
-        Some(ThreadConfig::new("Echo").set_stack_size(1024)),
-    );
-    let nng_msg = msg();
-    let client_n = client.clone();
-    c.bench_function(
-        "nng_msg_req_rep_bench(threads = 4, stack_size = 1024)",
-        move |b| {
-            b.iter(|| {
-                client_n.sender().send(nng_msg.clone());
-                let _ = client_n.receiver().recv().unwrap();
-            })
-        },
-    );
+    server.stop();
+    server.join();
 }
