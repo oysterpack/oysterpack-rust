@@ -33,8 +33,7 @@ where
 }
 
 /// Message handler that implements a request/reply protocol pattern
-pub trait MessageProcessor<Req, Rep>:
-    Send + Sync + RefUnwindSafe + UnwindSafe + 'static
+pub trait MessageProcessor<Req, Rep>: Send + Sync + RefUnwindSafe + UnwindSafe + 'static
 where
     Req: Send + 'static,
     Rep: Send + 'static,

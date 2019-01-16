@@ -16,203 +16,24 @@
 
 //! nng RPC client
 
-#![allow(warnings)]
-
-use crate::op_nng::{
-    errors::{AioCreateError, AioReceiveError, AioSendError},
-    new_aio_context, try_from_nng_message, try_into_nng_message, SocketSettings,
-};
-use crossbeam::queue::SegQueue;
+use crate::op_nng::{errors::SocketCreateError, SocketSettings};
 use nng::{
     self,
-    aio::{Aio, Context},
     dialer::{Dialer, DialerOptions},
     options::Options,
     Socket,
 };
 use oysterpack_errors::{op_error, Error};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, panic::RefUnwindSafe, time::Duration, collections::HashMap, sync::{
-    Arc, Mutex
-}};
+use serde::{Deserialize, Serialize};
+use std::{num::NonZeroUsize, time::Duration};
 
+pub mod asyncio;
 pub mod errors;
+pub mod syncio;
 
 #[allow(warnings)]
 #[cfg(test)]
 mod tests;
-
-/// Async reply handler that is used as a callback by the AsyncClient
-pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static
-{
-    /// reply callback
-    fn on_reply(&mut self, result: Result<nng::Message, Error>);
-}
-
-/// nng async client
-pub struct AsyncClient {
-    dialer: nng::dialer::Dialer,
-    socket: nng::Socket,
-}
-
-impl AsyncClient {
-    /// Sends the request and invokes the callback with the reply asynchronously
-    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-    /// - if the req
-    pub fn send_with_callback<Callback>(
-        &mut self,
-        req: nng::Message,
-        cb: Callback,
-    ) -> Result<(), Error>
-    where
-        Callback: ReplyHandler,
-    {
-        unimplemented!()
-    }
-
-    /// constructor
-    pub fn dial(dialer_settings: DialerSettings) -> Result<Self, Error> {
-        Builder::new(dialer_settings).async_client()
-    }
-
-    /// constructor
-    pub fn dial_with_socket_settings(
-        dialer_settings: DialerSettings,
-        socket_settings: ClientSocketSettings,
-    ) -> Result<Self, Error> {
-        Builder::new(dialer_settings)
-            .socket_settings(socket_settings)
-            .async_client()
-    }
-}
-
-impl fmt::Debug for AsyncClient {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.dialer.get_opt::<nng::options::Url>() {
-            Ok(url) => write!(f, "AsyncClient(Socket({}), Url({}))", self.socket.id(), url),
-            Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
-        }
-    }
-}
-
-/// Aio state for socket context.
-#[derive(Debug, Copy, Clone)]
-enum AioState {
-    /// aio receive operation is in progress
-    Recv,
-    /// aio send operation is in progress
-    Send,
-    /// aio context is idle
-    Idle,
-}
-
-/// nng RPC client
-pub struct SyncClient {
-    // the order is important because Rust will drop fields in the order listed
-    // the dialer must be dropped before the socket, otherwise the following error occurs
-    //
-    // thread 'op_nng::rpc::client::tests::sync_client' panicked at 'Unexpected error code while closing dialer (12)', ... /nng-0.3.0/src/dialer.rs:104:3
-    //
-    // i.e., the dialer must be closed before the socket is closed
-    dialer: nng::dialer::Dialer,
-    socket: nng::Socket,
-}
-
-impl SyncClient {
-    /// Sends the request and wait for a reply synchronously
-    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-    pub fn send<Req, Rep>(&mut self, req: &Req) -> Result<Rep, Error>
-    where
-        Req: Serialize + DeserializeOwned,
-        Rep: Serialize + DeserializeOwned,
-    {
-        let msg = try_into_nng_message(req)?;
-        self.socket
-            .send(msg)
-            .map_err(|err| op_error!(errors::SocketSendError::from(err)))?;
-        let rep = self
-            .socket
-            .recv()
-            .map_err(|err| op_error!(errors::SocketRecvError::from(err)))?;
-        try_from_nng_message(&rep)
-    }
-
-    /// constructor
-    pub fn dial(dialer_settings: DialerSettings) -> Result<Self, Error> {
-        Builder::new(dialer_settings).sync_client()
-    }
-
-    /// constructor
-    pub fn dial_with_socket_settings(
-        dialer_settings: DialerSettings,
-        socket_settings: ClientSocketSettings,
-    ) -> Result<Self, Error> {
-        Builder::new(dialer_settings)
-            .socket_settings(socket_settings)
-            .sync_client()
-    }
-}
-
-impl fmt::Debug for SyncClient {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.dialer.get_opt::<nng::options::Url>() {
-            Ok(url) => write!(f, "SyncClient(Socket({}), Url({}))", self.socket.id(), url),
-            Err(err) => write!(f, "SyncClient(Socket({}), Err({}))", self.socket.id(), err),
-        }
-    }
-}
-
-/// Client builder
-#[derive(Debug)]
-pub struct Builder {
-    dialer_settings: DialerSettings,
-    socket_settings: Option<ClientSocketSettings>,
-}
-
-impl Builder {
-    /// constructor
-    pub fn new(dialer_settings: DialerSettings) -> Builder {
-        Builder {
-            dialer_settings,
-            socket_settings: None,
-        }
-    }
-
-    /// Configures the socket
-    pub fn socket_settings(self, socket_settings: ClientSocketSettings) -> Builder {
-        let mut builder = self;
-        builder.socket_settings = Some(socket_settings);
-        builder
-    }
-
-    /// builds a new SyncClient
-    pub fn sync_client(self) -> Result<SyncClient, Error> {
-        let mut this = self;
-        let socket = Builder::create_socket(this.socket_settings.take())?;
-        let dialer = this.dialer_settings.start_dialer(&socket)?;
-        Ok(SyncClient { socket, dialer })
-    }
-
-    /// builds a new AsyncClient
-    pub fn async_client(self) -> Result<AsyncClient, Error> {
-        let mut this = self;
-        let socket = Builder::create_socket(this.socket_settings.take())?;
-        let dialer = this.dialer_settings.start_dialer(&socket)?;
-        Ok(AsyncClient {
-            socket,
-            dialer
-        })
-    }
-
-    fn create_socket(socket_settings: Option<ClientSocketSettings>) -> Result<nng::Socket, Error> {
-        let socket = nng::Socket::new(nng::Protocol::Req0)
-            .map_err(|err| op_error!(errors::SocketCreateError::from(err)))?;
-        match socket_settings {
-            Some(socket_settings) => socket_settings.apply(socket),
-            None => Ok(socket),
-        }
-    }
-}
 
 /// Socket Settings
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,6 +45,17 @@ pub struct ClientSocketSettings {
 }
 
 impl ClientSocketSettings {
+    pub(crate) fn create_socket(
+        socket_settings: Option<ClientSocketSettings>,
+    ) -> Result<nng::Socket, Error> {
+        let socket = nng::Socket::new(nng::Protocol::Req0)
+            .map_err(|err| op_error!(SocketCreateError::from(err)))?;
+        match socket_settings {
+            Some(socket_settings) => socket_settings.apply(socket),
+            None => Ok(socket),
+        }
+    }
+
     /// set socket options
     pub(crate) fn apply(&self, socket: Socket) -> Result<Socket, Error> {
         let socket = if let Some(settings) = self.socket_settings.as_ref() {
@@ -319,7 +151,7 @@ impl ClientSocketSettings {
 pub struct DialerSettings {
     url: String,
     non_blocking: bool,
-    aio_context_pool_size: Option<usize>,
+    aio_context_max_pool_size: Option<usize>,
     recv_max_size: Option<usize>,
     no_delay: Option<bool>,
     keep_alive: Option<bool>,
@@ -336,7 +168,7 @@ impl DialerSettings {
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
-            aio_context_pool_size: None,
+            aio_context_max_pool_size: None,
             reconnect_min_time: None,
             reconnect_max_time: None,
         }
@@ -400,12 +232,12 @@ impl DialerSettings {
         self.non_blocking
     }
 
-    /// Number of async IO operations that can be performed concurrently, which corresponds to the number
+    /// Max number of async IO operations that can be performed concurrently, which corresponds to the number
     /// of socket contexts that will be created.
     /// - this setting only applies to AsyncClient(s)
     ///   - if not specified, then it will default to 1
-    pub fn aio_context_pool_size(&self) -> Option<usize> {
-        self.aio_context_pool_size
+    pub fn aio_context_max_pool_size(&self) -> Option<usize> {
+        self.aio_context_max_pool_size
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -496,7 +328,7 @@ impl DialerSettings {
     /// set the number of async IO operations that can be performed concurrently
     pub fn set_aio_count(self, count: NonZeroUsize) -> Self {
         let mut settings = self;
-        settings.aio_context_pool_size = Some(count.get());
+        settings.aio_context_max_pool_size = Some(count.get());
         settings
     }
 

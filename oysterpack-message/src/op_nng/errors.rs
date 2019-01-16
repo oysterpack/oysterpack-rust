@@ -43,7 +43,7 @@ impl IsError for SocketCreateError {
 
 impl fmt::Display for SocketCreateError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create socket: {}", self.0)
+        write!(f, "Failed to create nng socket: {}", self.0)
     }
 }
 
@@ -77,7 +77,7 @@ impl IsError for SocketSetOptError {
 
 impl fmt::Display for SocketSetOptError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to set socket option: {}", self.0)
+        write!(f, "Failed to set nng socket option: {}", self.0)
     }
 }
 
@@ -111,7 +111,7 @@ impl IsError for SocketSendError {
 
 impl fmt::Display for SocketSendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to send message on socket: {}", self.0)
+        write!(f, "Failed to send nng message on socket: {}", self.0)
     }
 }
 
@@ -145,7 +145,7 @@ impl IsError for SocketRecvError {
 
 impl fmt::Display for SocketRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to receive message on socket: {}", self.0)
+        write!(f, "Failed to receive nng message on socket: {}", self.0)
     }
 }
 
@@ -179,7 +179,7 @@ impl IsError for AioContextCreateError {
 
 impl fmt::Display for AioContextCreateError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create new socket context: {}", self.0)
+        write!(f, "Failed to create new nng socket context: {}", self.0)
     }
 }
 
@@ -213,7 +213,7 @@ impl IsError for AioCreateError {
 
 impl fmt::Display for AioCreateError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Failed to create new aio handle: {}", self.0)
+        write!(f, "Failed to create new nng::aio handle: {}", self.0)
     }
 }
 
@@ -247,7 +247,7 @@ impl IsError for AioReceiveError {
 
 impl fmt::Display for AioReceiveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Aio receive operation failed: {}", self.0)
+        write!(f, "nng::aio receive operation failed: {}", self.0)
     }
 }
 
@@ -281,12 +281,46 @@ impl IsError for AioSendError {
 
 impl fmt::Display for AioSendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Aio send operation failed: {}", self.0)
+        write!(f, "nng::aio send operation failed: {}", self.0)
     }
 }
 
 impl From<nng::Error> for AioSendError {
     fn from(err: nng::Error) -> AioSendError {
         AioSendError(err)
+    }
+}
+
+/// Aio error
+#[derive(Debug)]
+pub struct AioError(nng::Error);
+
+impl AioError {
+    /// Error Id
+    pub const ERROR_ID: oysterpack_errors::Id =
+        oysterpack_errors::Id(1870909251735477333990432689425320576);
+    /// Level::Error
+    pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Error;
+}
+
+impl IsError for AioError {
+    fn error_id(&self) -> oysterpack_errors::Id {
+        Self::ERROR_ID
+    }
+
+    fn error_level(&self) -> oysterpack_errors::Level {
+        Self::ERROR_LEVEL
+    }
+}
+
+impl fmt::Display for AioError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "nng::aio error: {}", self.0)
+    }
+}
+
+impl From<nng::Error> for AioError {
+    fn from(err: nng::Error) -> AioError {
+        AioError(err)
     }
 }

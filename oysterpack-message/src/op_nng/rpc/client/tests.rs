@@ -16,17 +16,30 @@
 
 //! client module tests
 
-use super::*;
+use super::{
+    asyncio::{AioState, AsyncClient, ReplyHandler},
+    syncio::{self, SyncClient},
+    ClientSocketSettings, DialerSettings,
+};
 use crate::op_nng::{
-    rpc::{server::{
-        Server, ListenerSettings
-    }, MessageProcessor, MessageProcessorFactory},
+    errors::AioReceiveError,
+    new_aio_context,
+    rpc::{
+        server::{ListenerSettings, Server},
+        MessageProcessor, MessageProcessorFactory,
+    },
     try_from_nng_message, try_into_nng_message,
 };
 use log::*;
+use oysterpack_errors::{op_error, Error};
 use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
-use std::{num::NonZeroUsize, sync::Arc, thread};
+use std::{
+    num::NonZeroUsize,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 #[derive(Debug, Clone, Default)]
 struct TestProcessor;
@@ -151,7 +164,7 @@ impl ReplyHandler for FooHandler {
 }
 
 struct Bar {
-    handler: Option<Box<dyn ReplyHandler>>
+    handler: Option<Box<dyn ReplyHandler>>,
 }
 
 #[test]
@@ -172,10 +185,12 @@ fn trait_object_invoked_across_threads() {
 fn chashmap_stored_trait_object_invoked_across_threads() {
     oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
     let handler: Box<dyn ReplyHandler> = Box::new(FooHandler);
-    let bar = Bar{handler: Some(handler)};
+    let bar = Bar {
+        handler: Some(handler),
+    };
     let map = Arc::new(chashmap::CHashMap::new());
     const KEY: usize = 1;
-    map.insert(KEY,bar);
+    map.insert(KEY, bar);
 
     let queue = Arc::new(crossbeam::queue::SegQueue::new());
     let queue_2 = Arc::clone(&queue);
@@ -229,7 +244,7 @@ fn async_client_poc() {
     use std::sync::{Arc, Mutex};
     let mut ctx_state = Arc::new(Mutex::new(AioState::Idle));
     let mut call_back_ctx_state = Arc::clone(&ctx_state);
-    let ctx: nng::aio::Context = new_aio_context(&client.socket).unwrap();
+    let ctx: nng::aio::Context = new_aio_context(client.socket()).unwrap();
     let callback_ctx = ctx.clone();
     let aio = nng::aio::Aio::with_callback(move |aio| {
         info!("aio event on context({})", callback_ctx.id());
@@ -308,7 +323,7 @@ fn async_client_poc_restart_server() {
     use std::sync::{Arc, Mutex};
     let mut ctx_state = Arc::new(Mutex::new(AioState::Idle));
     let mut call_back_ctx_state = Arc::clone(&ctx_state);
-    let ctx: nng::aio::Context = new_aio_context(&client.socket).unwrap();
+    let ctx: nng::aio::Context = new_aio_context(client.socket()).unwrap();
     let callback_ctx = ctx.clone();
     let aio = nng::aio::Aio::with_callback(move |aio| {
         info!("aio event on context({})", callback_ctx.id());
@@ -366,16 +381,21 @@ fn async_client_poc_restart_server() {
         aio.send(&ctx, msg).unwrap();
     }
     match rx.recv() {
-        Ok(rep) => info!("received forwarded reply after restarting the server : {:?}", rep),
+        Ok(rep) => info!(
+            "received forwarded reply after restarting the server : {:?}",
+            rep
+        ),
         Err(err) => panic!("recv failed: {}", err),
     }
+
+    thread::sleep_ms(100);
 
     server.stop();
     server.join();
 }
 
 #[test]
-fn async_client() {
+fn async_client_send_with_callback() {
     oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
     let url = Arc::new(format!("inproc://{}", ULID::generate()));
 
@@ -390,12 +410,30 @@ fn async_client() {
         .set_non_blocking(true)
         .set_reconnect_min_time(Duration::from_millis(100))
         .set_reconnect_max_time(Duration::from_millis(100));
-    let client = AsyncClient::dial(dialer_settings.clone()).unwrap();
+    let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
 
-    // TODO
+    for i in 0..10 {
+        let msg = try_into_nng_message(&Request::Sleep(0)).unwrap();
+        let (tx, rx) = crossbeam::channel::bounded(10);
+        client.send_with_callback(msg, ReplyForwarder { chan: tx });
+        match rx.recv() {
+            Ok(rep) => info!("received forwarded reply #{} : {:?}", i, rep),
+            Err(err) => panic!("recv #{} failed: {}", i, err),
+        }
+    }
+
+    thread::yield_now();
+    for i in 0..3 {
+        let count = client.context_count();
+        if count == 0 {
+            break;
+        }
+        warn!("waiting for context to be closed ... count = {}", count);
+        thread::sleep_ms(1);
+    }
+    assert_eq!(client.context_count(), 0);
 
     server.stop();
     server.join();
+    info!("server has stopped");
 }
-
-
