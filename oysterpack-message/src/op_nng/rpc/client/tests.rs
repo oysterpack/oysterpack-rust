@@ -406,13 +406,15 @@ fn async_client_send_with_callback() {
         .spawn()
         .unwrap();
 
+    const AIO_CONTEXT_CAPACITY: usize = 10;
     let dialer_settings = DialerSettings::new(url.as_str())
         .set_non_blocking(true)
         .set_reconnect_min_time(Duration::from_millis(100))
-        .set_reconnect_max_time(Duration::from_millis(100));
+        .set_reconnect_max_time(Duration::from_millis(100))
+        .set_capacity(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
     let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
 
-    for i in 0..10 {
+    for i in 0..AIO_CONTEXT_CAPACITY {
         let msg = try_into_nng_message(&Request::Sleep(0)).unwrap();
         let (tx, rx) = crossbeam::channel::bounded(10);
         client.send_with_callback(msg, ReplyForwarder { chan: tx });
@@ -436,4 +438,42 @@ fn async_client_send_with_callback() {
     server.stop();
     server.join();
     info!("server has stopped");
+}
+
+#[test]
+fn async_client_send_with_callback_with_max_capacity_exceeded() {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+    let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+    // start a server with 2 aio contexts
+    let listener_settings =
+        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(2).unwrap());
+    let server = Server::builder(listener_settings, TestProcessor)
+        .spawn()
+        .unwrap();
+
+    let dialer_settings = DialerSettings::new(url.as_str())
+        .set_non_blocking(true)
+        .set_reconnect_min_time(Duration::from_millis(100))
+        .set_reconnect_max_time(Duration::from_millis(100));
+    let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
+
+    let (tx, rx) = crossbeam::channel::bounded(10);
+    let msg = try_into_nng_message(&Request::Sleep(10)).unwrap();
+    assert!(client
+        .send_with_callback(msg, ReplyForwarder { chan: tx.clone() })
+        .is_ok());
+    let msg = try_into_nng_message(&Request::Sleep(10)).unwrap();
+    match client.send_with_callback(msg, ReplyForwarder { chan: tx.clone() }) {
+        Ok(_) => panic!("this should have failed because we are max capacity"),
+        Err(err) => assert_eq!(
+            crate::op_nng::rpc::client::asyncio::errors::AioContextAtMaxCapacity::ERROR_ID,
+            err.id()
+        ),
+    }
+
+    assert!(rx.recv().is_ok());
+
+    server.stop();
+    server.join();
 }

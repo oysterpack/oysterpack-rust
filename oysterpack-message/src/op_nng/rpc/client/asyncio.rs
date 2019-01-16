@@ -16,7 +16,7 @@
 
 //! Asynchronous client
 
-use self::errors::AioContextChannelClosed;
+use self::errors::{AioContextAtMaxCapacity, AioContextChannelClosed};
 use super::{ClientSocketSettings, DialerSettings};
 use crate::op_nng::{
     errors::{AioCreateError, AioReceiveError, AioSendError},
@@ -45,6 +45,7 @@ pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
     aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
+    aio_context_tickets: crossbeam::channel::Receiver<()>,
 }
 
 impl AsyncClient {
@@ -66,71 +67,78 @@ impl AsyncClient {
     where
         Callback: ReplyHandler,
     {
-        let context = new_aio_context(&self.socket)?;
-        let aio_state = Arc::new(Mutex::new(AioState::Idle));
+        match self.aio_context_tickets.try_recv() {
+            Ok(_) => {
+                let context = new_aio_context(&self.socket)?;
+                let aio_state = Arc::new(Mutex::new(AioState::Idle));
 
-        let mut cb = cb;
-        let callback_aio_state = Arc::clone(&aio_state);
-        let callback_context = context.clone();
-        let aio_context_chan = self.aio_context_chan.clone();
-        let context_key = ULID::generate();
-        let aio = nng::aio::Aio::with_callback(move |aio| {
-            let close = || {
-                let context_id = callback_context.id();
-                info!("closing context({}) ... ", context_id);
-                if let Err(err) = aio_context_chan.send(AioContextMessage::Remove(context_key)) {
-                    warn!("Failed to unregister aio context - ignore this warning if the app is shutting down: {}", err);
-                }
-                info!("closed context({})", context_id);
-            };
-
-            match aio.result().unwrap() {
-                Ok(_) => {
-                    let mut ctx_state = callback_aio_state.lock().unwrap();
-                    match *ctx_state {
-                        AioState::Send => {
-                            // sending the request was successful
-                            // now lets wait for the reply
-                            aio.recv(&callback_context).unwrap();
-                            *ctx_state = AioState::Recv;
+                let mut cb = cb;
+                let callback_aio_state = Arc::clone(&aio_state);
+                let callback_context = context.clone();
+                let aio_context_chan = self.aio_context_chan.clone();
+                let context_key = ULID::generate();
+                let aio = nng::aio::Aio::with_callback(move |aio| {
+                    let close = || {
+                        let context_id = callback_context.id();
+                        info!("closing context({}) ... ", context_id);
+                        if let Err(err) = aio_context_chan.send(AioContextMessage::Remove(context_key)) {
+                            warn!("Failed to unregister aio context - ignore this warning if the app is shutting down: {}", err);
                         }
-                        AioState::Recv => {
-                            // reply has been successfully received
-                            // thus it is safe to invoke unwrap n
-                            let rep = aio.get_msg().unwrap();
-                            cb.on_reply(Ok(rep));
-                            *ctx_state = AioState::Idle;
+                        info!("closed context({})", context_id);
+                    };
+
+                    match aio.result().unwrap() {
+                        Ok(_) => {
+                            let mut ctx_state = callback_aio_state.lock().unwrap();
+                            match *ctx_state {
+                                AioState::Send => {
+                                    // sending the request was successful
+                                    // now lets wait for the reply
+                                    aio.recv(&callback_context).unwrap();
+                                    *ctx_state = AioState::Recv;
+                                }
+                                AioState::Recv => {
+                                    // reply has been successfully received
+                                    // thus it is safe to invoke unwrap n
+                                    let rep = aio.get_msg().unwrap();
+                                    cb.on_reply(Ok(rep));
+                                    *ctx_state = AioState::Idle;
+                                    close();
+                                }
+                                AioState::Idle => {
+                                    warn!("did not expect to be invoked while idle");
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
                             close();
                         }
-                        AioState::Idle => {
-                            warn!("did not expect to be invoked while idle");
-                        }
                     }
+                })
+                    .map_err(|err| op_error!(AioCreateError::from(err)))?;
+
+                // send the message
+                {
+                    let mut ctx_state = aio_state.lock().unwrap();
+                    *ctx_state = AioState::Send;
                 }
-                Err(err) => {
-                    cb.on_reply(Err(op_error!(AioReceiveError::from(err))));
-                    close();
-                }
+                aio.send(&context, req)
+                    .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))?;
+                // register the aio context
+                self.aio_context_chan
+                    .send(AioContextMessage::Insert((
+                        context_key,
+                        AioContext::from((aio, context)),
+                    )))
+                    .map_err(|_| op_error!(AioContextChannelClosed::new(&self.dialer)))?;
+                Ok(())
             }
-        })
-        .map_err(|err| op_error!(AioCreateError::from(err)))?;
-
-        // send the message
-        {
-            let mut ctx_state = aio_state.lock().unwrap();
-            *ctx_state = AioState::Send;
+            Err(_) => Err(op_error!(AioContextAtMaxCapacity::new(
+                &self.dialer,
+                self.aio_context_tickets.capacity().unwrap_or(0)
+            ))),
         }
-        aio.send(&context, req)
-            .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))?;
-        // register the aio context
-        self.aio_context_chan
-            .send(AioContextMessage::Insert((
-                context_key,
-                AioContext::from((aio, context)),
-            )))
-            .map_err(|_| op_error!(AioContextChannelClosed::new(&self.dialer)))?;
-
-        Ok(())
     }
 
     /// constructor
@@ -158,6 +166,12 @@ impl AsyncClient {
                 Err(_) => 0,
             })
             .unwrap_or(0)
+    }
+
+    /// returns the max number of concurrent async requests
+    /// - this never return 0 - if it does, then there is a bug
+    pub fn context_capacity(&self) -> usize {
+        self.aio_context_tickets.capacity().unwrap_or(0)
     }
 }
 
@@ -213,6 +227,10 @@ impl Builder {
         let dialer = this.dialer_settings.start_dialer(&socket)?;
 
         let (tx, rx) = crossbeam::channel::bounded(max_context_count * 2);
+        let (tx_tickets, rx_tickets) = crossbeam::channel::bounded(max_context_count);
+        for _ in 0..max_context_count {
+            tx_tickets.send(()).unwrap();
+        }
         thread::spawn(move || {
             let mut aio_contexts = HashMap::with_capacity(max_context_count);
             for msg in rx {
@@ -221,6 +239,9 @@ impl Builder {
                         aio_contexts.insert(key, aio_context);
                     }
                     AioContextMessage::Remove(ref key) => {
+                        if let Err(err) = tx_tickets.try_send(()) {
+                            error!("Failed to return ticket: {}", err);
+                        }
                         aio_contexts.remove(key);
                     }
                     AioContextMessage::Count(sender) => {
@@ -236,6 +257,7 @@ impl Builder {
             socket,
             dialer,
             aio_context_chan: tx,
+            aio_context_tickets: rx_tickets,
         })
     }
 }
@@ -297,6 +319,47 @@ pub mod errors {
     }
 
     impl IsError for AioContextChannelClosed {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    /// The number of open aio contexts is at max capacity
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub struct AioContextAtMaxCapacity {
+        url: String,
+        capacity: usize,
+    }
+
+    impl fmt::Display for AioContextAtMaxCapacity {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(
+                f,
+                "The number of open aio contexts is at max capacity ({}) for client: {}",
+                self.capacity, self.url
+            )
+        }
+    }
+
+    impl AioContextAtMaxCapacity {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1870938774060056887721031847045251443);
+        /// Level::Alert
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
+
+        /// constructor
+        pub fn new(dialer: &nng::dialer::Dialer, capacity: usize) -> AioContextAtMaxCapacity {
+            let url = dialer.get_opt::<nng::options::Url>().unwrap();
+            AioContextAtMaxCapacity { url, capacity }
+        }
+    }
+
+    impl IsError for AioContextAtMaxCapacity {
         fn error_id(&self) -> oysterpack_errors::Id {
             Self::ERROR_ID
         }

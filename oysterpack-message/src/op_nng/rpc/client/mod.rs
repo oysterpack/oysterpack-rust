@@ -325,8 +325,8 @@ impl DialerSettings {
         settings
     }
 
-    /// set the number of async IO operations that can be performed concurrently
-    pub fn set_aio_count(self, count: NonZeroUsize) -> Self {
+    /// set the max capacity of concurrent async requests
+    pub fn set_capacity(self, count: NonZeroUsize) -> Self {
         let mut settings = self;
         settings.aio_context_max_pool_size = Some(count.get());
         settings
