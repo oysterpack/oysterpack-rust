@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ use std::{collections::BTreeMap, fmt};
 pub struct LogConfig {
     root_level: Level,
     #[serde(skip_serializing_if = "Option::is_none")]
-    crate_level: Option<Level>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     target_levels: Option<BTreeMap<Target, Level>>,
 }
 
@@ -33,11 +31,6 @@ impl LogConfig {
     /// Returns the root log level.
     pub fn root_level(&self) -> Level {
         self.root_level
-    }
-
-    /// Returns the configured crate log level
-    pub fn crate_level(&self) -> Option<Level> {
-        self.crate_level
     }
 
     /// Returns the configured target log levels
@@ -51,7 +44,6 @@ impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
             root_level: Level::Warn,
-            crate_level: None,
             target_levels: None,
         }
     }
@@ -75,12 +67,6 @@ impl LogConfigBuilder {
         let mut config: LogConfig = LogConfig::default();
         config.root_level = root_level;
         LogConfigBuilder { config }
-    }
-
-    /// Sets the log level for this crate
-    pub fn crate_level(mut self, level: Level) -> Self {
-        self.config.crate_level = Some(level);
-        self
     }
 
     /// Sets the log level for the specified target
@@ -124,11 +110,6 @@ impl Target {
     {
         Target::new(format!("{}::{}", self.0, target.into().0))
     }
-
-    /// Constructs a new Target for the containing crate
-    pub fn for_crate() -> Target {
-        Target(env!("CARGO_PKG_NAME").to_string())
-    }
 }
 
 impl<'a> From<&'a str> for Target {
@@ -170,7 +151,6 @@ mod tests {
             let config: LogConfig = Default::default();
             info!("{}", serde_json::to_string(&config).unwrap());
             assert_eq!(config.root_level(), Level::Warn);
-            assert!(config.crate_level().is_none());
             assert!(config.target_levels().is_none());
         });
     }
@@ -179,37 +159,21 @@ mod tests {
     fn log_config_with_all_fields_configured() {
         crate::run_test("default_log_config", || {
             let config = LogConfigBuilder::new(Level::Info)
-                .crate_level(Level::Info)
+                .target_level(Target::from(env!("CARGO_PKG_NAME")), Level::Info)
                 .target_level("a".into(), Level::Info)
                 .target_level("a".into(), Level::Warn)
                 .target_level("b".into(), Level::Error)
                 .target_level("c".into(), Level::Debug)
                 .build();
             info!("{}", serde_json::to_string_pretty(&config).unwrap());
-            assert_eq!(config.root_level(), Level::Info);
-            assert_eq!(config.crate_level().unwrap(), Level::Info);
             assert_eq!(*config.target_levels().unwrap(), {
                 let mut map = BTreeMap::new();
                 map.insert("a".into(), Level::Warn);
                 map.insert("b".into(), Level::Error);
                 map.insert("c".into(), Level::Debug);
+                map.insert(Target::from(env!("CARGO_PKG_NAME")), Level::Info);
                 map
             });
-        });
-    }
-
-    #[test]
-    fn for_crate() {
-        crate::run_test("for_crate", || {
-            assert_eq!(Target::from("oysterpack_log"), Target::for_crate());
-            assert_eq!(
-                Target::from("oysterpack_log::foo"),
-                Target::for_crate().append("foo")
-            );
-
-            let foo = Target::for_crate().append("foo");
-
-            info!(target: foo.as_ref(), "foo says hello");
         });
     }
 

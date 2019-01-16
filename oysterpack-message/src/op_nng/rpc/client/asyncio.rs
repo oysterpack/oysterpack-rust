@@ -25,13 +25,13 @@ use crate::op_nng::{
 use log::*;
 use nng::{aio, options::Options};
 use oysterpack_errors::{op_error, Error};
-use oysterpack_uid::ULID;
 use std::{
     collections::HashMap,
     fmt,
     panic::RefUnwindSafe,
     sync::{Arc, Mutex},
     thread,
+    time::Instant,
 };
 
 /// Async reply handler that is used as a callback by the AsyncClient
@@ -76,15 +76,15 @@ impl AsyncClient {
                 let callback_aio_state = Arc::clone(&aio_state);
                 let callback_context = context.clone();
                 let aio_context_chan = self.aio_context_chan.clone();
-                let context_key = ULID::generate();
+                let context_key = ContextId::new(&context);
                 let aio = nng::aio::Aio::with_callback(move |aio| {
                     let close = || {
                         let context_id = callback_context.id();
-                        info!("closing context({}) ... ", context_id);
+                        debug!("closing context({}) ... ", context_id);
                         if let Err(err) = aio_context_chan.send(AioContextMessage::Remove(context_key)) {
                             warn!("Failed to unregister aio context - ignore this warning if the app is shutting down: {}", err);
                         }
-                        info!("closed context({})", context_id);
+                        debug!("closed context({})", context_id);
                     };
 
                     match aio.result().unwrap() {
@@ -280,9 +280,18 @@ impl fmt::Debug for AioContext {
 }
 
 enum AioContextMessage {
-    Insert((ULID, AioContext)),
-    Remove(ULID),
+    Insert((ContextId, AioContext)),
+    Remove(ContextId),
     Count(crossbeam::channel::Sender<usize>),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
+struct ContextId(Instant, i32);
+
+impl ContextId {
+    fn new(context: &aio::Context) -> ContextId {
+        ContextId(Instant::now(), context.id())
+    }
 }
 
 pub mod errors {

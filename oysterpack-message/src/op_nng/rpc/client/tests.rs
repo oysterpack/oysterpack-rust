@@ -76,7 +76,9 @@ enum Request {
 }
 
 fn log_config() -> oysterpack_log::LogConfig {
-    oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
+    oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)
+        .target_level(oysterpack_log::Target::from(env!("CARGO_PKG_NAME")), Level::Debug)
+        .build()
 }
 
 #[test]
@@ -179,32 +181,6 @@ fn trait_object_invoked_across_threads() {
     });
 
     handle.join().unwrap();
-}
-
-#[test]
-fn chashmap_stored_trait_object_invoked_across_threads() {
-    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
-    let handler: Box<dyn ReplyHandler> = Box::new(FooHandler);
-    let bar = Bar {
-        handler: Some(handler),
-    };
-    let map = Arc::new(chashmap::CHashMap::new());
-    const KEY: usize = 1;
-    map.insert(KEY, bar);
-
-    let queue = Arc::new(crossbeam::queue::SegQueue::new());
-    let queue_2 = Arc::clone(&queue);
-
-    let handle = thread::spawn(move || {
-        let mut bar = map.remove(&KEY).unwrap();
-        let mut handler = bar.handler.take().unwrap();
-        handler.on_reply(Ok(nng::Message::new().unwrap()));
-        queue_2.push(bar);
-    });
-
-    handle.join().unwrap();
-    let bar = queue.try_pop().unwrap();
-    assert!(bar.handler.is_none());
 }
 
 struct ReplyForwarder {
@@ -425,12 +401,15 @@ fn async_client_send_with_callback() {
     }
 
     thread::yield_now();
-    for i in 0..3 {
+    for i in 0..10 {
         let count = client.context_count();
         if count == 0 {
             break;
         }
-        warn!("waiting for context to be closed ... count = {}", count);
+        warn!(
+            "({}) waiting for context to be closed ... count = {}",
+            i, count
+        );
         thread::sleep_ms(1);
     }
     assert_eq!(client.context_count(), 0);

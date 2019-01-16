@@ -1,16 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+ * Copyright 2019 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! Standardizes logging for the OysterPack platform on top of [log](https://crates.io/crates/log).
 //! Given a LogConfig, this crate will know how to initialize the logging system and how to shut it down.
@@ -37,7 +39,7 @@
 //! ```
 
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.1")]
 
 #[macro_use]
 pub extern crate log;
@@ -48,7 +50,8 @@ extern crate serde;
 pub mod config;
 pub mod manager;
 
-pub use crate::config::LogConfig;
+pub use crate::config::{LogConfig, LogConfigBuilder, Target};
+pub use crate::manager::{config, init, RecordLogger, StderrLogger, StdoutLogger};
 
 pub use log::{
     // re-export the log macros
@@ -64,8 +67,6 @@ pub use log::{
     LevelFilter,
 };
 
-pub use crate::manager::{config, init, RecordLogger, StderrLogger, StdoutLogger};
-
 #[cfg(test)]
 mod tests {
 
@@ -73,7 +74,7 @@ mod tests {
     /// - collects test execution time and logs it
     pub fn run_test<F: FnOnce() -> ()>(name: &str, test: F) {
         let log_config = crate::config::LogConfigBuilder::new(log::Level::Warn)
-            .crate_level(log::Level::Debug)
+            .target_level(crate::Target::from(env!("CARGO_PKG_NAME")), log::Level::Debug)
             .build();
         crate::manager::init(log_config, crate::manager::StdoutLogger);
         let before = std::time::Instant::now();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 //! This module is the anchor point for configuring and initializing the [log](https://crates.io/crates/log) system.
 
-use crate::config::{LogConfig, Target};
+use crate::config::LogConfig;
 use fern::Output;
 use log::Record;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
@@ -35,11 +35,6 @@ pub fn init<F: RecordLogger>(config: LogConfig, logger: F) {
     match LOG_STATE.compare_and_swap(LOG_NOT_INITIALIZED, LOG_INITIALIZING, Ordering::SeqCst) {
         LOG_NOT_INITIALIZED => {
             let mut dispatch = fern::Dispatch::new().level(config.root_level().to_level_filter());
-
-            if let Some(crate_log_level) = config.crate_level() {
-                let crate_name = Target::for_crate().to_string();
-                dispatch = dispatch.level_for(crate_name, crate_log_level.to_level_filter());
-            }
 
             if let Some(target_levels) = config.target_levels() {
                 for (target, level) in target_levels {

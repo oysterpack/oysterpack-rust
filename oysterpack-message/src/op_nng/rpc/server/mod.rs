@@ -25,7 +25,7 @@ use crate::{
     op_thread::ThreadConfig,
 };
 
-use log::{error, info};
+use log::*;
 use nng::{self, listener::Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error};
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,7 @@ impl Server {
                         },
                         Err(err) => {
                             match err.kind() {
-                                nng::ErrorKind::Closed => info!("server aio context is closed"),
+                                nng::ErrorKind::Closed => debug!("server aio context is closed"),
                                 _ => error!("aio receive error: {}", err),
                             }
 
@@ -178,7 +178,7 @@ impl Server {
                     .map_err(|err| op_error!(errors::AioReceiveError::from(err)))
                     .unwrap();
             }
-            info!("aio context receive operations have been initiated");
+            debug!("aio context receive operations have been initiated");
         }
 
         /***************************/
@@ -209,7 +209,7 @@ impl Server {
             .map_or_else(thread::Builder::new, |config| config.builder())
             .spawn(move || {
                 let _listener = listener_settings.start_listener(&socket).unwrap();
-                info!("socket listener has been started");
+                debug!("socket listener has been started");
 
                 start_aio_contexts(&aio_contexts);
                 {
@@ -220,7 +220,7 @@ impl Server {
                 // block until stop signal is received
                 let _ = stop_receiver.recv();
                 // when the thread exits, the socket listener and aio contexts will will be closed
-                info!("stopping server");
+                debug!("stopping server");
             })
             .expect("failed to spawn server thread");
 

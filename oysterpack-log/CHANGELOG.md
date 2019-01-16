@@ -6,12 +6,7 @@ This project adheres to [Semantic Versioning](http://semver.org/), as described 
 
 ## Unreleased
 
-### Added
-
-### Changed
+## \[0.1.1\] 2019-01-16
 
 ### Removed
-
-### Deprecated
-
-### Fixed
+- `LogConfig.crate_level`
