@@ -44,8 +44,8 @@ pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static {
 pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
-    aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
     aio_context_tickets: crossbeam::channel::Receiver<()>,
+    aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
 }
 
 impl AsyncClient {
@@ -250,7 +250,7 @@ impl Builder {
                     }
                     AioContextMessage::Remove(ref key) => {
                         if let Err(err) = tx_tickets.try_send(()) {
-                            error!("Failed to return ticket: {}", err);
+                            error!("Failed to return ticket, which implies the client has been dropped: {}", err);
                         }
                         aio_contexts.remove(key);
                     }
@@ -266,8 +266,8 @@ impl Builder {
         Ok(AsyncClient {
             socket,
             dialer,
-            aio_context_chan: tx,
             aio_context_tickets: rx_tickets,
+            aio_context_chan: tx,
         })
     }
 }
