@@ -391,7 +391,7 @@ fn async_client_send_with_callback() {
         .set_non_blocking(true)
         .set_reconnect_min_time(Duration::from_millis(100))
         .set_reconnect_max_time(Duration::from_millis(100))
-        .set_capacity(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
+        .set_max_concurrent_request_capacity(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
     let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
 
     for i in 0..AIO_CONTEXT_CAPACITY {

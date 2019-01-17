@@ -151,7 +151,7 @@ impl ClientSocketSettings {
 pub struct DialerSettings {
     url: String,
     non_blocking: bool,
-    aio_context_max_pool_size: Option<usize>,
+    max_concurrent_request_capacity: Option<usize>,
     recv_max_size: Option<usize>,
     no_delay: Option<bool>,
     keep_alive: Option<bool>,
@@ -168,7 +168,7 @@ impl DialerSettings {
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
-            aio_context_max_pool_size: None,
+            max_concurrent_request_capacity: None,
             reconnect_min_time: None,
             reconnect_max_time: None,
         }
@@ -236,8 +236,8 @@ impl DialerSettings {
     /// of socket contexts that will be created.
     /// - this setting only applies to AsyncClient(s)
     ///   - if not specified, then it will default to 1
-    pub fn aio_context_max_pool_size(&self) -> Option<usize> {
-        self.aio_context_max_pool_size
+    pub fn max_concurrent_request_capacity(&self) -> Option<usize> {
+        self.max_concurrent_request_capacity
     }
 
     /// The maximum message size that the will be accepted from a remote peer.
@@ -326,9 +326,9 @@ impl DialerSettings {
     }
 
     /// set the max capacity of concurrent async requests
-    pub fn set_capacity(self, count: NonZeroUsize) -> Self {
+    pub fn set_max_concurrent_request_capacity(self, count: NonZeroUsize) -> Self {
         let mut settings = self;
-        settings.aio_context_max_pool_size = Some(count.get());
+        settings.max_concurrent_request_capacity = Some(count.get());
         settings
     }
 

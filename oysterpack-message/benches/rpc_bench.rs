@@ -25,32 +25,39 @@ use criterion::Criterion;
 use sodiumoxide::crypto::{box_, secretbox};
 
 use std::{
-    fs,
+    collections::HashMap,
+    fmt, fs,
     io::{prelude::*, BufReader},
+    num::NonZeroUsize,
     path::PathBuf,
-    thread,
     sync::Arc,
-    time::Duration,
-    num::NonZeroUsize
+    thread,
+    time::{Duration, Instant},
 };
 
-use oysterpack_message::op_nng::rpc::{client::{
-    DialerSettings,
-    syncio::{
-        SyncClient
-    },
-    asyncio::{
-        AsyncClient, ReplyHandler
-    }
-}, server::*, MessageProcessor, MessageProcessorFactory};
-use oysterpack_uid::ULID;
-use oysterpack_errors::Error;
 use log::*;
+use nng::aio;
+use oysterpack_errors::Error;
+use oysterpack_message::op_nng::{
+    new_aio_context,
+    rpc::{
+        client::{
+            asyncio::{AsyncClient, ReplyHandler},
+            syncio::SyncClient,
+            DialerSettings,
+        },
+        server::*,
+        MessageProcessor, MessageProcessorFactory,
+    },
+};
+use oysterpack_uid::ULID;
 
 criterion_group!(
     benches,
     nng_sync_client_context_bench,
-    nng_async_client_context_bench
+    nng_async_client_context_bench,
+    aio_context_std_hashmap_storage_bench,
+    aio_context_fnv_hashmap_storage_bench
 );
 
 criterion_main!(benches);
@@ -86,8 +93,8 @@ fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize)
     let url = Arc::new(format!("inproc://{}", ULID::generate()));
 
     // start a server with 2 aio contexts
-    let listener_settings =
-        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
+    let listener_settings = ListenerSettings::new(&*url.as_str())
+        .set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
     let server = Server::builder(listener_settings, EchoProcessor)
         .spawn()
         .unwrap();
@@ -98,9 +105,15 @@ fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize)
         .set_reconnect_max_time(Duration::from_millis(10));
 
     let mut client = SyncClient::dial(dialer_settings.clone()).unwrap();
-    info!("received reply: {:?}",client.send(nng::Message::new().unwrap()));
+    info!(
+        "received reply: {:?}",
+        client.send(nng::Message::new().unwrap())
+    );
 
-    let bench_function_id = format!("nng_sync_client_bench(server aio context count = {})", server_aio_context_count);
+    let bench_function_id = format!(
+        "nng_sync_client_bench(server aio context count = {})",
+        server_aio_context_count
+    );
     c.bench_function(bench_function_id.as_str(), move |b| {
         b.iter(|| {
             client.send(nng::Message::new().unwrap()).unwrap();
@@ -112,15 +125,10 @@ fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize)
 }
 
 fn nng_async_client_context_bench(c: &mut Criterion) {
-    async_client_context_bench(c, 1,1);
-    async_client_context_bench(c, 2,1);
-    async_client_context_bench(c, num_cpus::get(),1);
-    async_client_context_bench(c, num_cpus::get(),num_cpus::get()/2);
-//    async_client_context_bench(c, 1,2);
-//    async_client_context_bench(c, 1,4);
-//    async_client_context_bench(c, 1,num_cpus::get());
-//    async_client_context_bench(c, 2);
-//    async_client_context_bench(c, num_cpus::get());
+    async_client_context_bench(c, 1, 1);
+    async_client_context_bench(c, 2, 1);
+    async_client_context_bench(c, num_cpus::get(), 1);
+    async_client_context_bench(c, num_cpus::get(), num_cpus::get() / 2);
 }
 
 struct NoopReplyHandler;
@@ -133,14 +141,18 @@ impl ReplyHandler for NoopReplyHandler {
     }
 }
 
-fn async_client_context_bench(c: &mut Criterion, server_aio_context_count: usize, client_aio_context_count: usize) {
+fn async_client_context_bench(
+    c: &mut Criterion,
+    server_aio_context_count: usize,
+    client_aio_context_count: usize,
+) {
     oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
     let url = Arc::new(format!("inproc://{}", ULID::generate()));
 
     // start a server with 2 aio contexts
-    let listener_settings =
-        ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
+    let listener_settings = ListenerSettings::new(&*url.as_str())
+        .set_aio_count(NonZeroUsize::new(server_aio_context_count).unwrap());
     let server = Server::builder(listener_settings, EchoProcessor)
         .spawn()
         .unwrap();
@@ -149,10 +161,12 @@ fn async_client_context_bench(c: &mut Criterion, server_aio_context_count: usize
         .set_non_blocking(true)
         .set_reconnect_min_time(Duration::from_millis(10))
         .set_reconnect_max_time(Duration::from_millis(10))
-        .set_capacity(NonZeroUsize::new(client_aio_context_count).unwrap());
+        .set_max_concurrent_request_capacity(NonZeroUsize::new(client_aio_context_count).unwrap());
 
     let mut client = AsyncClient::dial(dialer_settings.clone()).unwrap();
-    client.send_with_callback(nng::Message::new().unwrap(),NoopReplyHandler).unwrap();
+    client
+        .send_with_callback(nng::Message::new().unwrap(), NoopReplyHandler)
+        .unwrap();
     info!("sent async request");
     thread::yield_now();
     loop {
@@ -162,10 +176,15 @@ fn async_client_context_bench(c: &mut Criterion, server_aio_context_count: usize
         thread::yield_now();
     }
 
-    let bench_function_id = format!("nng_async_client_bench(aio context counts: server = {}, client = {} )", server_aio_context_count, client_aio_context_count);
+    let bench_function_id = format!(
+        "nng_async_client_bench(aio context counts: server = {}, client = {} )",
+        server_aio_context_count, client_aio_context_count
+    );
     c.bench_function(bench_function_id.as_str(), move |b| {
         b.iter(|| {
-            if let Err(err) = client.send_with_callback(nng::Message::new().unwrap(),NoopReplyHandler) {
+            if let Err(err) =
+                client.send_with_callback(nng::Message::new().unwrap(), NoopReplyHandler)
+            {
                 loop {
                     if client.available_capacity() > 0 {
                         break;
@@ -178,4 +197,73 @@ fn async_client_context_bench(c: &mut Criterion, server_aio_context_count: usize
 
     server.stop();
     server.join();
+}
+
+fn aio_context_std_hashmap_storage_bench(c: &mut Criterion) {
+    let url = format!("inproc://{}", ULID::generate());
+
+    let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
+    socket.set_nonblocking(true);
+    let context = new_aio_context(&socket).unwrap();
+    let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+
+    let context_id = ContextId::new(&context);
+    let aio_context = AioContext::from((aio, context));
+    let mut aio_contexts = HashMap::with_capacity(16);
+    aio_contexts.insert(context_id, aio_context);
+    c.bench_function("aio_context_std_hashmap_storage_bench", move |b| {
+        b.iter(|| {
+            let aio_context = aio_contexts.remove(&context_id).unwrap();
+            aio_contexts.insert(context_id, aio_context);
+        })
+    });
+}
+
+fn aio_context_fnv_hashmap_storage_bench(c: &mut Criterion) {
+    let url = format!("inproc://{}", ULID::generate());
+
+    let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
+    socket.set_nonblocking(true);
+    let context = new_aio_context(&socket).unwrap();
+    let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+
+    let context_id = ContextId::new(&context);
+    let aio_context = AioContext::from((aio, context));
+    let mut aio_contexts = fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
+        16,
+        fnv::FnvBuildHasher::default(),
+    );
+    aio_contexts.insert(context_id, aio_context);
+    c.bench_function("aio_context_fnv_hashmap_storage_bench", move |b| {
+        b.iter(|| {
+            let aio_context = aio_contexts.remove(&context_id).unwrap();
+            aio_contexts.insert(context_id, aio_context);
+        })
+    });
+}
+
+struct AioContext {
+    _aio: aio::Aio,
+    context: aio::Context,
+}
+
+impl From<(aio::Aio, aio::Context)> for AioContext {
+    fn from((aio, context): (aio::Aio, aio::Context)) -> Self {
+        AioContext { _aio: aio, context }
+    }
+}
+
+impl fmt::Debug for AioContext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AioContext({})", self.context.id())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
+struct ContextId(Instant, i32);
+
+impl ContextId {
+    fn new(context: &aio::Context) -> ContextId {
+        ContextId(Instant::now(), context.id())
+    }
 }

@@ -26,7 +26,6 @@ use log::*;
 use nng::{aio, options::Options};
 use oysterpack_errors::{op_error, Error};
 use std::{
-    collections::HashMap,
     fmt,
     panic::RefUnwindSafe,
     sync::{Arc, Mutex},
@@ -52,7 +51,7 @@ impl AsyncClient {
     // TODO: remove
     /// Exposed temporarily for POC unit tests
     #[allow(dead_code)]
-    pub(crate) fn socket(&self) -> &nng::Socket {
+    pub fn socket(&self) -> &nng::Socket {
         &self.socket
     }
 
@@ -232,17 +231,25 @@ impl Builder {
     pub fn build(self) -> Result<AsyncClient, Error> {
         let mut this = self;
 
-        let max_context_count = this.dialer_settings.aio_context_max_pool_size.unwrap_or(1);
+        let max_concurrent_request_capacity = this
+            .dialer_settings
+            .max_concurrent_request_capacity
+            .unwrap_or(1);
         let socket = ClientSocketSettings::create_socket(this.socket_settings.take())?;
         let dialer = this.dialer_settings.start_dialer(&socket)?;
 
-        let (tx_tickets, rx_tickets) = crossbeam::channel::bounded(max_context_count);
-        let (tx, rx) = crossbeam::channel::bounded(max_context_count * 2);
-        for _ in 0..max_context_count {
+        let (tx_tickets, rx_tickets) = crossbeam::channel::bounded(max_concurrent_request_capacity);
+        let (tx, rx) = crossbeam::channel::bounded(max_concurrent_request_capacity * 2);
+        for _ in 0..max_concurrent_request_capacity {
             tx_tickets.send(()).unwrap();
         }
         thread::spawn(move || {
-            let mut aio_contexts = HashMap::with_capacity(max_context_count);
+            let mut aio_contexts =
+                // for this use case, benchmarks show that FNV hash is ~10% faster than SipHash (Rust's default)
+                fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
+                    max_concurrent_request_capacity,
+                    fnv::FnvBuildHasher::default(),
+                );
             for msg in rx {
                 match msg {
                     AioContextMessage::Insert((key, aio_context)) => {

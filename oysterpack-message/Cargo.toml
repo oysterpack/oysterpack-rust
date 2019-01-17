@@ -24,6 +24,7 @@ parity-snappy = "0.1.0"
 
 nng = "0.3.0"
 crossbeam = "0.6.0"
+fnv = "1.0.6"
 
 [dev-dependencies]
 version-sync = "0.5"

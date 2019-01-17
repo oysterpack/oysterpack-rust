@@ -36,13 +36,11 @@ pub struct SyncClient {
 impl SyncClient {
     /// Sends the request and wait for a reply synchronously
     /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-    pub fn send(&mut self, req: nng::Message) -> Result<nng::Message, Error>
-    {
+    pub fn send(&mut self, req: nng::Message) -> Result<nng::Message, Error> {
         self.socket
             .send(req)
             .map_err(|err| op_error!(errors::SocketSendError::from(err)))?;
-        self
-            .socket
+        self.socket
             .recv()
             .map_err(|err| op_error!(errors::SocketRecvError::from(err)))
     }
