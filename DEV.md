@@ -59,4 +59,4 @@ It is designed with programmers and system administrators in mind. glogg can be 
 - [ ] review README.md
 - [ ] tag the module using the following naming convention : `{module_name}_v{module_version}`
     - `git tag -a oysterpack_built_v0.2.0 -m "oysterpack_built 0.2.0 release"`
-    - `git push --tags`
+    - `git push --tags` 

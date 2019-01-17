@@ -375,3 +375,76 @@ fn async_client_send_with_callback_restart_server() {
     assert_eq!(client.max_capacity(), client.available_capacity());
     assert_eq!(client.used_capacity(), 0);
 }
+
+type AioContext = (nng::aio::Aio, nng::aio::Context);
+
+type ContextId = i32;
+
+struct AioContexts(smallvec::SmallVec<[Option<(ContextId, AioContext)>; AioContexts::CACHE_SIZE]>);
+
+impl AioContexts {
+    const CACHE_SIZE: usize = 128;
+
+    fn push(&mut self, entry: (ContextId, AioContext)) {
+        for i in 0..AioContexts::CACHE_SIZE {
+            if self.0[i].is_none() {
+                self.0[i] = Some(entry);
+                return;
+            }
+        }
+        self.0.push(Some(entry));
+    }
+
+    fn remove(&mut self, context_id: ContextId) -> Option<AioContext> {
+        for i in 0..AioContexts::CACHE_SIZE {
+            if let Some((key, _)) = self.0[i] {
+                if context_id == key {
+                    let (_, value) = self.0[i].take().unwrap();
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl Default for AioContexts {
+    fn default() -> AioContexts {
+        let mut aio_contexts =
+            smallvec::SmallVec::<[Option<(ContextId, AioContext)>; AioContexts::CACHE_SIZE]>::new();
+        for _ in 0..AioContexts::CACHE_SIZE {
+            aio_contexts.push(None);
+        }
+        AioContexts(aio_contexts)
+    }
+}
+
+#[test]
+fn aio_contexts_smallvec() {
+    let url = format!("inproc://{}", ULID::generate());
+
+    let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
+    socket.set_nonblocking(true);
+
+    let mut aio_contexts = AioContexts::default();
+
+    let mut context_ids = Vec::new();
+    for i in 0..AioContexts::CACHE_SIZE {
+        let context = new_aio_context(&socket).unwrap();
+        let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+        context_ids.push(context.id());
+        aio_contexts.push((context.id(), (aio, context)))
+    }
+
+    for entry in aio_contexts.0.iter() {
+        assert!(entry.is_some());
+    }
+
+    for context_id in context_ids.into_iter() {
+        assert!(aio_contexts.remove(context_id).is_some());
+    }
+
+    for entry in aio_contexts.0 {
+        assert!(entry.is_none());
+    }
+}

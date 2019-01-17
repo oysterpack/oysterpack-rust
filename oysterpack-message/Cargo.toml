@@ -25,9 +25,10 @@ parity-snappy = "0.1.0"
 nng = "0.3.0"
 crossbeam = "0.6.0"
 fnv = "1.0.6"
+smallvec = "0.6.7"
 
 [dev-dependencies]
-version-sync = "0.5"
+version-sync = "0.6"
 criterion = "0.2.7"
 oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 pretty_assertions = "0.5.1"

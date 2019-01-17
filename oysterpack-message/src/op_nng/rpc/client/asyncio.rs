@@ -43,7 +43,7 @@ pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static {
 pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
-    aio_context_tickets: crossbeam::channel::Receiver<()>,
+    aio_context_ticket_rx: crossbeam::channel::Receiver<()>,
     aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
 }
 
@@ -59,7 +59,7 @@ impl AsyncClient {
     where
         Callback: ReplyHandler,
     {
-        match self.aio_context_tickets.try_recv() {
+        match self.aio_context_ticket_rx.try_recv() {
             Ok(_) => {
                 let context = new_aio_context(&self.socket)?;
                 let aio_state = Arc::new(Mutex::new(AioState::Idle));
@@ -128,7 +128,7 @@ impl AsyncClient {
             }
             Err(_) => Err(op_error!(AioContextAtMaxCapacity::new(
                 &self.dialer,
-                self.aio_context_tickets.capacity().unwrap_or(0)
+                self.aio_context_ticket_rx.capacity().unwrap_or(0)
             ))),
         }
     }
@@ -163,12 +163,12 @@ impl AsyncClient {
     /// returns the max number of concurrent async requests
     /// - this never return 0 - if it does, then there is a bug
     pub fn max_capacity(&self) -> usize {
-        self.aio_context_tickets.capacity().unwrap_or(0)
+        self.aio_context_ticket_rx.capacity().unwrap_or(0)
     }
 
     /// returns the available capacity for submitting additional requests
     pub fn available_capacity(&self) -> usize {
-        self.aio_context_tickets.len()
+        self.aio_context_ticket_rx.len()
     }
 
     /// returns the available capacity for submitting additional requests
@@ -231,12 +231,19 @@ impl Builder {
         let socket = ClientSocketSettings::create_socket(this.socket_settings.take())?;
         let dialer = this.dialer_settings.start_dialer(&socket)?;
 
+        // the channel is used to store request tickets, which limit the number of concurrent requests
+        // a ticket is required in order to submit a request
+        // once the request is complete, the ticket is returned
         let (tx_tickets, rx_tickets) = crossbeam::channel::bounded(max_concurrent_request_capacity);
-        let (tx, rx) = crossbeam::channel::bounded(max_concurrent_request_capacity * 2);
         for _ in 0..max_concurrent_request_capacity {
             tx_tickets.send(()).unwrap();
         }
-        thread::spawn(move || {
+        let (tx, rx) = crossbeam::channel::bounded(max_concurrent_request_capacity * 2);
+
+        // each AsyncClient runs a background
+        thread::Builder::new()
+            .stack_size(1024)
+            .spawn(move || {
             let mut aio_contexts =
                 // for this use case, benchmarks show that FNV hash is ~10% faster than SipHash (Rust's default)
                 fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
@@ -261,12 +268,12 @@ impl Builder {
                     }
                 }
             }
-        });
+        }).expect("Failed to spawn AsyncClient thread");
 
         Ok(AsyncClient {
             socket,
             dialer,
-            aio_context_tickets: rx_tickets,
+            aio_context_ticket_rx: rx_tickets,
             aio_context_chan: tx,
         })
     }

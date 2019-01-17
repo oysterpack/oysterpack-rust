@@ -57,7 +57,8 @@ criterion_group!(
     nng_sync_client_context_bench,
     nng_async_client_context_bench,
     aio_context_std_hashmap_storage_bench,
-    aio_context_fnv_hashmap_storage_bench
+    aio_context_fnv_hashmap_storage_bench,
+    aio_context_smallvec_storage_bench
 );
 
 criterion_main!(benches);
@@ -224,20 +225,126 @@ fn aio_context_fnv_hashmap_storage_bench(c: &mut Criterion) {
 
     let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
     socket.set_nonblocking(true);
-    let context = new_aio_context(&socket).unwrap();
-    let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
 
-    let context_id = ContextId::new(&context);
-    let aio_context = AioContext::from((aio, context));
-    let mut aio_contexts = fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
-        16,
-        fnv::FnvBuildHasher::default(),
-    );
-    aio_contexts.insert(context_id, aio_context);
-    c.bench_function("aio_context_fnv_hashmap_storage_bench", move |b| {
-        b.iter(|| {
-            let aio_context = aio_contexts.remove(&context_id).unwrap();
+    {
+        let context = new_aio_context(&socket).unwrap();
+        let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+        let context_id = ContextId::new(&context);
+        let aio_context = AioContext::from((aio, context));
+        let mut aio_contexts = fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
+            16,
+            fnv::FnvBuildHasher::default(),
+        );
+        aio_contexts.insert(context_id, aio_context);
+        c.bench_function("aio_context_fnv_hashmap_storage_bench(1 entry)", move |b| {
+            b.iter(|| {
+                let aio_context = aio_contexts.remove(&context_id).unwrap();
+                aio_contexts.insert(context_id, aio_context);
+            })
+        });
+    }
+
+    let mut bench = |capacity: usize| {
+        let mut aio_contexts = fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
+            capacity,
+            fnv::FnvBuildHasher::default(),
+        );
+        for _ in 0..capacity {
+            let context = new_aio_context(&socket).unwrap();
+            let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+            let context_id = ContextId::new(&context);
+            let aio_context = AioContext::from((aio, context));
             aio_contexts.insert(context_id, aio_context);
+        }
+        let context_id = *aio_contexts.keys().nth(0).unwrap();
+        c.bench_function(
+            format!(
+                "aio_context_fnv_hashmap_storage_bench({} entries)",
+                capacity
+            )
+            .as_str(),
+            move |b| {
+                b.iter(|| {
+                    let aio_context = aio_contexts.remove(&context_id).unwrap();
+                    aio_contexts.insert(context_id, aio_context);
+                })
+            },
+        );
+    };
+
+    bench(16);
+    bench(128);
+    bench(256);
+    bench(1024);
+}
+
+fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
+    type AioContext = (nng::aio::Aio, nng::aio::Context);
+
+    type ContextId = i32;
+
+    struct AioContexts(
+        smallvec::SmallVec<[Option<(ContextId, AioContext)>; AioContexts::CACHE_SIZE]>,
+    );
+
+    impl AioContexts {
+        const CACHE_SIZE: usize = 16;
+
+        fn push(&mut self, entry: (ContextId, AioContext)) {
+            for i in 0..AioContexts::CACHE_SIZE {
+                if self.0[i].is_none() {
+                    self.0[i] = Some(entry);
+                    return;
+                }
+            }
+            self.0.push(Some(entry));
+        }
+
+        fn remove(&mut self, context_id: ContextId) -> Option<AioContext> {
+            for i in 0..AioContexts::CACHE_SIZE {
+                if let Some((key, _)) = self.0[i] {
+                    if context_id == key {
+                        let (_, value) = self.0[i].take().unwrap();
+                        return Some(value);
+                    }
+                }
+            }
+            None
+        }
+    }
+
+    impl Default for AioContexts {
+        fn default() -> AioContexts {
+            let mut aio_contexts = smallvec::SmallVec::<
+                [Option<(ContextId, AioContext)>; AioContexts::CACHE_SIZE],
+            >::new();
+            for _ in 0..AioContexts::CACHE_SIZE {
+                aio_contexts.push(None);
+            }
+            AioContexts(aio_contexts)
+        }
+    }
+
+    let url = format!("inproc://{}", ULID::generate());
+
+    let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
+    socket.set_nonblocking(true);
+
+    let mut aio_contexts = AioContexts::default();
+
+    let mut context_ids = Vec::new();
+    for i in 0..AioContexts::CACHE_SIZE {
+        let context = new_aio_context(&socket).unwrap();
+        let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+        context_ids.push(context.id());
+        aio_contexts.push((context.id(), (aio, context)))
+    }
+    let context_id = context_ids.pop().unwrap();
+
+    c.bench_function(format!("aio_context_smallvec_storage_bench({} entry)",AioContexts::CACHE_SIZE).as_str(), move |b| {
+        b.iter(|| {
+            let aio_context = aio_contexts.remove(context_id).unwrap();
+            aio_contexts.push((context_id, aio_context));
         })
     });
 }
