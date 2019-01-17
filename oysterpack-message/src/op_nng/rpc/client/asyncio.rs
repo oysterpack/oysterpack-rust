@@ -44,6 +44,7 @@ pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
     aio_context_ticket_rx: crossbeam::channel::Receiver<()>,
+    aio_context_ticket_tx: crossbeam::channel::Sender<()>,
     aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
 }
 
@@ -69,14 +70,17 @@ impl AsyncClient {
                 let callback_context = context.clone();
                 let aio_context_chan = self.aio_context_chan.clone();
                 let context_key = ContextId::new(&context);
+                let aio_context_ticket_tx = self.aio_context_ticket_tx.clone();
                 let aio = nng::aio::Aio::with_callback(move |aio| {
                     let close = || {
-                        let context_id = callback_context.id();
-                        debug!("closing context({}) ... ", context_id);
+                        debug!("closing context({}) ... ", context_key);
+                        if let Err(err) = aio_context_ticket_tx.try_send(()) {
+                            error!("Failed to return ticket, which implies the client has been dropped: {}", err);
+                        }
                         if let Err(err) = aio_context_chan.send(AioContextMessage::Remove(context_key)) {
                             warn!("Failed to unregister aio context - ignore this warning if the app is shutting down: {}", err);
                         }
-                        debug!("closed context({})", context_id);
+                        debug!("closed context({})", context_key);
                     };
 
                     match aio.result().unwrap() {
@@ -256,9 +260,6 @@ impl Builder {
                         aio_contexts.insert(key, aio_context);
                     }
                     AioContextMessage::Remove(ref key) => {
-                        if let Err(err) = tx_tickets.try_send(()) {
-                            error!("Failed to return ticket, which implies the client has been dropped: {}", err);
-                        }
                         aio_contexts.remove(key);
                     }
                     AioContextMessage::Count(sender) => {
@@ -274,6 +275,7 @@ impl Builder {
             socket,
             dialer,
             aio_context_ticket_rx: rx_tickets,
+            aio_context_ticket_tx: tx_tickets,
             aio_context_chan: tx,
         })
     }
@@ -308,6 +310,12 @@ struct ContextId(Instant, i32);
 impl ContextId {
     fn new(context: &aio::Context) -> ContextId {
         ContextId(Instant::now(), context.id())
+    }
+}
+
+impl fmt::Display for ContextId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}-{}", self.0, self.1)
     }
 }
 
