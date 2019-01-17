@@ -48,13 +48,6 @@ pub struct AsyncClient {
 }
 
 impl AsyncClient {
-    // TODO: remove
-    /// Exposed temporarily for POC unit tests
-    #[allow(dead_code)]
-    pub fn socket(&self) -> &nng::Socket {
-        &self.socket
-    }
-
     /// Sends the request and invokes the callback with the reply asynchronously
     /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
     /// - if the req
