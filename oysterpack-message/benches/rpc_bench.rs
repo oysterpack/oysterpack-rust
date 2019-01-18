@@ -341,12 +341,19 @@ fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
     }
     let context_id = context_ids.pop().unwrap();
 
-    c.bench_function(format!("aio_context_smallvec_storage_bench({} entry)",AioContexts::CACHE_SIZE).as_str(), move |b| {
-        b.iter(|| {
-            let aio_context = aio_contexts.remove(context_id).unwrap();
-            aio_contexts.push((context_id, aio_context));
-        })
-    });
+    c.bench_function(
+        format!(
+            "aio_context_smallvec_storage_bench({} entry)",
+            AioContexts::CACHE_SIZE
+        )
+        .as_str(),
+        move |b| {
+            b.iter(|| {
+                let aio_context = aio_contexts.remove(context_id).unwrap();
+                aio_contexts.push((context_id, aio_context));
+            })
+        },
+    );
 }
 
 struct AioContext {

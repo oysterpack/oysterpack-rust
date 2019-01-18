@@ -22,6 +22,7 @@ use crate::op_nng::{
     errors::{AioCreateError, AioReceiveError, AioSendError},
     new_aio_context,
 };
+use crossbeam::channel::select;
 use log::*;
 use nng::{aio, options::Options};
 use oysterpack_errors::{op_error, Error};
@@ -30,7 +31,7 @@ use std::{
     panic::RefUnwindSafe,
     sync::{Arc, Mutex},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Async reply handler that is used as a callback by the AsyncClient
@@ -40,18 +41,32 @@ pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static {
 }
 
 /// nng async client
+///
+/// # Design
+/// - the AsyncClient limits the number of concurrent requests using a channel to implement a ticketing system
+///   - the AsyncClient is initialized with a ticket channel that is full
+///   - each request obtains a ticket from the channel via a `recv()`
+///     - if there are no tickets, then an AioContextAtMaxCapacity error is returned
+///   - when the callback is done, it will return the ticket back to the channel via a `try_send(())`
 pub struct AsyncClient {
     dialer: nng::dialer::Dialer,
     socket: nng::Socket,
     aio_context_ticket_rx: crossbeam::channel::Receiver<()>,
     aio_context_ticket_tx: crossbeam::channel::Sender<()>,
-    aio_context_chan: crossbeam::channel::Sender<AioContextMessage>,
+    aio_context_registry_chan: crossbeam::channel::Sender<AioContextMessage>,
 }
 
 impl AsyncClient {
     /// Sends the request and invokes the callback with the reply asynchronously
-    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
-    /// - if the req
+    ///
+    /// ## Errors
+    /// - [AioContextAtMaxCapacity]()
+    /// - [AioCreateError]()
+    /// - [AioSendError]()
+    /// - [AioContextChannelClosed]()
+    ///
+    /// ## Callback Errors
+    /// - [AioReceiveError]()
     pub fn send_with_callback<Callback>(
         &mut self,
         req: nng::Message,
@@ -68,7 +83,7 @@ impl AsyncClient {
                 let mut cb = cb;
                 let callback_aio_state = Arc::clone(&aio_state);
                 let callback_context = context.clone();
-                let aio_context_chan = self.aio_context_chan.clone();
+                let aio_context_chan = self.aio_context_registry_chan.clone();
                 let context_key = ContextId::new(&context);
                 let aio_context_ticket_tx = self.aio_context_ticket_tx.clone();
                 let aio = nng::aio::Aio::with_callback(move |aio| {
@@ -122,7 +137,7 @@ impl AsyncClient {
                 aio.send(&context, req)
                     .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))?;
                 // register the aio context
-                self.aio_context_chan
+                self.aio_context_registry_chan
                     .send(AioContextMessage::Insert((
                         context_key,
                         AioContext::from((aio, context)),
@@ -135,6 +150,26 @@ impl AsyncClient {
                 self.aio_context_ticket_rx.capacity().unwrap_or(0)
             ))),
         }
+    }
+
+    /// the reply will be sent on the specified channel
+    /// - the handle is opaque and simply handed back with the reply. It can be used to correlate a
+    ///   request with a reply
+    /// - if the reply channel is full, then the specified action will be taken
+    /// - if the reply channel is disconnected, then the message is dropped
+    /// - if the message is dropped for any reason, then an error message will be logged
+    pub fn send_with_reply_chan<T>(
+        &mut self,
+        req: nng::Message,
+        reply_chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
+        handle: T,
+        reply_chan_full_action: ReplyChanFullAction,
+    ) -> Result<(), Error>
+    where
+        T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
+    {
+        let reply_handler = ReplyChannel::new(reply_chan, handle, reply_chan_full_action);
+        self.send_with_callback(req, reply_handler)
     }
 
     /// constructor
@@ -155,7 +190,7 @@ impl AsyncClient {
     /// Returns the number of aio contexts that are currently active.
     pub fn context_count(&self) -> usize {
         let (tx, rx) = crossbeam::channel::bounded(1);
-        self.aio_context_chan
+        self.aio_context_registry_chan
             .send(AioContextMessage::Count(tx))
             .map(|_| match rx.recv() {
                 Ok(count) => count,
@@ -188,6 +223,74 @@ impl fmt::Debug for AsyncClient {
             Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
         }
     }
+}
+
+/// The reply is relayed to the specifed channel along with the handle.
+/// - the handle can be used to correlate the reply to a request
+#[derive(Debug, Clone)]
+struct ReplyChannel<T>
+where
+    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
+{
+    chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
+    handle: Option<T>,
+    reply_chan_full_action: ReplyChanFullAction,
+}
+
+impl<T> ReplyChannel<T>
+where
+    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
+{
+    fn new(
+        chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
+        handle: T,
+        reply_chan_full_action: ReplyChanFullAction,
+    ) -> ReplyChannel<T> {
+        ReplyChannel {
+            chan,
+            handle: Some(handle),
+            reply_chan_full_action,
+        }
+    }
+}
+
+impl<T> ReplyHandler for ReplyChannel<T>
+where
+    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
+{
+    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
+        if let Err(crossbeam::channel::TrySendError::Full(msg)) =
+            self.chan.try_send((result, self.handle.take().unwrap()))
+        {
+            match self.reply_chan_full_action {
+                ReplyChanFullAction::DropMessage => {
+                    error!("reply channel is full - dropping message for: {}", msg.1);
+                }
+                ReplyChanFullAction::Timeout(timeout) => {
+                    let handle = msg.1.to_string();
+                    select! {
+                        send(self.chan, msg) -> res => {
+                            if let Err(crossbeam::channel::SendError(msg)) = res {
+                                error!("reply channel is disconnected - dropping message for: {}", msg.1);
+                            }
+                        },
+                        recv(crossbeam::channel::after(timeout)) -> _ => {
+                            error!("reply channel is full - dropping message for: {}", handle);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Defines the action to take when the repy cannot be delivered because the channel if full.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyChanFullAction {
+    /// If the reply channel is full, then drop the message
+    DropMessage,
+    /// If the channel is full, then retry to send with a timeout
+    Timeout(Duration),
 }
 
 /// Aio state for socket context.
@@ -248,35 +351,36 @@ impl Builder {
         thread::Builder::new()
             .stack_size(1024)
             .spawn(move || {
-            let mut aio_contexts =
+                let mut aio_contexts =
                 // for this use case, benchmarks show that FNV hash is ~10% faster than SipHash (Rust's default)
                 fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
                     max_concurrent_request_capacity,
                     fnv::FnvBuildHasher::default(),
                 );
-            for msg in rx {
-                match msg {
-                    AioContextMessage::Insert((key, aio_context)) => {
-                        aio_contexts.insert(key, aio_context);
-                    }
-                    AioContextMessage::Remove(ref key) => {
-                        aio_contexts.remove(key);
-                    }
-                    AioContextMessage::Count(sender) => {
-                        if let Err(err) = sender.try_send(aio_contexts.len()) {
-                            error!("Failed send context count on reply channel: {}", err);
+                for msg in rx {
+                    match msg {
+                        AioContextMessage::Insert((key, aio_context)) => {
+                            aio_contexts.insert(key, aio_context);
+                        }
+                        AioContextMessage::Remove(ref key) => {
+                            aio_contexts.remove(key);
+                        }
+                        AioContextMessage::Count(sender) => {
+                            if let Err(err) = sender.try_send(aio_contexts.len()) {
+                                error!("Failed send context count on reply channel: {}", err);
+                            }
                         }
                     }
                 }
-            }
-        }).expect("Failed to spawn AsyncClient thread");
+            })
+            .expect("Failed to spawn AsyncClient thread");
 
         Ok(AsyncClient {
             socket,
             dialer,
             aio_context_ticket_rx: rx_tickets,
             aio_context_ticket_tx: tx_tickets,
-            aio_context_chan: tx,
+            aio_context_registry_chan: tx,
         })
     }
 }
@@ -320,13 +424,19 @@ impl fmt::Display for ContextId {
 }
 
 pub mod errors {
-    //! asyncio errors
+    //! AsyncClient specific errors
 
     use nng::options::Options;
     use oysterpack_errors::IsError;
     use std::fmt;
 
-    /// Means all nng aio contexts in the client pool are working on requests
+    /// The channel receiver is owned by the AsyncClient's aio context registry thread.
+    /// Thus, the only way this error scenario can occur is if the thread panics and exits.
+    /// *This should never happen*. If it does, then there is a pretty serious bug ;(
+    ///
+    /// If this error does occur, then it renders the AsyncClient useless.
+    /// The only way application code can handle this error is to discard the AsyncClient and create
+    /// a new instance.
     #[derive(Debug, Clone, Eq, PartialEq)]
     pub struct AioContextChannelClosed {
         url: String,
