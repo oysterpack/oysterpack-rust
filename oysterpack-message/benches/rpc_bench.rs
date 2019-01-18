@@ -178,7 +178,7 @@ fn async_client_context_bench(
     }
 
     let bench_function_id = format!(
-        "nng_async_client_bench(aio context counts: server = {}, client = {} )",
+        "nng_async_client_bench(aio context counts: server = {}, client = {})",
         server_aio_context_count, client_aio_context_count
     );
     c.bench_function(bench_function_id.as_str(), move |b| {

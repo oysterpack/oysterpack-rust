@@ -16,12 +16,9 @@
 
 //! Asynchronous client
 
-use self::errors::{AioContextAtMaxCapacity, AioContextChannelClosed};
+use errors::{AioContextAtMaxCapacity, AioContextChannelClosed, AioCreateError, AioReceiveError, AioSendError};
 use super::{ClientSocketSettings, DialerSettings};
-use crate::op_nng::{
-    errors::{AioCreateError, AioReceiveError, AioSendError},
-    new_aio_context,
-};
+use crate::op_nng::new_aio_context;
 use crossbeam::channel::select;
 use log::*;
 use nng::{aio, options::Options};
@@ -59,14 +56,14 @@ pub struct AsyncClient {
 impl AsyncClient {
     /// Sends the request and invokes the callback with the reply asynchronously
     ///
-    /// ## Errors
-    /// - [AioContextAtMaxCapacity]()
-    /// - [AioCreateError]()
-    /// - [AioSendError]()
-    /// - [AioContextChannelClosed]()
+    /// ## Send Errors (means the async task failed to be submitted)
+    /// - [AioContextAtMaxCapacity](errors/struct.AioContextAtMaxCapacity.html)
+    /// - [AioCreateError](../../../../../oysterpack_message/op_nng/errors/struct.AioCreateError.html)
+    /// - [AioSendError](../../../../../oysterpack_message/op_nng/errors/struct.AioSendError.html)
+    /// - [AioContextChannelClosed](errors/struct.AioContextChannelClosed.html)
     ///
     /// ## Callback Errors
-    /// - [AioReceiveError]()
+    /// - [AioReceiveError](../../../../../oysterpack_message/op_nng/errors/struct.AioReceiveError.html)
     pub fn send_with_callback<Callback>(
         &mut self,
         req: nng::Message,
@@ -313,21 +310,28 @@ pub struct Builder {
 
 impl Builder {
     /// constructor
-    pub fn new(dialer_settings: DialerSettings) -> Builder {
-        Builder {
+    pub fn new(dialer_settings: DialerSettings) -> Self {
+        Self {
             dialer_settings,
             socket_settings: None,
         }
     }
 
     /// Configures the socket
-    pub fn socket_settings(self, socket_settings: ClientSocketSettings) -> Builder {
+    pub fn socket_settings(self, socket_settings: ClientSocketSettings) -> Self {
         let mut builder = self;
         builder.socket_settings = Some(socket_settings);
         builder
     }
 
     /// builds a new AsyncClient
+    ///
+    /// ## Errors
+    /// - [SocketCreateError](../../../../../oysterpack_message/op_nng/errors/struct.SocketCreateError.html)
+    /// - [SocketSetOptError](../../../../../oysterpack_message/op_nng/errors/struct.SocketSetOptError.html)
+    /// - [DialerCreateError](../errors/struct.DialerCreateError.html)
+    /// - [DialerSetOptError](../errors/struct.DialerSetOptError.html)
+    /// - [DialerStartError](../errors/struct.DialerStartError.html)
     pub fn build(self) -> Result<AsyncClient, Error> {
         let mut this = self;
 
@@ -392,7 +396,7 @@ struct AioContext {
 
 impl From<(aio::Aio, aio::Context)> for AioContext {
     fn from((aio, context): (aio::Aio, aio::Context)) -> Self {
-        AioContext { _aio: aio, context }
+        Self { _aio: aio, context }
     }
 }
 
@@ -412,8 +416,8 @@ enum AioContextMessage {
 struct ContextId(Instant, i32);
 
 impl ContextId {
-    fn new(context: &aio::Context) -> ContextId {
-        ContextId(Instant::now(), context.id())
+    fn new(context: &aio::Context) -> Self {
+        Self(Instant::now(), context.id())
     }
 }
 
@@ -425,6 +429,8 @@ impl fmt::Display for ContextId {
 
 pub mod errors {
     //! AsyncClient specific errors
+
+    pub use crate::op_nng::errors::{AioCreateError, AioReceiveError, AioSendError};
 
     use nng::options::Options;
     use oysterpack_errors::IsError;
