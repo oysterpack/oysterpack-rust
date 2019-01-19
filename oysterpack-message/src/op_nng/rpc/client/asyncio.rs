@@ -16,10 +16,13 @@
 
 //! Asynchronous client
 
-use errors::{AioContextAtMaxCapacity, AioContextChannelClosed, AioCreateError, AioReceiveError, AioSendError};
 use super::{ClientSocketSettings, DialerSettings};
 use crate::op_nng::new_aio_context;
 use crossbeam::channel::select;
+use errors::{
+    AioContextAtMaxCapacity, AioContextChannelClosed, AioCreateError, AioReceiveError,
+    AioSendError, AsyncReplyChannelDisconnected,
+};
 use log::*;
 use nng::{aio, options::Options};
 use oysterpack_errors::{op_error, Error};
@@ -40,6 +43,9 @@ pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static {
 /// nng async client
 ///
 /// # Design
+/// - each request creates a new aio context
+///   - aio contexts are tracked in a background thread - once the request is complete, then the aio
+///     context will be closed
 /// - the AsyncClient limits the number of concurrent requests using a channel to implement a ticketing system
 ///   - the AsyncClient is initialized with a ticket channel that is full
 ///   - each request obtains a ticket from the channel via a `recv()`
@@ -64,11 +70,7 @@ impl AsyncClient {
     ///
     /// ## Callback Errors
     /// - [AioReceiveError](../../../../../oysterpack_message/op_nng/errors/struct.AioReceiveError.html)
-    pub fn send_with_callback<Callback>(
-        &mut self,
-        req: nng::Message,
-        cb: Callback,
-    ) -> Result<(), Error>
+    pub fn send_with_callback<Callback>(&self, req: nng::Message, cb: Callback) -> Result<(), Error>
     where
         Callback: ReplyHandler,
     {
@@ -149,6 +151,20 @@ impl AsyncClient {
         }
     }
 
+    /// The request is sent asynchronously
+    pub async fn send(&self, req: nng::Message) -> Result<nng::Message, Error> {
+        let (reply_sender, reply_receiver) =
+            futures::sync::oneshot::channel::<Result<nng::Message, Error>>();
+        let reply_sender = Mutex::new(Some(reply_sender));
+        self.send_with_callback(req, AyncReplyHandler { reply_sender })?;
+        match tokio::await!(reply_receiver)
+            .map_err(|_| op_error!(AsyncReplyChannelDisconnected::new(&self.dialer)))
+        {
+            Ok(reply) => reply,
+            Err(err) => Err(err),
+        }
+    }
+
     /// the reply will be sent on the specified channel
     /// - the handle is opaque and simply handed back with the reply. It can be used to correlate a
     ///   request with a reply
@@ -156,7 +172,7 @@ impl AsyncClient {
     /// - if the reply channel is disconnected, then the message is dropped
     /// - if the message is dropped for any reason, then an error message will be logged
     pub fn send_with_reply_chan<T>(
-        &mut self,
+        &self,
         req: nng::Message,
         reply_chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
         handle: T,
@@ -211,18 +227,25 @@ impl AsyncClient {
     pub fn used_capacity(&self) -> usize {
         self.max_capacity() - self.available_capacity()
     }
+
+    /// Returns the URL that the client connects to
+    pub fn url(&self) -> String {
+        self.dialer.get_opt::<nng::options::Url>().unwrap()
+    }
 }
 
 impl fmt::Debug for AsyncClient {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.dialer.get_opt::<nng::options::Url>() {
-            Ok(url) => write!(f, "AsyncClient(Socket({}), Url({}))", self.socket.id(), url),
-            Err(err) => write!(f, "AsyncClient(Socket({}), Err({}))", self.socket.id(), err),
-        }
+        write!(
+            f,
+            "AsyncClient(Socket({}), Url({}))",
+            self.socket.id(),
+            self.url()
+        )
     }
 }
 
-/// The reply is relayed to the specifed channel along with the handle.
+/// The reply is relayed to the specified channel along with the handle.
 /// - the handle can be used to correlate the reply to a request
 #[derive(Debug, Clone)]
 struct ReplyChannel<T>
@@ -351,7 +374,7 @@ impl Builder {
         }
         let (tx, rx) = crossbeam::channel::bounded(max_concurrent_request_capacity * 2);
 
-        // each AsyncClient runs a background
+        // each AsyncClient runs a background thread to track aio contexts
         thread::Builder::new()
             .stack_size(1024)
             .spawn(move || {
@@ -424,6 +447,20 @@ impl ContextId {
 impl fmt::Display for ContextId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}-{}", self.0, self.1)
+    }
+}
+
+struct AyncReplyHandler {
+    reply_sender: Mutex<Option<futures::sync::oneshot::Sender<Result<nng::Message, Error>>>>,
+}
+
+impl ReplyHandler for AyncReplyHandler {
+    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
+        let mut reply_sender = self.reply_sender.lock().unwrap();
+        let reply_sender = reply_sender.take().unwrap();
+        if reply_sender.send(result).is_err() {
+            error!("unable to send reply");
+        }
     }
 }
 
@@ -510,6 +547,46 @@ pub mod errors {
     }
 
     impl IsError for AioContextAtMaxCapacity {
+        fn error_id(&self) -> oysterpack_errors::Id {
+            Self::ERROR_ID
+        }
+
+        fn error_level(&self) -> oysterpack_errors::Level {
+            Self::ERROR_LEVEL
+        }
+    }
+
+    /// The reply was received, but the reply receiver channel is disconnected
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    pub struct AsyncReplyChannelDisconnected {
+        url: String,
+    }
+
+    impl fmt::Display for AsyncReplyChannelDisconnected {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(
+                f,
+                "The reply was received, but the reply receiver channel is disconnected: {}",
+                self.url
+            )
+        }
+    }
+
+    impl AsyncReplyChannelDisconnected {
+        /// Error Id
+        pub const ERROR_ID: oysterpack_errors::Id =
+            oysterpack_errors::Id(1871311201574300224103938713131150267);
+        /// Level::Alert
+        pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
+
+        /// constructor
+        pub fn new(dialer: &nng::dialer::Dialer) -> AioContextChannelClosed {
+            let url = dialer.get_opt::<nng::options::Url>().unwrap();
+            AioContextChannelClosed { url }
+        }
+    }
+
+    impl IsError for AsyncReplyChannelDisconnected {
         fn error_id(&self) -> oysterpack_errors::Id {
             Self::ERROR_ID
         }

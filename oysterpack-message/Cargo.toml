@@ -26,7 +26,10 @@ parity-snappy = "0.1.0"
 nng = "0.3.0"
 crossbeam = "0.6.0"
 fnv = "1.0.6"
+
 tokio = {version="0.1.14", features=["async-await-preview"]}
+tokio-threadpool = "0.1.10"
+futures = "0.1.25"
 
 [dev-dependencies]
 version-sync = "0.6"

@@ -41,6 +41,12 @@ use std::{
     time::Duration,
 };
 
+use tokio::{
+    await,
+    net::{TcpListener, TcpStream},
+    prelude::*,
+};
+
 #[derive(Debug, Clone, Default)]
 struct TestProcessor;
 
@@ -374,4 +380,84 @@ fn async_client_send_with_callback_restart_server() {
     assert_eq!(client.context_count(), 0);
     assert_eq!(client.max_capacity(), client.available_capacity());
     assert_eq!(client.used_capacity(), 0);
+}
+
+#[test]
+fn tokio_async_await_poc() {
+    async fn info(msg: &str) {
+        info!("msg: {}", msg);
+    }
+
+    // use Delay from the tokio::timer module to sleep the task:
+    async fn sleep(n: u64) {
+        use std::time::{Duration, Instant};
+        use tokio::timer::Delay;
+        info!("sleeping for {} ms ...", n);
+        await!(Delay::new(Instant::now() + Duration::from_millis(n))).unwrap();
+        info!("... awake");
+    };
+
+    tokio::run_async(
+        async {
+            oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+            info!("tokio async is working !!!");
+            await!(info("running async fn"));
+            await!(sleep(10));
+        },
+    );
+}
+
+#[test]
+fn async_request() {
+    tokio::run_async(
+        async {
+            oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+            let url = Arc::new(format!("inproc://{}", ULID::generate()));
+
+            // start a server with 2 aio contexts
+            let listener_settings =
+                ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(2).unwrap());
+            let server = Server::builder(listener_settings, TestProcessor)
+                .spawn()
+                .unwrap();
+
+            const AIO_CONTEXT_CAPACITY: usize = 10;
+            let dialer_settings = DialerSettings::new(url.as_str())
+                .set_non_blocking(true)
+                .set_reconnect_min_time(Duration::from_millis(100))
+                .set_reconnect_max_time(Duration::from_millis(100))
+                .set_max_concurrent_request_capacity(
+                    NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap(),
+                );
+            let client = Arc::new(AsyncClient::dial(dialer_settings.clone()).unwrap());
+
+            for i in 0..AIO_CONTEXT_CAPACITY {
+                let msg = try_into_nng_message(&Request::Sleep(0)).unwrap();
+                match await!(client.send(msg)) {
+                    Ok(rep) => info!("received forwarded reply #{} : {:?}", i, rep),
+                    Err(err) => panic!("recv #{} failed: {}", i, err),
+                }
+            }
+
+            thread::yield_now();
+            for i in 0..10 {
+                let count = client.context_count();
+                if count == 0 {
+                    break;
+                }
+                warn!(
+                    "({}) waiting for context to be closed ... count = {}",
+                    i, count
+                );
+                thread::sleep_ms(1);
+            }
+            assert_eq!(client.context_count(), 0);
+            assert_eq!(client.max_capacity(), client.available_capacity());
+            assert_eq!(client.used_capacity(), 0);
+
+            server.stop();
+            server.join();
+            info!("server has stopped");
+        },
+    );
 }
