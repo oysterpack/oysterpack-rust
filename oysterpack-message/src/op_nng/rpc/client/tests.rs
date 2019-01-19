@@ -87,6 +87,10 @@ fn log_config() -> oysterpack_log::LogConfig {
             oysterpack_log::Target::from(env!("CARGO_PKG_NAME")),
             Level::Debug,
         )
+        .target_level(
+            oysterpack_log::Target::from("oysterpack_message::op_nng::rpc::server"),
+            Level::Info,
+        )
         .build()
 }
 
@@ -409,17 +413,21 @@ fn tokio_async_await_poc() {
 
 #[test]
 fn async_request() {
+    use std::panic;
+
+    // if the assertions fail, the panic occurs on a tokio thread which supresses the test failure
+    let failed = Arc::new(Mutex::new(Option::<String>::None));
+    let failed2 = Arc::clone(&failed);
     tokio::run_async(
-        async {
+        async move {
             oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
             let url = Arc::new(format!("inproc://{}", ULID::generate()));
-
 
             const AIO_CONTEXT_CAPACITY: usize = 10;
 
             // start a server with 2 aio contexts
-            let listener_settings =
-                ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
+            let listener_settings = ListenerSettings::new(&*url.as_str())
+                .set_aio_count(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
             let server = Server::builder(listener_settings, TestProcessor)
                 .spawn()
                 .unwrap();
@@ -441,6 +449,23 @@ fn async_request() {
                 }
             }
 
+            if client.used_capacity() != 0 {
+                let mut failed = failed.lock().unwrap();
+                *failed = Some(format!(
+                    "used_capacity(expected = 0, actual = {})",
+                    client.used_capacity()
+                ));
+            }
+            if client.max_capacity() != client.available_capacity() {
+                let mut failed = failed.lock().unwrap();
+                *failed = Some(format!(
+                    "max_capacity({}) should equal available_capacity({}))",
+                    client.max_capacity(),
+                    client.available_capacity()
+                ));
+            }
+            assert_eq!(client.used_capacity(), 0);
+            assert_eq!(client.max_capacity(), client.available_capacity());
             thread::yield_now();
             for i in 0..10 {
                 let count = client.used_capacity();
@@ -454,13 +479,22 @@ fn async_request() {
                 thread::yield_now();
                 thread::sleep_ms(1);
             }
+            if client.context_count() != 0 {
+                let mut failed = failed.lock().unwrap();
+                *failed = Some(format!(
+                    "context_count(expected = 0, actual = {})",
+                    client.used_capacity()
+                ));
+            }
             assert_eq!(client.context_count(), 0);
-            assert_eq!(client.max_capacity(), client.available_capacity());
-            assert_eq!(client.used_capacity(), 0);
 
             server.stop();
             server.join();
             info!("server has stopped");
         },
     );
+    let mut failed2 = failed2.lock().unwrap();
+    if let Some(ref error) = *failed2 {
+        panic!(error.clone());
+    }
 }

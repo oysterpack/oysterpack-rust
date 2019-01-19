@@ -17,10 +17,8 @@
 //! Provides thread support
 
 use oysterpack_uid::ULID;
+use serde::{Deserialize, Serialize};
 use std::{num::NonZeroUsize, thread};
-use serde::{
-    Serialize, Deserialize
-};
 
 /// Thread config
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
