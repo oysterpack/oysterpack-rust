@@ -35,7 +35,7 @@ pub struct SyncClient {
 
 impl SyncClient {
     /// Sends the request and wait for a reply synchronously
-    /// - the messages are snappy compressed and bincode serialized - see the [marshal]() module
+    /// - the messages are snappy compressed and bincode serialized - see the [marshal](../../../../marshal/index.html) module
     pub fn send(&mut self, req: nng::Message) -> Result<nng::Message, Error> {
         self.socket
             .send(req)

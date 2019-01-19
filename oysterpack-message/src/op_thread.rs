@@ -18,9 +18,12 @@
 
 use oysterpack_uid::ULID;
 use std::{num::NonZeroUsize, thread};
+use serde::{
+    Serialize, Deserialize
+};
 
 /// Thread config
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ThreadConfig {
     name: String,
     stack_size: Option<usize>,

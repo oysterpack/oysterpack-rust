@@ -18,7 +18,6 @@
 
 use super::{ClientSocketSettings, DialerSettings};
 use crate::op_nng::new_aio_context;
-use crossbeam::channel::select;
 use errors::{
     AioContextAtMaxCapacity, AioContextChannelClosed, AioCreateError, AioReceiveError,
     AioSendError, AsyncReplyChannelDisconnected,
@@ -31,7 +30,7 @@ use std::{
     panic::RefUnwindSafe,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 /// Async reply handler that is used as a callback by the AsyncClient
@@ -152,6 +151,9 @@ impl AsyncClient {
     }
 
     /// The request is sent asynchronously
+    ///
+    /// ## Notes
+    /// - this depends on tokio's `async-await-preview` feature
     pub async fn send(&self, req: nng::Message) -> Result<nng::Message, Error> {
         let (reply_sender, reply_receiver) =
             futures::sync::oneshot::channel::<Result<nng::Message, Error>>();
@@ -163,26 +165,6 @@ impl AsyncClient {
             Ok(reply) => reply,
             Err(err) => Err(err),
         }
-    }
-
-    /// the reply will be sent on the specified channel
-    /// - the handle is opaque and simply handed back with the reply. It can be used to correlate a
-    ///   request with a reply
-    /// - if the reply channel is full, then the specified action will be taken
-    /// - if the reply channel is disconnected, then the message is dropped
-    /// - if the message is dropped for any reason, then an error message will be logged
-    pub fn send_with_reply_chan<T>(
-        &self,
-        req: nng::Message,
-        reply_chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
-        handle: T,
-        reply_chan_full_action: ReplyChanFullAction,
-    ) -> Result<(), Error>
-    where
-        T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
-    {
-        let reply_handler = ReplyChannel::new(reply_chan, handle, reply_chan_full_action);
-        self.send_with_callback(req, reply_handler)
     }
 
     /// constructor
@@ -245,74 +227,6 @@ impl fmt::Debug for AsyncClient {
     }
 }
 
-/// The reply is relayed to the specified channel along with the handle.
-/// - the handle can be used to correlate the reply to a request
-#[derive(Debug, Clone)]
-struct ReplyChannel<T>
-where
-    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
-{
-    chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
-    handle: Option<T>,
-    reply_chan_full_action: ReplyChanFullAction,
-}
-
-impl<T> ReplyChannel<T>
-where
-    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
-{
-    fn new(
-        chan: crossbeam::channel::Sender<(Result<nng::Message, Error>, T)>,
-        handle: T,
-        reply_chan_full_action: ReplyChanFullAction,
-    ) -> ReplyChannel<T> {
-        ReplyChannel {
-            chan,
-            handle: Some(handle),
-            reply_chan_full_action,
-        }
-    }
-}
-
-impl<T> ReplyHandler for ReplyChannel<T>
-where
-    T: Send + Sync + RefUnwindSafe + fmt::Display + 'static,
-{
-    fn on_reply(&mut self, result: Result<nng::Message, Error>) {
-        if let Err(crossbeam::channel::TrySendError::Full(msg)) =
-            self.chan.try_send((result, self.handle.take().unwrap()))
-        {
-            match self.reply_chan_full_action {
-                ReplyChanFullAction::DropMessage => {
-                    error!("reply channel is full - dropping message for: {}", msg.1);
-                }
-                ReplyChanFullAction::Timeout(timeout) => {
-                    let handle = msg.1.to_string();
-                    select! {
-                        send(self.chan, msg) -> res => {
-                            if let Err(crossbeam::channel::SendError(msg)) = res {
-                                error!("reply channel is disconnected - dropping message for: {}", msg.1);
-                            }
-                        },
-                        recv(crossbeam::channel::after(timeout)) -> _ => {
-                            error!("reply channel is full - dropping message for: {}", handle);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Defines the action to take when the repy cannot be delivered because the channel if full.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplyChanFullAction {
-    /// If the reply channel is full, then drop the message
-    DropMessage,
-    /// If the channel is full, then retry to send with a timeout
-    Timeout(Duration),
-}
-
 /// Aio state for socket context.
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum AioState {
@@ -372,7 +286,7 @@ impl Builder {
         for _ in 0..max_concurrent_request_capacity {
             tx_tickets.send(()).unwrap();
         }
-        let (tx, rx) = crossbeam::channel::bounded(max_concurrent_request_capacity * 2);
+        let (tx, rx) = crossbeam::channel::unbounded();
 
         // each AsyncClient runs a background thread to track aio contexts
         thread::Builder::new()
@@ -499,9 +413,9 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer) -> AioContextChannelClosed {
+        pub fn new(dialer: &nng::dialer::Dialer) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
-            AioContextChannelClosed { url }
+            Self { url }
         }
     }
 
@@ -540,9 +454,9 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer, capacity: usize) -> AioContextAtMaxCapacity {
+        pub fn new(dialer: &nng::dialer::Dialer, capacity: usize) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
-            AioContextAtMaxCapacity { url, capacity }
+            Self { url, capacity }
         }
     }
 
@@ -580,9 +494,9 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer) -> AioContextChannelClosed {
+        pub fn new(dialer: &nng::dialer::Dialer) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
-            AioContextChannelClosed { url }
+            Self { url }
         }
     }
 

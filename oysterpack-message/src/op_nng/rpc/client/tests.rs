@@ -414,14 +414,16 @@ fn async_request() {
             oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
             let url = Arc::new(format!("inproc://{}", ULID::generate()));
 
+
+            const AIO_CONTEXT_CAPACITY: usize = 10;
+
             // start a server with 2 aio contexts
             let listener_settings =
-                ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(2).unwrap());
+                ListenerSettings::new(&*url.as_str()).set_aio_count(NonZeroUsize::new(AIO_CONTEXT_CAPACITY).unwrap());
             let server = Server::builder(listener_settings, TestProcessor)
                 .spawn()
                 .unwrap();
 
-            const AIO_CONTEXT_CAPACITY: usize = 10;
             let dialer_settings = DialerSettings::new(url.as_str())
                 .set_non_blocking(true)
                 .set_reconnect_min_time(Duration::from_millis(100))
@@ -441,7 +443,7 @@ fn async_request() {
 
             thread::yield_now();
             for i in 0..10 {
-                let count = client.context_count();
+                let count = client.used_capacity();
                 if count == 0 {
                     break;
                 }
@@ -449,6 +451,7 @@ fn async_request() {
                     "({}) waiting for context to be closed ... count = {}",
                     i, count
                 );
+                thread::yield_now();
                 thread::sleep_ms(1);
             }
             assert_eq!(client.context_count(), 0);

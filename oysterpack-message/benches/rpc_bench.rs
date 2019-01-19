@@ -54,8 +54,8 @@ use oysterpack_uid::ULID;
 
 criterion_group!(
     benches,
-    nng_sync_client_context_bench,
-    nng_async_client_context_bench,
+    nng_sync_client_bench,
+    nng_async_client_bench,
     aio_context_std_hashmap_storage_bench,
     aio_context_fnv_hashmap_storage_bench,
     aio_context_smallvec_storage_bench
@@ -82,13 +82,13 @@ fn log_config() -> oysterpack_log::LogConfig {
     oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info).build()
 }
 
-fn nng_sync_client_context_bench(c: &mut Criterion) {
-    sync_client_context_bench(c, 1);
-    sync_client_context_bench(c, 2);
-    sync_client_context_bench(c, num_cpus::get());
+fn nng_sync_client_bench(c: &mut Criterion) {
+    sync_client_bench(c, 1);
+    sync_client_bench(c, 2);
+    sync_client_bench(c, num_cpus::get());
 }
 
-fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize) {
+fn sync_client_bench(c: &mut Criterion, server_aio_context_count: usize) {
     oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
     let url = Arc::new(format!("inproc://{}", ULID::generate()));
@@ -118,18 +118,18 @@ fn sync_client_context_bench(c: &mut Criterion, server_aio_context_count: usize)
     c.bench_function(bench_function_id.as_str(), move |b| {
         b.iter(|| {
             client.send(nng::Message::new().unwrap()).unwrap();
-        })
+        });
     });
 
     server.stop();
     server.join();
 }
 
-fn nng_async_client_context_bench(c: &mut Criterion) {
-    async_client_context_bench(c, 1, 1);
-    async_client_context_bench(c, 2, 1);
-    async_client_context_bench(c, num_cpus::get(), 1);
-    async_client_context_bench(c, num_cpus::get(), num_cpus::get() / 2);
+fn nng_async_client_bench(c: &mut Criterion) {
+    async_client_bench(c, 1, 1);
+    async_client_bench(c, 2, 1);
+    async_client_bench(c, num_cpus::get(), 1);
+    async_client_bench(c, num_cpus::get(), num_cpus::get() / 2);
 }
 
 struct NoopReplyHandler;
@@ -142,7 +142,7 @@ impl ReplyHandler for NoopReplyHandler {
     }
 }
 
-fn async_client_context_bench(
+fn async_client_bench(
     c: &mut Criterion,
     server_aio_context_count: usize,
     client_aio_context_count: usize,
@@ -193,7 +193,7 @@ fn async_client_context_bench(
                     thread::yield_now();
                 }
             }
-        })
+        });
     });
 
     server.stop();
@@ -343,7 +343,7 @@ fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
 
     c.bench_function(
         format!(
-            "aio_context_smallvec_storage_bench({} entry)",
+            "aio_context_smallvec_storage_bench(len = {})",
             AioContexts::CACHE_SIZE
         )
         .as_str(),
