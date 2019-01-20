@@ -1,0 +1,10 @@
+[package]
+name = "oysterpack-poc"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+log = "0.4.6"
+futures-preview = "0.3.0-alpha.12"
+

@@ -25,7 +25,7 @@ failure = "0.1"
 petgraph = {version =  "0.4", features = ["serde-1"]}
 
 [dev-dependencies]
-version-sync = "0.6"
+version-sync = "0.7"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 serde_json = "1.0"
 

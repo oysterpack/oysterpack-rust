@@ -1,23 +1,29 @@
 [package]
-name = "oysterpack_message"
+name = "oysterpack_trust"
 version = "0.1.0"
 authors = ["Alfio Zappala <oysterpack.inc@gmail.com>"]
-description = "OysterPack Message"
-license = "MIT OR Apache-2.0"
 repository = "https://github.com/oysterpack/oysterpack"
 homepage = "https://github.com/oysterpack/oysterpack"
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 edition = "2018"
 
 [dependencies]
+oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
+oysterpack_app_metadata_macros = {path = "../oysterpack-app-metadata-macros", version = "0.1"}
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
-oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
+oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 oysterpack_events = {path = "../oysterpack-events", version = "0.1"}
+oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
+
+futures-preview = "0.3.0-alpha.12"
+
 sodiumoxide = "0.2.0"
 bs58 = "0.2.2"
 chrono = "0.4.6"
 num_cpus = "1.9.0"
-log = "0.4.6"
+failure = "0.1.5"
+lazy_static = "1.2.0"
 
 serde = {version = "1", features = ["derive"] }
 bincode = {version = "1", features = ["i128"]}
@@ -26,29 +32,12 @@ parity-snappy = "0.1.0"
 nng = "0.3.0"
 crossbeam = "0.6.0"
 fnv = "1.0.6"
-
-tokio = {version="0.1.14", features=["async-await-preview"]}
-tokio-threadpool = "0.1.10"
-futures = "0.1.25"
+smallvec = "0.6.8"
 
 [dev-dependencies]
 version-sync = "0.7"
 criterion = "0.2.8"
-oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
 pretty_assertions = "0.5.1"
-smallvec = "0.6.7"
 
 [badges]
-maintenance = { status = "actively-developed" }
-
-[[bench]]
-name = "address_bench"
-harness = false
-
-[[bench]]
-name = "encrypt_bench"
-harness = false
-
-[[bench]]
-name = "rpc_bench"
-harness = false
+maintenance = {status = "actively-developed"}

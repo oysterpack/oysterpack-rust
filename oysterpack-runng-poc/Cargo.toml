@@ -1,0 +1,10 @@
+[package]
+name = "oysterpack-runng-poc"
+version = "0.1.0"
+authors = ["Alfio Zappala <oysterpack2016@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+runng = {version = "0.1.9", features = ["stats", "pipes"] }
+futures = "0.1.25"
+tokio = "0.1.14"
