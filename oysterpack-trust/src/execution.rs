@@ -29,13 +29,14 @@ use serde::{Deserialize, Serialize};
 use std::{
     io,
     iter::ExactSizeIterator,
+    num::NonZeroUsize,
+    panic::{catch_unwind, AssertUnwindSafe},
     sync::{Arc, Mutex},
 };
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
 lazy_static! {
     /// Global Executor registry
-    pub static ref EXECUTORS: Executors = Executors::default();
+    pub static ref EXECUTORS: Mutex<Executors> = Mutex::new(Executors::default());
 }
 
 /// Provides a ThreadPool
@@ -93,23 +94,7 @@ impl Executors {
 impl Default for Executors {
     fn default() -> Self {
         fn default_executor() -> Executor {
-            let mut builder = ThreadPool::builder();
-            builder
-                .name_prefix(format!("{}-", Executor::DEFAULT_EXECUTOR_ID))
-                .after_start(|thread_index| {
-                    debug!(
-                        "Executer thread has started: {}-{}",
-                        Executor::DEFAULT_EXECUTOR_ID,
-                        thread_index
-                    )
-                })
-                .before_stop(|thread_index| {
-                    debug!(
-                        "Executer thread is stopping: {}-{}",
-                        Executor::DEFAULT_EXECUTOR_ID,
-                        thread_index
-                    )
-                });
+            let mut builder = ThreadPoolConfig::new(Executor::DEFAULT_EXECUTOR_ID).builder();
             Executor::new(Executor::DEFAULT_EXECUTOR_ID, &mut builder).unwrap()
         }
 
@@ -136,9 +121,7 @@ impl Executor {
         Ok(Self {
             id,
             thread_pool: Arc::new(Mutex::new(
-                builder
-                    .create()
-                    .map_err(|err| Error::ThreadPoolCreateFailed(err))?,
+                builder.create().map_err(Error::ThreadPoolCreateFailed)?,
             )),
         })
     }
@@ -164,7 +147,7 @@ impl Executor {
         };
         match result {
             Ok(res) => res,
-            Err(err) => panic!(err)
+            Err(err) => panic!(err),
         }
     }
 }
@@ -196,6 +179,89 @@ pub enum Error {
     ExecutorAlreadyRegistered(ExecutorId),
 }
 
+/// ThreadPool config
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadPoolConfig {
+    id: ExecutorId,
+    stack_size: Option<NonZeroUsize>,
+    pool_size: Option<NonZeroUsize>,
+}
+
+impl ThreadPoolConfig {
+    /// constructor
+    pub fn new(id: ExecutorId) -> Self {
+        Self {
+            id,
+            stack_size: None,
+            pool_size: None,
+        }
+    }
+
+    /// Sets the thread stack size
+    pub fn set_stack_size(self, size: NonZeroUsize) -> Self {
+        let mut this = self;
+        this.stack_size = Some(size);
+        this
+    }
+
+    /// Sets the thread pool size
+    pub fn set_pool_size(self, size: NonZeroUsize) -> Self {
+        let mut this = self;
+        this.pool_size = Some(size);
+        this
+    }
+
+    /// Returns the ExecutorId
+    pub fn executor_id(&self) -> ExecutorId {
+        self.id
+    }
+
+    /// Returns the thread stack size
+    pub fn stack_size(&self) -> Option<usize> {
+        self.stack_size.map(|size| size.get())
+    }
+
+    /// Returns the thread stack size
+    pub fn pool_size(&self) -> Option<usize> {
+        self.pool_size.map(|size| size.get())
+    }
+
+    /// ThreadPoolVBuilder constructor
+    pub fn builder(&self) -> ThreadPoolBuilder {
+        let mut builder = ThreadPool::builder();
+        builder
+            .name_prefix(format!("{}-", self.id))
+            .after_start(|thread_index| {
+                debug!(
+                    "Executer thread has started: {}-{}",
+                    Executor::DEFAULT_EXECUTOR_ID,
+                    thread_index
+                )
+            })
+            .before_stop(|thread_index| {
+                debug!(
+                    "Executer thread is stopping: {}-{}",
+                    Executor::DEFAULT_EXECUTOR_ID,
+                    thread_index
+                )
+            });
+        if let Some(ref size) = self.stack_size {
+            builder.stack_size(size.get());
+        }
+        if let Some(ref size) = self.pool_size {
+            builder.pool_size(size.get());
+        }
+        builder
+    }
+
+    /// Tries to register a thread pool Executor
+    pub fn register_executor(&self) -> Result<(), Error> {
+        let mut executors = EXECUTORS.lock().unwrap();
+        let mut threadpool_builder = self.builder();
+        executors.register(self.id, &mut threadpool_builder)
+    }
+}
+
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -207,7 +273,7 @@ mod tests {
         oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)
             .target_level(
                 oysterpack_log::Target::from(env!("CARGO_PKG_NAME")),
-                Level::Error,
+                Level::Debug,
             )
             .build()
     }
@@ -216,12 +282,52 @@ mod tests {
     fn global_executor() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        let mut executor = EXECUTORS.global_executor();
+        let executors = EXECUTORS.lock().unwrap();
+        let mut executor = executors.global_executor();
         executor.spawn(async { info!("task #1") });
         let task_handle = executor
             .spawn_with_handle(async { info!("spawned task says hello") })
             .unwrap();
         executor.run(task_handle);
+    }
+
+    #[test]
+    fn registered_executors() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        for _ in 0..32 {
+            assert!(ThreadPoolConfig::new(ExecutorId::generate())
+                .register_executor()
+                .is_ok());
+        }
+
+        let threadpool_config = ThreadPoolConfig::new(ExecutorId::generate());
+        assert!(threadpool_config.register_executor().is_ok());
+        match threadpool_config
+            .register_executor()
+            .expect_err("expected ExecutorAlreadyRegistered")
+        {
+            Error::ExecutorAlreadyRegistered(id) => assert_eq!(id, threadpool_config.executor_id()),
+            err => panic!(
+                "expected ExecutorAlreadyRegistered, but error was : {:?}",
+                err
+            ),
+        }
+    }
+
+    #[test]
+    fn threadpool_config() {
+        let id = ExecutorId::generate();
+        let config = ThreadPoolConfig::new(id);
+        assert_eq!(config.executor_id(), id);
+        assert!(config.stack_size().is_none());
+        assert!(config.pool_size().is_none());
+        let config = config.set_stack_size(NonZeroUsize::new(1024).unwrap());
+        assert_eq!(config.stack_size().unwrap(), 1024);
+        assert!(config.pool_size().is_none());
+        let config = config.set_pool_size(NonZeroUsize::new(64).unwrap());
+        assert_eq!(config.stack_size().unwrap(), 1024);
+        assert_eq!(config.pool_size().unwrap(), 64);
     }
 
     // the panic is bubbled up to the current thread when awaiting on a task that panics
@@ -230,11 +336,17 @@ mod tests {
     fn run_spawned_panic_task() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        let mut executor = EXECUTORS.global_executor();
-        let task_handle = executor
-            .spawn_with_handle(async { panic!("BOOM!!") })
-            .unwrap();
-        executor.run(task_handle);
+        let result = {
+            let executors = EXECUTORS.lock().unwrap();
+            let mut executor = executors.global_executor();
+            let task_handle = executor
+                .spawn_with_handle(async { panic!("BOOM!!") })
+                .unwrap();
+            catch_unwind(AssertUnwindSafe(|| executor.run(task_handle)))
+        };
+        if let Err(err) = result {
+            panic!(err);
+        }
     }
 
     // the panic is bubbled up to the current thread when awaiting on a task that panics
@@ -243,13 +355,23 @@ mod tests {
     fn await_spawned_panic_task() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        let mut executor = EXECUTORS.global_executor();
-        let task_handle = executor
-            .spawn_with_handle(async { panic!("BOOM!!") })
-            .unwrap();
-        executor.run(async {
-            await!(task_handle);
-        });
+        let result = {
+            let executors = EXECUTORS.lock().unwrap();
+            let mut executor = executors.global_executor();
+            let task_handle = executor
+                .spawn_with_handle(async { panic!("BOOM!!") })
+                .unwrap();
+            catch_unwind(AssertUnwindSafe(|| {
+                executor.run(
+                    async {
+                        await!(task_handle);
+                    },
+                )
+            }))
+        };
+        if let Err(err) = result {
+            panic!(err);
+        }
     }
 
     // threads that panic in the pool do get replaced
@@ -257,13 +379,16 @@ mod tests {
     fn spawned_task_panics_all_threads() {
         oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 
-        let mut executor = EXECUTORS.global_executor();
+        let executors = EXECUTORS.lock().unwrap();
+        let mut executor = executors.global_executor();
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];
         for i in 0..panic_task_count {
-            let handle = executor.spawn_with_handle(async move {
-                panic!("BOOM({})!", i);
-            });
+            let handle = executor.spawn_with_handle(
+                async move {
+                    panic!("BOOM({})!", i);
+                },
+            );
             handles.push(handle.unwrap());
         }
 
