@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -84,13 +84,12 @@ where
 {
     id: DomainULID,
     instance_id: InstanceId,
+    level: Level,
     data: Data,
     msg: String,
     mod_src: ModuleSource,
-    #[serde(skip_serializing_if = "Option::is_none")]
     tag_ids: Option<HashSet<DomainULID>>,
-    // using a AttributeId as the key because over time the key label may change, but the key ULID remains const
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // using AttributeId as the key because over time the key label may change, but the key ULID remains const
     attributes: Option<HashMap<String, String>>,
 }
 
@@ -117,9 +116,11 @@ where
     /// Constructor
     pub fn new(data: Data, mod_src: ModuleSource) -> Event<Data> {
         let msg = data.to_string();
+        let level = data.event_level();
         Event {
             id: data.event_id().clone(),
             instance_id: InstanceId::generate(),
+            level,
             data,
             msg,
             mod_src,
@@ -131,9 +132,11 @@ where
     /// Constructor
     pub fn from(instance_id: InstanceId, data: Data, mod_src: ModuleSource) -> Event<Data> {
         let msg = data.to_string();
+        let level = data.event_level();
         Event {
             id: data.event_id().clone(),
             instance_id,
+            level,
             data,
             msg,
             mod_src,

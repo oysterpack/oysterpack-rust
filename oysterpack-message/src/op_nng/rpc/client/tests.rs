@@ -416,6 +416,7 @@ fn async_request() {
     use std::panic;
 
     // if the assertions fail, the panic occurs on a tokio thread which supresses the test failure
+    // thus, the assertion failures need to be passed out of the tokio threadpool
     let failed = Arc::new(Mutex::new(Option::<String>::None));
     let failed2 = Arc::clone(&failed);
     tokio::run_async(

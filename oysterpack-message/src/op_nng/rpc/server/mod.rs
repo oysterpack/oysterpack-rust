@@ -69,6 +69,11 @@ impl Server {
     }
 
     /// Spawns a new server instance in a background thread
+    ///
+    /// ## Errors
+    /// - SocketCreateError - when the socket fails to be created
+    /// - AioCreateError - when an aio context fails to be created
+    /// - AioReceiveError - when the initial aio context receive operations fail
     fn spawn<Factory, Processor>(
         listener_settings: ListenerSettings,
         message_processor_factory: &Factory,
