@@ -14,12 +14,21 @@
  *    limitations under the License.
  */
 
-//! **OysterPack Trust** provides the foundation for all OysterPack software - a foundation built on
-//! **trust**.
+//! **OysterPack Trust** provides a framework and foundation to build software that can be trusted
+//! for
+//! - stability
+//! - accuracy
+//! - performance
+//! - scalability
+//! - security
+//! - operations supportability
+//!
+//! **OysterPack Trust** follows [Reactive Systems](https://www.reactivemanifesto.org) design principles.
+//!
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 #![allow(clippy::unreadable_literal)]
-#![deny(missing_docs, missing_debug_implementations, warnings)]
+#![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_trust/0.1.0")]
 
 #[allow(unused_imports)]
@@ -27,4 +36,14 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-pub mod execution;
+pub mod concurrent;
+
+#[cfg(test)]
+fn log_config() -> oysterpack_log::LogConfig {
+    oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)
+        .target_level(
+            oysterpack_log::Target::from(env!("CARGO_PKG_NAME")),
+            oysterpack_log::Level::Debug,
+        )
+        .build()
+}

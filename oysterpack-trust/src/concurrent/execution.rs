@@ -14,13 +14,16 @@
  *    limitations under the License.
  */
 
-//! Exposes lower level primitives for dealing with asynchronous execution
+//! Exposes lower level primitives for dealing with asynchronous execution:
+//! - async executors
+//!
 
 use failure::Fail;
 use futures::{
+    channel,
     executor::{ThreadPool, ThreadPoolBuilder},
     future::{Future, FutureObj},
-    task::{Spawn, SpawnError},
+    task::{Spawn, SpawnError, SpawnExt},
 };
 use lazy_static::lazy_static;
 use oysterpack_log::*;
@@ -39,7 +42,7 @@ lazy_static! {
     pub static ref EXECUTORS: Mutex<Executors> = Mutex::new(Executors::default());
 }
 
-/// Provides a ThreadPool
+/// Executor registry
 #[derive(Debug)]
 pub struct Executors {
     global_executor: Executor,
@@ -54,9 +57,9 @@ impl Executors {
         &mut self,
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecutorsError> {
         if self.thread_pools.contains_key(&id) {
-            return Err(Error::ExecutorAlreadyRegistered(id));
+            return Err(ExecutorsError::ExecutorAlreadyRegistered(id));
         }
         self.thread_pools.insert(id, Executor::new(id, builder)?);
         Ok(())
@@ -105,7 +108,11 @@ impl Default for Executors {
     }
 }
 
-/// Provides a threadsafe ThreadPool based executor
+/// Is a threadsafe futures based async executor.
+/// - clone the Executor in order to share it
+///
+/// ## Notes
+/// - threadsafe wrapper around futures [ThreadPool](https://rust-lang-nursery.github.io/futures-api-docs/0.3.0-alpha.12/futures/executor/struct.ThreadPool.html) executor
 #[derive(Debug, Clone)]
 pub struct Executor {
     id: ExecutorId,
@@ -117,11 +124,13 @@ impl Executor {
     pub const DEFAULT_EXECUTOR_ID: ExecutorId = ExecutorId(1871427164235073850597045237139528853);
 
     /// constructor
-    pub fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, Error> {
+    pub fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorsError> {
         Ok(Self {
             id,
             thread_pool: Arc::new(Mutex::new(
-                builder.create().map_err(Error::ThreadPoolCreateFailed)?,
+                builder
+                    .create()
+                    .map_err(ExecutorsError::ThreadPoolCreateFailed)?,
             )),
         })
     }
@@ -134,12 +143,13 @@ impl Executor {
     /// Runs the given future with this thread pool as the default spawner for spawning tasks.
     ///
     /// ## Notes
-    /// - This function will block the calling thread until the given future is complete.
+    /// - This function will block the calling thread until the given future is complete. This also
+    ///   means that all other threads waiting on this Executor will also be blocked.
     /// - The function will return when the provided future completes, even if some of the
     ///   tasks it spawned are still running.
     ///
     /// ## Panics
-    /// If the ThreadPool Mutex cannot be locked.
+    /// If the task panics.
     pub fn run<F: Future>(&mut self, f: F) -> F::Output {
         let result = {
             let mut thread_pool = self.thread_pool.lock().unwrap();
@@ -149,6 +159,67 @@ impl Executor {
             Ok(res) => res,
             Err(err) => panic!(err),
         }
+    }
+
+    /// Spawns the future and awaits until it is done, returning it's result. This enables a future
+    /// to be awaited on outside of an async context.
+    ///
+    /// ## Notes
+    /// - This function will block the calling thread until the given future is complete. However,
+    ///   the executor is released as soon as the future is spawned, making it available for other
+    ///   threads to use the executor.
+    pub fn spawn_await<F>(&mut self, f: F) -> Result<F::Output, ExecutorError>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let (sender, receiver) = crossbeam::channel::bounded(0);
+        {
+            let mut thread_pool = self.thread_pool.lock().unwrap();
+            thread_pool
+                .spawn(
+                    async move {
+                        let result = await!(f);
+                        sender.send(result).unwrap();
+                    },
+                )
+                .map_err(|err| ExecutorError::SpawnError {
+                    is_executor_shutdown: err.is_shutdown(),
+                })?;
+        }
+        receiver
+            .recv()
+            .map_err(|_| ExecutorError::SpawnedFuturePanic)
+    }
+
+    /// Spawns the future and returns a channel Receiver that can be used to retrieve the future result
+    /// from both inside and outside of an async context.
+    ///
+    /// ## Notes
+    /// If the future panics, then the Receiver will become disconnected.
+    pub fn spawn_channel<F>(
+        &mut self,
+        f: F,
+    ) -> Result<channel::oneshot::Receiver<F::Output>, ExecutorError>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let (sender, receiver) = channel::oneshot::channel::<F::Output>();
+        {
+            let mut thread_pool = self.thread_pool.lock().unwrap();
+            thread_pool
+                .spawn(
+                    async move {
+                        let result = await!(f);
+                        let _ = sender.send(result);
+                    },
+                )
+                .map_err(|err| ExecutorError::SpawnError {
+                    is_executor_shutdown: err.is_shutdown(),
+                })?;
+        }
+        Ok(receiver)
     }
 }
 
@@ -168,15 +239,32 @@ impl Spawn for Executor {
 /// Unique Executor ID
 pub struct ExecutorId(pub u128);
 
-/// module related errors
+/// Executors related errors
 #[derive(Fail, Debug)]
-pub enum Error {
+pub enum ExecutorsError {
     /// When a ThreadPool creation failure occurs.
     #[fail(display = "Failed to create ThreadPool: {}", _0)]
     ThreadPoolCreateFailed(io::Error),
     /// When trying to register an Executor using an ID that is already registered.
     #[fail(display = "Executor is already registered: {}", _0)]
     ExecutorAlreadyRegistered(ExecutorId),
+}
+
+/// Executor related errors
+#[derive(Fail, Debug)]
+pub enum ExecutorError {
+    /// An error that occurred during spawning.
+    #[fail(
+        display = "Spawning Future failed: executor shutdown = {}",
+        is_executor_shutdown
+    )]
+    SpawnError {
+        /// whether spawning failed to the executor being shut down
+        is_executor_shutdown: bool,
+    },
+    /// The spawned Future panicked while running.
+    #[fail(display = "The spawned Future panicked while running.")]
+    SpawnedFuturePanic,
 }
 
 /// ThreadPool config
@@ -255,7 +343,7 @@ impl ThreadPoolConfig {
     }
 
     /// Tries to register a thread pool Executor
-    pub fn register_executor(&self) -> Result<(), Error> {
+    pub fn register_executor(&self) -> Result<(), ExecutorsError> {
         let mut executors = EXECUTORS.lock().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
@@ -266,17 +354,9 @@ impl ThreadPoolConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::log_config;
     use futures::task::SpawnExt;
     use std::thread;
-
-    fn log_config() -> oysterpack_log::LogConfig {
-        oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)
-            .target_level(
-                oysterpack_log::Target::from(env!("CARGO_PKG_NAME")),
-                Level::Debug,
-            )
-            .build()
-    }
 
     #[test]
     fn global_executor() {
@@ -289,6 +369,114 @@ mod tests {
             .spawn_with_handle(async { info!("spawned task says hello") })
             .unwrap();
         executor.run(task_handle);
+    }
+
+    #[test]
+    fn executor_spawn_await() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let executors = EXECUTORS.lock().unwrap();
+        let mut executor = executors.global_executor();
+        let result = executor.spawn_await(
+            async {
+                info!("spawned task says hello");
+                true
+            },
+        );
+        info!("result: {:?}", result);
+        assert!(result.unwrap());
+        let result = executor.spawn_await(
+            async {
+                panic!("spawned task says hello");
+                true
+            },
+        );
+        info!("result: {:?}", result);
+        match result {
+            Ok(_) => panic!("should have returned an ExecutorError::SpawnedFuturePanic"),
+            Err(ExecutorError::SpawnedFuturePanic) => info!("failed as expected"),
+            Err(err) => panic!("failed with unexpected error: {}", err),
+        }
+    }
+
+    #[test]
+    fn executor_spawn_channel() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let executors = EXECUTORS.lock().unwrap();
+        let mut executor = executors.global_executor();
+        let result_rx = executor.spawn_channel(
+            async {
+                info!("spawned task says hello");
+                true
+            },
+        );
+        let result = executor.run(result_rx.unwrap());
+        info!("result: {:?}", result);
+        assert!(result.unwrap());
+        let result_rx = executor.spawn_channel(
+            async {
+                panic!("spawned task says hello");
+                true
+            },
+        );
+        let result = executor.spawn_await(result_rx.unwrap());
+        info!("result: {:?}", result);
+        match result {
+            Ok(Err(channel::oneshot::Canceled)) => {
+                info!("The future panicked, which caused the Receiver to be cancelled")
+            }
+            other => panic!("Unexpected result: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn global_executor_shared_across_threads() {
+        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+
+        let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
+            .map(|i| {
+                let handle = thread::spawn(move || {
+                    let executors = EXECUTORS.lock().unwrap();
+                    let mut executor = executors.global_executor();
+                    executor
+                        .spawn(async move { info!("{:?} : task #{}", thread::current().id(), i) });
+                    let task_handle = executor
+                        .spawn_with_handle(
+                            async move {
+                                // simulate doing work
+                                if i == 1 {
+                                    info!(
+                                        "{:?} : task #{} sleeping ...",
+                                        thread::current().id(),
+                                        i
+                                    );
+                                    thread::sleep_ms(1000 * 5);
+                                    info!("{:?} : task #{} awoke ...", thread::current().id(), i);
+                                }
+
+                                info!(
+                                    "{:?} : spawned task #{} says hello",
+                                    thread::current().id(),
+                                    i
+                                )
+                            },
+                        )
+                        .unwrap();
+                    // because we are spawning the task async, the executor becomes available for other
+                    // threads to use, i.e., no blocking occurs. If `executor.run(task_handle)` had
+                    // been used, then all other threads waiting on this executor will be blocked
+                    // until the task completes
+                    executor.spawn(task_handle);
+                });
+                thread::yield_now();
+                handle
+            })
+            .collect();
+
+        for handle in thread_handles {
+            handle.join().unwrap();
+        }
     }
 
     #[test]
@@ -307,7 +495,9 @@ mod tests {
             .register_executor()
             .expect_err("expected ExecutorAlreadyRegistered")
         {
-            Error::ExecutorAlreadyRegistered(id) => assert_eq!(id, threadpool_config.executor_id()),
+            ExecutorsError::ExecutorAlreadyRegistered(id) => {
+                assert_eq!(id, threadpool_config.executor_id())
+            }
             err => panic!(
                 "expected ExecutorAlreadyRegistered, but error was : {:?}",
                 err
