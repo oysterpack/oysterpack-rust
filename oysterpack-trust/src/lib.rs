@@ -28,6 +28,7 @@
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 #![allow(clippy::unreadable_literal)]
+//#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_trust/0.1.0")]
 
