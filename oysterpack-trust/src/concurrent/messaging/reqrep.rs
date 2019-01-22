@@ -95,6 +95,9 @@ where
     Rep: Debug + Send + 'static,
 {
     /// Take the request, i.e., which transfers ownership
+    ///
+    /// ## Notes
+    /// - this can only be called once - once the request message is taken, None is always returned
     pub fn take_request(&mut self) -> Option<Req> {
         self.req.take()
     }
@@ -238,5 +241,4 @@ mod tests {
         executor.run(task);
         executor.run(task_handle);
     }
-
 }
