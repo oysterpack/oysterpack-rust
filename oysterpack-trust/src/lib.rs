@@ -38,6 +38,7 @@
 extern crate pretty_assertions;
 
 pub mod concurrent;
+pub mod metrics;
 
 #[cfg(test)]
 fn log_config() -> oysterpack_log::LogConfig {
