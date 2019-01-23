@@ -354,13 +354,13 @@ impl ThreadPoolConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::log_config;
+    use crate::configure_logging;
     use futures::task::SpawnExt;
     use std::thread;
 
     #[test]
     fn global_executor() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn executor_spawn_await() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn executor_spawn_channel() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn global_executor_shared_across_threads() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
             .map(|i| {
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn registered_executors() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         for _ in 0..32 {
             assert!(ThreadPoolConfig::new(ExecutorId::generate())
@@ -524,7 +524,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn run_spawned_panic_task() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let result = {
             let executors = EXECUTORS.lock().unwrap();
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn await_spawned_panic_task() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let result = {
             let executors = EXECUTORS.lock().unwrap();
@@ -567,7 +567,7 @@ mod tests {
     // threads that panic in the pool do get replaced
     #[test]
     fn spawned_task_panics_all_threads() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
 
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();

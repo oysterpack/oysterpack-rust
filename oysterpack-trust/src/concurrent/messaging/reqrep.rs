@@ -35,13 +35,16 @@ use crate::concurrent::{
     execution::Executor,
     messaging::{errors::ChannelSendError, MessageId},
 };
-use futures::{channel, sink::SinkExt, stream::StreamExt, task::{
-    SpawnError, SpawnExt
-} };
+use futures::{
+    channel,
+    sink::SinkExt,
+    stream::StreamExt,
+    task::{SpawnError, SpawnExt},
+};
+use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use oysterpack_log::*;
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
@@ -239,7 +242,7 @@ where
 mod tests {
     use super::*;
     use crate::concurrent::execution::EXECUTORS;
-    use crate::log_config;
+    use crate::configure_logging;
     use futures::{
         channel::oneshot,
         stream::StreamExt,
@@ -250,7 +253,7 @@ mod tests {
 
     #[test]
     fn req_rep() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();
@@ -284,7 +287,7 @@ mod tests {
 
     #[test]
     fn req_rep_start_service() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();
@@ -299,7 +302,7 @@ mod tests {
         }
         // ReqRep processor //
 
-        let mut req_rep= ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone()).unwrap();
+        let mut req_rep = ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone()).unwrap();
         let task = async {
             let rep_receiver = await!(req_rep.send(1)).unwrap();
             info!("request MessageId: {}", rep_receiver.message_id());
@@ -312,7 +315,7 @@ mod tests {
 
     #[test]
     fn req_rep_with_disconnected_receiver() {
-        oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
+        configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let executors = EXECUTORS.lock().unwrap();
         let mut executor = executors.global_executor();

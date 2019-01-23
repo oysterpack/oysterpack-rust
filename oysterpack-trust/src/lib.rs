@@ -27,6 +27,7 @@
 //!
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+#![cfg_attr(feature = "cargo-clippy", deny(warnings))]
 #![allow(clippy::unreadable_literal)]
 //#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
@@ -48,4 +49,9 @@ fn log_config() -> oysterpack_log::LogConfig {
             oysterpack_log::Level::Debug,
         )
         .build()
+}
+
+#[cfg(test)]
+fn configure_logging() {
+    oysterpack_log::init(log_config(), oysterpack_log::StderrLogger);
 }

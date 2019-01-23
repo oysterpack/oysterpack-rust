@@ -39,4 +39,21 @@ pub struct MetricDesc {
 
 #[allow(warnings)]
 #[cfg(test)]
-mod tests {}
+mod tests {
+
+    use super::*;
+    use crate::configure_logging;
+    use oysterpack_log::*;
+    use std::thread;
+
+    #[test]
+    fn hotmic_metrics() {
+        configure_logging();
+
+        const REQREP: MetricId = MetricId(1871663033774396702741818028382227928);
+        const COUNTER: MetricId = MetricId(1871663111240856363309308798871376715);
+
+
+    }
+
+}

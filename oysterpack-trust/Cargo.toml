@@ -34,7 +34,7 @@ crossbeam = "0.6.0"
 fnv = "1.0.6"
 smallvec = "0.6.8"
 
-tic = "0.6.0"
+hotmic = "0.5.2"
 
 [dev-dependencies]
 version-sync = "0.7"
