@@ -16,11 +16,11 @@
 
 //! Provides metrics support for prometheus
 
+use lazy_static::lazy_static;
 use oysterpack_uid::macros::ulid;
 use prometheus::Encoder;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, io::Write, sync::Mutex};
-use lazy_static::lazy_static;
 
 lazy_static! {
     /// Global metrics registry
@@ -86,26 +86,28 @@ impl MetricRegistry {
             Ok(())
         };
 
-        let check_const_labels = || {
-            match const_labels {
-                Some(const_labels) => {
-                    let mut trimmed_const_labels = HashMap::with_capacity(const_labels.len());
-                    for (key, value) in const_labels {
-                        let key = key.trim().to_string();
-                        if key.len() == 0 {
-                            return Err(prometheus::Error::Msg("Const label cannot be blank".to_string()));
-                        }
-
-                        let value = value.trim().to_string();
-                        if value.len() == 0 {
-                            return Err(prometheus::Error::Msg("Const label value cannot be blank".to_string()));
-                        }
-                        trimmed_const_labels.insert(key, value);
+        let check_const_labels = || match const_labels {
+            Some(const_labels) => {
+                let mut trimmed_const_labels = HashMap::with_capacity(const_labels.len());
+                for (key, value) in const_labels {
+                    let key = key.trim().to_string();
+                    if key.len() == 0 {
+                        return Err(prometheus::Error::Msg(
+                            "Const label key cannot be blank".to_string(),
+                        ));
                     }
-                    Ok(Some(trimmed_const_labels))
-                },
-                None => Ok(None)
+
+                    let value = value.trim().to_string();
+                    if value.len() == 0 {
+                        return Err(prometheus::Error::Msg(
+                            "Const label value cannot be blank".to_string(),
+                        ));
+                    }
+                    trimmed_const_labels.insert(key, value);
+                }
+                Ok(Some(trimmed_const_labels))
             }
+            None => Ok(None),
         };
 
         let label_names = check_labels()?;
@@ -231,7 +233,11 @@ histogram_vecs: {:#?}"#,
 impl Default for MetricRegistry {
     fn default() -> Self {
         let registry = prometheus::Registry::new();
-        registry.register(Box::new(prometheus::process_collector::ProcessCollector::for_self())).unwrap();
+        registry
+            .register(Box::new(
+                prometheus::process_collector::ProcessCollector::for_self(),
+            ))
+            .unwrap();
         Self {
             registry: registry,
             histogram_vecs: Mutex::new(fnv::FnvHashMap::default()),
@@ -358,6 +364,99 @@ mod tests {
 
         let metrics_family = registry.gather();
         info!("{:#?}", metrics_family);
+        registry.text_encode_metrics(&mut std::io::stderr());
+    }
+
+    #[test]
+    fn metric_registry_histogram_vec_with_const_labels() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = MetricId::generate();
+        let registry = MetricRegistry::default();
+        let mut const_labels = HashMap::new();
+        const_labels.insert("FOO  ".to_string(), "  BAR".to_string());
+        registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep timer".to_string(),
+                &["REQREPID_1"],
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                Some(const_labels),
+            )
+            .unwrap();
+
+        info!("{:#?}", registry);
+
+        let mut reqrep_timer_local = registry.histogram_vec(&metric_id).unwrap();
+        let reqrep_timer =
+            reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
+        let clock = quanta::Clock::new();
+        for _ in 0..10 {
+            let ulid_u128: u128 = ULID::generate().into();
+            let sleep_ms = (ulid_u128 % 100) as u32;
+            info!("sleeping for {}", sleep_ms);
+            let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+            reqrep_timer.observe(as_float_secs(delta));
+            reqrep_timer.flush();
+        }
+
+        let metrics_family = registry.gather();
+        info!("{:#?}", metrics_family);
+
+        // check that the const label was trimmed FOO=BAR
+        let metric_family = metrics_family
+            .iter()
+            .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+            .next()
+            .unwrap();
+        let metric = &metric_family.get_metric()[0];
+        let label_pair = &metric.get_label()[0];
+        assert_eq!(label_pair.get_name(), "FOO");
+        assert_eq!(label_pair.get_value(), "BAR")
+    }
+
+    #[test]
+    fn metric_registry_histogram_vec_with_blank_const_label() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = MetricId::generate();
+        let registry = MetricRegistry::default();
+
+        {
+            let mut const_labels = HashMap::new();
+            const_labels.insert("FOO  ".to_string(), "  ".to_string());
+            let result = registry.register_histogram_vec(
+                metric_id,
+                "ReqRep timer".to_string(),
+                &["REQREPID_1"],
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                Some(const_labels),
+            );
+            info!("const label value is blank: {:?}", result);
+            assert!(result.is_err());
+            assert!(result.err().unwrap().to_string().contains("value"));
+        }
+
+        {
+            let mut const_labels = HashMap::new();
+            const_labels.insert("  ".to_string(), "BAR".to_string());
+            let result = registry.register_histogram_vec(
+                metric_id,
+                "ReqRep timer".to_string(),
+                &["REQREPID_1"],
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                Some(const_labels),
+            );
+            info!("const label key is blank: {:?}", result);
+            assert!(result.is_err());
+            assert!(result.err().unwrap().to_string().contains("key"));
+        }
     }
 
 }
