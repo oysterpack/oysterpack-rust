@@ -33,16 +33,47 @@ pub struct MetricRegistry {
     registry: prometheus::Registry,
     histogram_vecs:
         Mutex<fnv::FnvHashMap<MetricId, (prometheus::HistogramVec, prometheus::HistogramOpts)>>,
+    histograms:
+        Mutex<fnv::FnvHashMap<MetricId, (prometheus::Histogram, prometheus::HistogramOpts)>>,
 }
 
 impl MetricRegistry {
+    /// Tries to register a Histogram metric
+    pub fn register_histogram(
+        &self,
+        metric_id: MetricId,
+        help: String,
+        buckets: Vec<f64>,
+        const_labels: Option<HashMap<String, String>>,
+    ) -> prometheus::Result<()> {
+        let help = Self::check_help(help)?;
+        let buckets = Self::check_buckets(buckets)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut histograms = self.histograms.lock().unwrap();
+        if histograms.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::HistogramOpts::new(metric_id.name(), help)
+            .buckets(Self::sort_dedupe(buckets));
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::Histogram::with_opts(opts.clone())?;
+        self.registry.register(Box::new(metric.clone()))?;
+        histograms.insert(metric_id, (metric, opts));
+        Ok(())
+    }
+
     /// Tries to register a HistogramVec metric
     ///
     /// ## Params
     /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
     ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
     /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - labels - the labels used to define the metric's dimensions
+    /// - label_names - the labels used to define the metric's dimensions
     ///   - labels will be trimmed and must not be blank
     /// - **buckets** define the buckets into which observations are counted.
     ///   - Each element in the slice is the upper inclusive bound of a bucket.
@@ -52,6 +83,11 @@ impl MetricRegistry {
     /// ## Errors
     /// - if no labels are provided
     /// - if labels are blank
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    ///
+    /// ## Notes
+    ///
     pub fn register_histogram_vec(
         &self,
         metric_id: MetricId,
@@ -77,16 +113,41 @@ impl MetricRegistry {
             Ok(trimmed_label_names)
         };
 
-        let check_buckets = || {
-            if buckets.len() < 2 {
-                return Err(prometheus::Error::Msg(
-                    "At least 1 bucket must be defined".to_string(),
-                ));
-            }
-            Ok(())
-        };
+        let label_names = check_labels()?;
+        let help = Self::check_help(help)?;
+        let buckets = Self::check_buckets(buckets)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
 
-        let check_const_labels = || match const_labels {
+        let mut histogram_vecs = self.histogram_vecs.lock().unwrap();
+        if histogram_vecs.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::HistogramOpts::new(metric_id.name(), help)
+            .buckets(Self::sort_dedupe(buckets));
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::HistogramVec::new(opts.clone(), &label_names)?;
+        self.registry.register(Box::new(metric.clone()))?;
+        histogram_vecs.insert(metric_id, (metric, opts));
+        Ok(())
+    }
+
+    fn check_help(help: String) -> Result<String, prometheus::Error> {
+        let help = help.trim();
+        if help.len() == 0 {
+            Err(prometheus::Error::Msg("help is required and cannot be blank".to_string()))
+        } else {
+            Ok(help.to_string())
+        }
+    }
+
+    fn check_const_labels(
+        const_labels: Option<HashMap<String, String>>,
+    ) -> Result<Option<HashMap<String, String>>, prometheus::Error> {
+        match const_labels {
             Some(const_labels) => {
                 let mut trimmed_const_labels = HashMap::with_capacity(const_labels.len());
                 for (key, value) in const_labels {
@@ -108,27 +169,16 @@ impl MetricRegistry {
                 Ok(Some(trimmed_const_labels))
             }
             None => Ok(None),
-        };
-
-        let label_names = check_labels()?;
-        check_buckets()?;
-        let const_labels = check_const_labels()?;
-
-        let mut histogram_vecs = self.histogram_vecs.lock().unwrap();
-        if histogram_vecs.contains_key(&metric_id) {
-            return Err(prometheus::Error::AlreadyReg);
         }
+    }
 
-        let mut opts = prometheus::HistogramOpts::new(metric_id.name(), help)
-            .buckets(Self::sort_dedupe(buckets));
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
+    fn check_buckets(buckets: Vec<f64>) -> Result<Vec<f64>, prometheus::Error> {
+        if buckets.is_empty() {
+            return Err(prometheus::Error::Msg(
+                "At least 1 bucket must be defined".to_string(),
+            ));
         }
-
-        let metric = prometheus::HistogramVec::new(opts.clone(), &label_names)?;
-        self.registry.register(Box::new(metric.clone()))?;
-        histogram_vecs.insert(metric_id, (metric, opts));
-        Ok(())
+        Ok(buckets)
     }
 
     fn sort_dedupe(buckets: Vec<f64>) -> Vec<f64> {
@@ -190,6 +240,17 @@ impl MetricRegistry {
             .map(|(metric, _opts)| metric.local())
     }
 
+    /// Returns a LocalHistogram for the specified MetricId - if it is registered
+    pub fn histogram(
+        &self,
+        metric_id: &MetricId,
+    ) -> Option<prometheus::local::LocalHistogram> {
+        let histograms = self.histograms.lock().unwrap();
+        histograms
+            .get(&metric_id)
+            .map(|(metric, _opts)| metric.local())
+    }
+
     /// gather calls the Collect method of the registered Collectors and then gathers the collected
     /// metrics into a lexicographically sorted slice of MetricFamily protobufs.
     pub fn gather(&self) -> Vec<prometheus::proto::MetricFamily> {
@@ -241,6 +302,7 @@ impl Default for MetricRegistry {
         Self {
             registry: registry,
             histogram_vecs: Mutex::new(fnv::FnvHashMap::default()),
+            histograms: Mutex::new(fnv::FnvHashMap::default()),
         }
     }
 }
@@ -295,40 +357,6 @@ mod tests {
     use std::{thread, time::Duration};
 
     #[test]
-    fn metrics_prometheus_histogram_vec_as_timer() {
-        configure_logging();
-
-        use crate::concurrent::messaging::reqrep::ReqRepId;
-        use oysterpack_uid::ULID;
-
-        let REQREP_TIMER = format!("M{}", ULID::generate());
-        let REQREP_SERVICE_ID_LABEL = format!("L{}", ULID::generate());
-
-        let registry = prometheus::Registry::new();
-        let opts = prometheus::HistogramOpts::new(REQREP_TIMER, "reqrep timer".to_string());
-
-        let REQREP_TIMER =
-            prometheus::HistogramVec::new(opts, &[REQREP_SERVICE_ID_LABEL.as_str()]).unwrap();
-        registry.register(Box::new(REQREP_TIMER.clone())).unwrap();
-
-        let mut reqrep_timer_local = REQREP_TIMER.local();
-        let reqrep_timer =
-            reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
-        let clock = quanta::Clock::new();
-        for _ in 0..10 {
-            let ulid_u128: u128 = ULID::generate().into();
-            let sleep_ms = (ulid_u128 % 100) as u32;
-            info!("sleeping for {}", sleep_ms);
-            let delta = time(&clock, || thread::sleep_ms(sleep_ms));
-            reqrep_timer.observe(as_float_secs(delta));
-            reqrep_timer.flush();
-        }
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-    }
-
-    #[test]
     fn metric_registry_histogram_vec() {
         configure_logging();
 
@@ -368,10 +396,79 @@ mod tests {
     }
 
     #[test]
+    fn metric_registry_histogram() {
+        configure_logging();
+
+        use oysterpack_uid::ULID;
+
+        let metric_id = MetricId::generate();
+        let registry = MetricRegistry::default();
+        registry
+            .register_histogram(
+                metric_id,
+                "ReqRep timer".to_string(),
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                None,
+            )
+            .unwrap();
+
+        info!("{:#?}", registry);
+
+        let mut reqrep_timer = registry.histogram(&metric_id).unwrap();
+        let clock = quanta::Clock::new();
+        for _ in 0..10 {
+            let ulid_u128: u128 = ULID::generate().into();
+            let sleep_ms = (ulid_u128 % 100) as u32;
+            info!("sleeping for {}", sleep_ms);
+            let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+            reqrep_timer.observe(as_float_secs(delta));
+            reqrep_timer.flush();
+        }
+
+        let metrics_family = registry.gather();
+        info!("{:#?}", metrics_family);
+        registry.text_encode_metrics(&mut std::io::stderr());
+    }
+
+    #[test]
+    fn metric_registry_histogram_using_timer() {
+        configure_logging();
+
+        use oysterpack_uid::ULID;
+
+        let metric_id = MetricId::generate();
+        let registry = MetricRegistry::default();
+        registry
+            .register_histogram(
+                metric_id,
+                "ReqRep timer".to_string(),
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                None,
+            )
+            .unwrap();
+
+        info!("{:#?}", registry);
+
+        let mut reqrep_timer = registry.histogram(&metric_id).unwrap();
+        for _ in 0..10 {
+            let ulid_u128: u128 = ULID::generate().into();
+            let sleep_ms = (ulid_u128 % 100) as u32;
+            info!("sleeping for {}", sleep_ms);
+            {
+                let timer = reqrep_timer.start_timer();
+                thread::sleep_ms(sleep_ms)
+            }
+        }
+
+        let metrics_family = registry.gather();
+        info!("{:#?}", metrics_family);
+        registry.text_encode_metrics(&mut std::io::stderr());
+    }
+
+    #[test]
     fn metric_registry_histogram_vec_with_const_labels() {
         configure_logging();
 
-        use crate::concurrent::messaging::reqrep::ReqRepId;
         use oysterpack_uid::ULID;
 
         let metric_id = MetricId::generate();
@@ -422,7 +519,6 @@ mod tests {
     fn metric_registry_histogram_vec_with_blank_const_label() {
         configure_logging();
 
-        use crate::concurrent::messaging::reqrep::ReqRepId;
         use oysterpack_uid::ULID;
 
         let metric_id = MetricId::generate();
@@ -457,6 +553,26 @@ mod tests {
             assert!(result.is_err());
             assert!(result.err().unwrap().to_string().contains("key"));
         }
+    }
+
+    #[test]
+    fn metric_registry_histogram_vec_with_blank_help() {
+        configure_logging();
+
+        use oysterpack_uid::ULID;
+
+        let metric_id = MetricId::generate();
+        let registry = MetricRegistry::default();
+
+        let result = registry.register_histogram_vec(
+            metric_id,
+            " ".to_string(),
+            &["REQREPID_1"],
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            None,
+        );
+        info!("help is blank: {:?}", result);
+        assert!(result.is_err());
     }
 
 }
