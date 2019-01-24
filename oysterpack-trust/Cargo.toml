@@ -34,7 +34,8 @@ crossbeam = "0.6.0"
 fnv = "1.0.6"
 smallvec = "0.6.8"
 
-hotmic = "0.5.2"
+prometheus = {version = "0.5.0", features = ["nightly", "gen"] }
+quanta = "0.1.0"
 
 [dev-dependencies]
 version-sync = "0.7"
@@ -46,4 +47,8 @@ maintenance = {status = "actively-developed"}
 
 [[bench]]
 name = "reqrep_bench"
+harness = false
+
+[[bench]]
+name = "metrics_bench"
 harness = false

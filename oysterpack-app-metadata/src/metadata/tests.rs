@@ -1,10 +1,18 @@
-// Copyright 2018 OysterPack Inc.
-//
-// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
-// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
-// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
-// option. This file may not be copied, modified, or distributed
-// except according to those terms.
+/*
+ * Copyright 2019 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
 
 //! unit tests
 
@@ -97,7 +105,10 @@ fn parsing_dependencies_graphviz_dot_into_package_ids() {
 #[test]
 fn crate_package_id() {
     run_test("PackageId::for_this_crate()", || {
-        let package_id = PackageId::for_this_crate();
+        let package_id = PackageId::new(
+            env!("CARGO_PKG_NAME").to_string(),
+            semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap(),
+        );
         info!("package_id = {}", package_id);
         assert_eq!(package_id.name(), env!("CARGO_PKG_NAME"));
         assert_eq!(
