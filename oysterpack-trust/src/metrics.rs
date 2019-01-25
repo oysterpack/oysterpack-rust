@@ -16,7 +16,7 @@
 
 //! Provides metrics support for prometheus
 //!
-//! ### Why use a number as a metric name ?
+//! ### Why use a number as a metric name and label names ?
 //! Because names change over time, which can break components that depend on metric names ...
 //! Assigning unique numerical identifiers is much more stable. Human friendly metric labels and any
 //! additional information can be mapped externally to the MetricId.
@@ -30,11 +30,14 @@ use oysterpack_uid::macros::ulid;
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, io::Write, sync::Mutex};
+use smallvec::SmallVec;
 
 lazy_static! {
     /// Global metrics registry
     pub static ref METRIC_REGISTRY: Mutex<MetricRegistry> = Mutex::new(MetricRegistry::default());
 }
+
+const SMALLVEC_SIZE: usize = 8;
 
 /// Metric Registry
 /// - process metrics collector is automatically added
@@ -58,7 +61,7 @@ impl MetricRegistry {
         &self,
         metric_id: IntGaugeId,
         help: String,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
@@ -84,7 +87,7 @@ impl MetricRegistry {
         &self,
         metric_id: GaugeId,
         help: String,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
@@ -130,27 +133,10 @@ impl MetricRegistry {
         &self,
         metric_id: GaugeVecId,
         help: String,
-        label_names: &[&str],
-        const_labels: Option<HashMap<String, String>>,
+        label_ids: &[LabelId],
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
-        let check_labels = || {
-            if label_names.is_empty() {
-                return Err(prometheus::Error::Msg(
-                    "At least one label name must be provided".to_string(),
-                ));
-            }
-            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
-            for label in label_names.iter() {
-                let label = label.trim();
-                if label.is_empty() {
-                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
-                }
-                trimmed_label_names.push(label);
-            }
-            Ok(trimmed_label_names)
-        };
-
-        let label_names = check_labels()?;
+        let label_names = Self::check_labels(label_ids)?;
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
@@ -164,6 +150,7 @@ impl MetricRegistry {
             opts = opts.const_labels(const_labels);
         }
 
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::GaugeVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
         metrics.insert(metric_id, metric);
@@ -195,27 +182,10 @@ impl MetricRegistry {
         &self,
         metric_id: IntGaugeVecId,
         help: String,
-        label_names: &[&str],
-        const_labels: Option<HashMap<String, String>>,
+        label_ids: &[LabelId],
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
-        let check_labels = || {
-            if label_names.is_empty() {
-                return Err(prometheus::Error::Msg(
-                    "At least one label name must be provided".to_string(),
-                ));
-            }
-            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
-            for label in label_names.iter() {
-                let label = label.trim();
-                if label.is_empty() {
-                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
-                }
-                trimmed_label_names.push(label);
-            }
-            Ok(trimmed_label_names)
-        };
-
-        let label_names = check_labels()?;
+        let label_names = Self::check_labels(label_ids)?;
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
@@ -229,6 +199,7 @@ impl MetricRegistry {
             opts = opts.const_labels(const_labels);
         }
 
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::IntGaugeVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
         metrics.insert(metric_id, metric);
@@ -240,7 +211,7 @@ impl MetricRegistry {
         &self,
         metric_id: IntCounterId,
         help: String,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
@@ -266,7 +237,7 @@ impl MetricRegistry {
         &self,
         metric_id: CounterId,
         help: String,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
@@ -312,27 +283,10 @@ impl MetricRegistry {
         &self,
         metric_id: CounterVecId,
         help: String,
-        label_names: &[&str],
-        const_labels: Option<HashMap<String, String>>,
+        label_ids: &[LabelId],
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
-        let check_labels = || {
-            if label_names.is_empty() {
-                return Err(prometheus::Error::Msg(
-                    "At least one label name must be provided".to_string(),
-                ));
-            }
-            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
-            for label in label_names.iter() {
-                let label = label.trim();
-                if label.is_empty() {
-                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
-                }
-                trimmed_label_names.push(label);
-            }
-            Ok(trimmed_label_names)
-        };
-
-        let label_names = check_labels()?;
+        let label_names = Self::check_labels(label_ids)?;
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
@@ -346,6 +300,7 @@ impl MetricRegistry {
             opts = opts.const_labels(const_labels);
         }
 
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::CounterVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
         metrics.insert(metric_id, metric);
@@ -377,27 +332,10 @@ impl MetricRegistry {
         &self,
         metric_id: IntCounterVecId,
         help: String,
-        label_names: &[&str],
-        const_labels: Option<HashMap<String, String>>,
+        label_ids: &[LabelId],
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
-        let check_labels = || {
-            if label_names.is_empty() {
-                return Err(prometheus::Error::Msg(
-                    "At least one label name must be provided".to_string(),
-                ));
-            }
-            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
-            for label in label_names.iter() {
-                let label = label.trim();
-                if label.is_empty() {
-                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
-                }
-                trimmed_label_names.push(label);
-            }
-            Ok(trimmed_label_names)
-        };
-
-        let label_names = check_labels()?;
+        let label_names = Self::check_labels(label_ids)?;
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
@@ -411,6 +349,7 @@ impl MetricRegistry {
             opts = opts.const_labels(const_labels);
         }
 
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::IntCounterVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
         metrics.insert(metric_id, metric);
@@ -440,7 +379,7 @@ impl MetricRegistry {
         metric_id: HistogramId,
         help: String,
         buckets: Vec<f64>,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
         let help = Self::check_help(help)?;
         let buckets = Self::check_buckets(buckets)?;
@@ -459,7 +398,7 @@ impl MetricRegistry {
 
         let metric = prometheus::Histogram::with_opts(opts)?;
         self.registry.register(Box::new(metric.clone()))?;
-        metrics.insert(metric_id, (metric, Buckets(buckets)));
+        metrics.insert(metric_id, (metric, Buckets(SmallVec::from(buckets))));
         Ok(())
     }
 
@@ -488,28 +427,11 @@ impl MetricRegistry {
         &self,
         metric_id: HistogramVecId,
         help: String,
-        label_names: &[&str],
+        label_ids: &[LabelId],
         buckets: Vec<f64>,
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<()> {
-        let check_labels = || {
-            if label_names.is_empty() {
-                return Err(prometheus::Error::Msg(
-                    "At least one label name must be provided".to_string(),
-                ));
-            }
-            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
-            for label in label_names.iter() {
-                let label = label.trim();
-                if label.is_empty() {
-                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
-                }
-                trimmed_label_names.push(label);
-            }
-            Ok(trimmed_label_names)
-        };
-
-        let label_names = check_labels()?;
+        let label_names = Self::check_labels(label_ids)?;
         let help = Self::check_help(help)?;
         let buckets = Self::check_buckets(buckets)?;
         let const_labels = Self::check_const_labels(const_labels)?;
@@ -525,9 +447,10 @@ impl MetricRegistry {
             opts = opts.const_labels(const_labels);
         }
 
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::HistogramVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
-        metrics.insert(metric_id, (metric, Buckets(buckets)));
+        metrics.insert(metric_id, (metric, Buckets(SmallVec::from(buckets))));
         Ok(())
     }
 
@@ -543,18 +466,13 @@ impl MetricRegistry {
     }
 
     fn check_const_labels(
-        const_labels: Option<HashMap<String, String>>,
+        const_labels: Option<HashMap<LabelId, String>>,
     ) -> Result<Option<HashMap<String, String>>, prometheus::Error> {
         match const_labels {
             Some(const_labels) => {
                 let mut trimmed_const_labels = HashMap::with_capacity(const_labels.len());
                 for (key, value) in const_labels {
-                    let key = key.trim().to_string();
-                    if key.is_empty() {
-                        return Err(prometheus::Error::Msg(
-                            "Const label key cannot be blank".to_string(),
-                        ));
-                    }
+                    let key = key.name().to_string();
 
                     let value = value.trim().to_string();
                     if value.is_empty() {
@@ -569,6 +487,17 @@ impl MetricRegistry {
             None => Ok(None),
         }
     }
+
+    fn check_labels(label_names: &[LabelId]) -> Result<Vec<String>, prometheus::Error> {
+        if label_names.is_empty() {
+            return Err(prometheus::Error::Msg(
+                "At least one label name must be provided".to_string(),
+            ));
+        }
+        Ok(label_names.iter().map(|label| label.name()).collect())
+    }
+
+    const BUCKET_ARRAY_SIZE: usize = 8;
 
     fn check_buckets(buckets: Vec<f64>) -> Result<Vec<f64>, prometheus::Error> {
         fn sort_dedupe(buckets: Vec<f64>) -> Vec<f64> {
@@ -708,34 +637,6 @@ impl MetricRegistry {
 impl fmt::Debug for MetricRegistry {
     /// TODO: the output is clunky - make it cleaner - perhaps a JSON view
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("MetricRegistry\n")?;
-        f.write_str("==============\n")?;
-
-        f.write_str("**********\n")?;
-        f.write_str("Histograms\n")?;
-        f.write_str("**********\n")?;
-        {
-            let histograms = self.histograms.lock().unwrap();
-            for (_key, (histogram, buckets)) in histograms.iter() {
-                writeln!(f, "----------")?;
-                writeln!(f, "{:#?}", histogram.desc())?;
-                writeln!(f, "{:#?}", buckets)?;
-            }
-        }
-
-        f.write_str("*************\n")?;
-        f.write_str("HistogramVecs\n")?;
-        f.write_str("*************\n")?;
-        {
-            let histogram_vecs = self.histogram_vecs.lock().unwrap();
-            for (_key, (histogram, buckets)) in histogram_vecs.iter() {
-                writeln!(f, "-------------")?;
-                writeln!(f, "{:#?}", histogram.desc())?;
-                writeln!(f, "{:#?}", buckets)?;
-            }
-        }
-
-        // TODO - rest of metrics
 
         Ok(())
     }
@@ -767,9 +668,114 @@ impl Default for MetricRegistry {
     }
 }
 
+/// Metric Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterDesc {
+    id: CounterId,
+    help: String,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// MetricVec Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterVecDesc {
+    id: CounterVecId,
+    help: String,
+    labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// Metric Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntCounterDesc {
+    id: IntCounterId,
+    help: String,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// MetricVec Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntCounterVecDesc {
+    id: IntCounterVecId,
+    help: String,
+    labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// Metric Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GaugeDesc {
+    id: GaugeId,
+    help: String,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// MetricVec Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GaugeVecDesc {
+    id: GaugeVecId,
+    help: String,
+    labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// Metric Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntGaugeDesc {
+    id: IntGaugeId,
+    help: String,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// MetricVec Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntGaugeVecDesc {
+    id: IntGaugeVecId,
+    help: String,
+    labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// Histogram Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramDesc {
+    id: HistogramId,
+    help: String,
+    buckets: Buckets,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// HistogramVec Desc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramVecDesc {
+    id: HistogramVecId,
+    help: String,
+    labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
+    buckets: Buckets,
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+}
+
+/// Metric descriptors
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricDescs {
+    counters: Option<Vec<CounterDesc>>,
+    int_counters: Option<Vec<IntCounterDesc>>,
+    counter_vecs: Option<Vec<CounterVecDesc>>,
+    int_counter_vecs: Option<Vec<IntCounterVecDesc>>,
+
+    gauges: Option<Vec<GaugeDesc>>,
+    int_gauges: Option<Vec<IntGaugeDesc>>,
+    gauge_vecs: Option<Vec<GaugeVecDesc>>,
+    int_gauge_vecs: Option<Vec<IntGaugeVecDesc>>,
+
+    histograms: Option<Vec<HistogramDesc>>,
+    histogram_vecs: Option<Vec<HistogramVecDesc>>,
+}
+
+
 /// Histogram buckets
-#[derive(Debug, Clone)]
-pub struct Buckets(pub Vec<f64>);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Buckets(pub SmallVec<[f64; SMALLVEC_SIZE]>);
 
 /// Label Id
 #[ulid]
@@ -942,6 +948,132 @@ mod tests {
     use std::{thread, time::Duration};
 
     #[test]
+    fn metric_registry_int_gauge() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = IntGaugeId::generate();
+        let registry = MetricRegistry::default();
+        registry
+            .register_int_gauge(metric_id, "Active Sessions".to_string(), None)
+            .unwrap();
+
+        let mut gauge = registry.int_gauge(&metric_id).unwrap();
+        const COUNT: u64 = 10;
+        for _ in 0..COUNT {
+            gauge.inc();
+        }
+
+        // check that the metrics were recorded
+        let metrics_family = registry.gather();
+        let metric_family = metrics_family
+            .iter()
+            .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+            .next()
+            .unwrap();
+        let metric = &metric_family.get_metric()[0];
+        assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+    }
+
+    #[test]
+    fn metric_registry_gauge() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = GaugeId::generate();
+        let registry = MetricRegistry::default();
+        registry
+            .register_gauge(metric_id, "Active Sessions".to_string(), None)
+            .unwrap();
+
+        let mut gauge = registry.gauge(&metric_id).unwrap();
+        const COUNT: u64 = 10;
+        for _ in 0..COUNT {
+            gauge.inc();
+        }
+
+        // check that the metrics were recorded
+        let metrics_family = registry.gather();
+        let metric_family = metrics_family
+            .iter()
+            .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+            .next()
+            .unwrap();
+        let metric = &metric_family.get_metric()[0];
+        assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+    }
+
+    #[test]
+    fn metric_registry_gauge_vec() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = GaugeVecId::generate();
+        let registry = MetricRegistry::default();
+        let label = LabelId::generate();
+        let labels = vec![label];
+        registry
+            .register_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+            .unwrap();
+
+        let mut gauge_vec = registry.gauge_vec(&metric_id).unwrap();
+        let mut counter = gauge_vec.with_label_values(&["ABC"]);
+        const COUNT: u64 = 10;
+        for _ in 0..COUNT {
+            counter.inc();
+        }
+
+        // check that the metrics were recorded
+        let metrics_family = registry.gather();
+        let metric_family = metrics_family
+            .iter()
+            .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+            .next()
+            .unwrap();
+        let metric = &metric_family.get_metric()[0];
+        assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+    }
+
+    #[test]
+    fn metric_registry_int_gauge_vec() {
+        configure_logging();
+
+        use crate::concurrent::messaging::reqrep::ReqRepId;
+        use oysterpack_uid::ULID;
+
+        let metric_id = IntGaugeVecId::generate();
+        let registry = MetricRegistry::default();
+        let label = LabelId::generate();
+        let labels = vec![label];
+        registry
+            .register_int_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+            .unwrap();
+
+        let mut gauge_vec = registry.int_gauge_vec(&metric_id).unwrap();
+        let mut counter = gauge_vec.with_label_values(&["ABC"]);
+        const COUNT: u64 = 10;
+        for _ in 0..COUNT {
+            counter.inc();
+        }
+
+        // check that the metrics were recorded
+        let metrics_family = registry.gather();
+        let metric_family = metrics_family
+            .iter()
+            .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+            .next()
+            .unwrap();
+        let metric = &metric_family.get_metric()[0];
+        assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+    }
+
+    #[test]
     fn metric_registry_int_counter() {
         configure_logging();
 
@@ -953,8 +1085,6 @@ mod tests {
         registry
             .register_int_counter(metric_id, "ReqRep timer".to_string(), None)
             .unwrap();
-
-        info!("{:#?}", registry);
 
         let mut counter = registry.int_counter(&metric_id).unwrap().local();
         const COUNT: u64 = 10;
@@ -984,10 +1114,6 @@ mod tests {
             .unwrap();
         let metric = &metric_family.get_metric()[0];
         assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-        registry.text_encode_metrics(&mut std::io::stderr());
     }
 
     #[test]
@@ -1002,8 +1128,6 @@ mod tests {
         registry
             .register_counter(metric_id, "ReqRep timer".to_string(), None)
             .unwrap();
-
-        info!("{:#?}", registry);
 
         let mut counter = registry.counter(&metric_id).unwrap().local();
         const COUNT: u64 = 10;
@@ -1033,10 +1157,6 @@ mod tests {
             .unwrap();
         let metric = &metric_family.get_metric()[0];
         assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-        registry.text_encode_metrics(&mut std::io::stderr());
     }
 
     #[test]
@@ -1048,13 +1168,11 @@ mod tests {
 
         let metric_id = CounterVecId::generate();
         let registry = MetricRegistry::default();
-        let label = LabelId::generate().name();
-        let labels = vec![label.as_str()];
+        let label = LabelId::generate();
+        let labels = vec![label];
         registry
             .register_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
             .unwrap();
-
-        info!("{:#?}", registry);
 
         let mut counter_vec = registry.counter_vec(&metric_id).unwrap().local();
         let mut counter = counter_vec.with_label_values(&["ABC"]);
@@ -1085,10 +1203,6 @@ mod tests {
             .unwrap();
         let metric = &metric_family.get_metric()[0];
         assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-        registry.text_encode_metrics(&mut std::io::stderr());
     }
 
     #[test]
@@ -1100,8 +1214,8 @@ mod tests {
 
         let metric_id = IntCounterVecId::generate();
         let registry = MetricRegistry::default();
-        let label = LabelId::generate().name();
-        let labels = vec![label.as_str()];
+        let label = LabelId::generate();
+        let labels = vec![label];
         registry
             .register_int_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
             .unwrap();
@@ -1137,10 +1251,6 @@ mod tests {
             .unwrap();
         let metric = &metric_family.get_metric()[0];
         assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-        registry.text_encode_metrics(&mut std::io::stderr());
     }
 
     #[test]
@@ -1156,7 +1266,7 @@ mod tests {
             .register_histogram_vec(
                 metric_id,
                 "ReqRep timer".to_string(),
-                &["REQREPID_1"],
+                &[LabelId::generate()],
                 vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
                 None,
             )
@@ -1176,10 +1286,6 @@ mod tests {
             reqrep_timer.observe(as_float_secs(delta));
             reqrep_timer.flush();
         }
-
-        let metrics_family = registry.gather();
-        info!("{:#?}", metrics_family);
-        registry.text_encode_metrics(&mut std::io::stderr());
     }
 
     #[test]
@@ -1244,8 +1350,6 @@ mod tests {
             )
             .unwrap();
 
-        info!("{:#?}", registry);
-
         let mut reqrep_timer = registry.histogram(&metric_id).unwrap();
         const METRIC_COUNT: u64 = 5;
         for _ in 0..METRIC_COUNT {
@@ -1281,18 +1385,17 @@ mod tests {
         let metric_id = HistogramVecId::generate();
         let registry = MetricRegistry::default();
         let mut const_labels = HashMap::new();
-        const_labels.insert("FOO  ".to_string(), "  BAR".to_string());
+        let label = LabelId::generate();
+        const_labels.insert(label, "  BAR".to_string());
         registry
             .register_histogram_vec(
                 metric_id,
                 "ReqRep timer".to_string(),
-                &["REQREPID_1"],
+                &[LabelId::generate()],
                 vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
                 Some(const_labels),
             )
             .unwrap();
-
-        info!("{:#?}", registry);
 
         let mut reqrep_timer_local = registry.histogram_vec(&metric_id).unwrap().local();
         let reqrep_timer =
@@ -1318,8 +1421,13 @@ mod tests {
             .next()
             .unwrap();
         let metric = &metric_family.get_metric()[0];
-        let label_pair = &metric.get_label()[0];
-        assert_eq!(label_pair.get_name(), "FOO");
+        let label_pair = metric
+            .get_label()
+            .iter()
+            .filter(|label_pair| label_pair.get_name() == label.name().as_str())
+            .next()
+            .unwrap();
+        assert_eq!(label_pair.get_name(), label.name());
         assert_eq!(label_pair.get_value(), "BAR")
     }
 
@@ -1334,32 +1442,17 @@ mod tests {
 
         {
             let mut const_labels = HashMap::new();
-            const_labels.insert("FOO  ".to_string(), "  ".to_string());
+            const_labels.insert(LabelId::generate(), "  ".to_string());
             let result = registry.register_histogram_vec(
                 metric_id,
                 "ReqRep timer".to_string(),
-                &["REQREPID_1"],
+                &[LabelId::generate()],
                 vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
                 Some(const_labels),
             );
             info!("const label value is blank: {:?}", result);
             assert!(result.is_err());
             assert!(result.err().unwrap().to_string().contains("value"));
-        }
-
-        {
-            let mut const_labels = HashMap::new();
-            const_labels.insert("  ".to_string(), "BAR".to_string());
-            let result = registry.register_histogram_vec(
-                metric_id,
-                "ReqRep timer".to_string(),
-                &["REQREPID_1"],
-                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
-                Some(const_labels),
-            );
-            info!("const label key is blank: {:?}", result);
-            assert!(result.is_err());
-            assert!(result.err().unwrap().to_string().contains("key"));
         }
     }
 
@@ -1375,7 +1468,7 @@ mod tests {
         let result = registry.register_histogram_vec(
             metric_id,
             " ".to_string(),
-            &["REQREPID_1"],
+            &[LabelId::generate()],
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             None,
         );
