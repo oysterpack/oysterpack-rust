@@ -27,7 +27,7 @@
 //!
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
-#![cfg_attr(feature = "cargo-clippy", deny(warnings))]
+#![deny(clippy::all)]
 #![allow(clippy::unreadable_literal)]
 //#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
