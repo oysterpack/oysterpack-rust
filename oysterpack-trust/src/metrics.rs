@@ -26,11 +26,16 @@
 //!   short description
 
 use lazy_static::lazy_static;
-use oysterpack_uid::macros::ulid;
+use oysterpack_uid::{
+    ulid_u128_into_string,ULID,
+    macros::{
+        ulid
+    }
+};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, io::Write, sync::Mutex};
 use smallvec::SmallVec;
+use std::{collections::HashMap, fmt, io::Write, sync::Mutex};
 
 lazy_static! {
     /// Global metrics registry
@@ -637,7 +642,6 @@ impl MetricRegistry {
 impl fmt::Debug for MetricRegistry {
     /// TODO: the output is clunky - make it cleaner - perhaps a JSON view
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
         Ok(())
     }
 }
@@ -673,7 +677,7 @@ impl Default for MetricRegistry {
 pub struct CounterDesc {
     id: CounterId,
     help: String,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// MetricVec Desc
@@ -682,7 +686,7 @@ pub struct CounterVecDesc {
     id: CounterVecId,
     help: String,
     labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// Metric Desc
@@ -690,7 +694,7 @@ pub struct CounterVecDesc {
 pub struct IntCounterDesc {
     id: IntCounterId,
     help: String,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// MetricVec Desc
@@ -699,7 +703,7 @@ pub struct IntCounterVecDesc {
     id: IntCounterVecId,
     help: String,
     labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// Metric Desc
@@ -707,7 +711,7 @@ pub struct IntCounterVecDesc {
 pub struct GaugeDesc {
     id: GaugeId,
     help: String,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// MetricVec Desc
@@ -716,7 +720,7 @@ pub struct GaugeVecDesc {
     id: GaugeVecId,
     help: String,
     labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// Metric Desc
@@ -724,7 +728,7 @@ pub struct GaugeVecDesc {
 pub struct IntGaugeDesc {
     id: IntGaugeId,
     help: String,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// MetricVec Desc
@@ -733,7 +737,7 @@ pub struct IntGaugeVecDesc {
     id: IntGaugeVecId,
     help: String,
     labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// Histogram Desc
@@ -742,7 +746,7 @@ pub struct HistogramDesc {
     id: HistogramId,
     help: String,
     buckets: Buckets,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// HistogramVec Desc
@@ -752,7 +756,7 @@ pub struct HistogramVecDesc {
     help: String,
     labels: SmallVec<[LabelId; SMALLVEC_SIZE]>,
     buckets: Buckets,
-    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>
+    const_labels: Option<SmallVec<[LabelId; SMALLVEC_SIZE]>>,
 }
 
 /// Metric descriptors
@@ -772,7 +776,6 @@ pub struct MetricDescs {
     histogram_vecs: Option<Vec<HistogramVecDesc>>,
 }
 
-
 /// Histogram buckets
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Buckets(pub SmallVec<[f64; SMALLVEC_SIZE]>);
@@ -787,6 +790,41 @@ impl LabelId {
     ///   prometheus metric names must match the following pattern `[a-zA-Z_:][a-zA-Z0-9_:]*`
     pub fn name(&self) -> String {
         format!("L{}", self)
+    }
+}
+
+/// Metric Id
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MetricId<T>{
+ id: u128,
+ _phantom_type: std::marker::PhantomData<T>
+}
+
+impl<T> MetricId<T> {
+
+    /// constructor
+    pub const fn new(id: u128) -> MetricId<T> {
+        MetricId {
+            id,
+            _phantom_type: std::marker::PhantomData
+        }
+    }
+
+    /// ID getter
+    pub fn id(&self) -> u128 {
+        self.id
+    }
+
+    /// return the ID as a ULID
+    pub fn ulid(&self) -> ULID {
+        ULID::from(self.id)
+    }
+}
+
+impl<T> fmt::Display for MetricId<T> {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "M{}", ulid_u128_into_string(self.id))
     }
 }
 
@@ -946,6 +984,8 @@ mod tests {
     use crate::configure_logging;
     use oysterpack_log::*;
     use std::{thread, time::Duration};
+
+    const METRIC_ID_1: MetricId<prometheus::Counter> = MetricId::new(1871943882688894749067493983019708136);
 
     #[test]
     fn metric_registry_int_gauge() {
