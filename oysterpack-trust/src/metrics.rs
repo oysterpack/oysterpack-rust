@@ -53,7 +53,189 @@ pub struct MetricRegistry {
 }
 
 impl MetricRegistry {
-    /// Tries to register a counter metric
+    /// Tries to register an int gauge metric
+    pub fn register_int_gauge(
+        &self,
+        metric_id: IntGaugeId,
+        help: String,
+        const_labels: Option<HashMap<String, String>>,
+    ) -> prometheus::Result<()> {
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut metrics = self.int_gauges.lock().unwrap();
+        if metrics.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::IntGauge::with_opts(opts)?;
+        self.registry.register(Box::new(metric.clone()))?;
+        metrics.insert(metric_id, metric);
+        Ok(())
+    }
+
+    /// Tries to register an int gauge metric
+    pub fn register_gauge(
+        &self,
+        metric_id: GaugeId,
+        help: String,
+        const_labels: Option<HashMap<String, String>>,
+    ) -> prometheus::Result<()> {
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut metrics = self.gauges.lock().unwrap();
+        if metrics.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::Gauge::with_opts(opts)?;
+        self.registry.register(Box::new(metric.clone()))?;
+        metrics.insert(metric_id, metric);
+        Ok(())
+    }
+
+    /// Tries to register a CounterVec metric
+    ///
+    /// ## Params
+    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
+    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
+    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
+    /// - label_names - the labels used to define the metric's dimensions
+    ///   - labels will be trimmed and must not be blank
+    /// - **buckets** define the buckets into which observations are counted.
+    ///   - Each element in the slice is the upper inclusive bound of a bucket.
+    ///   - The values will be deduped and sorted in strictly increasing order.
+    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
+    ///
+    /// ## Errors
+    /// - if no labels are provided
+    /// - if labels are blank
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    ///
+    /// ## Notes
+    ///
+    pub fn register_gauge_vec(
+        &self,
+        metric_id: GaugeVecId,
+        help: String,
+        label_names: &[&str],
+        const_labels: Option<HashMap<String, String>>,
+    ) -> prometheus::Result<()> {
+        let check_labels = || {
+            if label_names.is_empty() {
+                return Err(prometheus::Error::Msg(
+                    "At least one label name must be provided".to_string(),
+                ));
+            }
+            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
+            for label in label_names.iter() {
+                let label = label.trim();
+                if label.is_empty() {
+                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
+                }
+                trimmed_label_names.push(label);
+            }
+            Ok(trimmed_label_names)
+        };
+
+        let label_names = check_labels()?;
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut metrics = self.gauge_vecs.lock().unwrap();
+        if metrics.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::GaugeVec::new(opts, &label_names)?;
+        self.registry.register(Box::new(metric.clone()))?;
+        metrics.insert(metric_id, metric);
+        Ok(())
+    }
+
+    /// Tries to register a CounterVec metric
+    ///
+    /// ## Params
+    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
+    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
+    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
+    /// - label_names - the labels used to define the metric's dimensions
+    ///   - labels will be trimmed and must not be blank
+    /// - **buckets** define the buckets into which observations are counted.
+    ///   - Each element in the slice is the upper inclusive bound of a bucket.
+    ///   - The values will be deduped and sorted in strictly increasing order.
+    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
+    ///
+    /// ## Errors
+    /// - if no labels are provided
+    /// - if labels are blank
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    ///
+    /// ## Notes
+    ///
+    pub fn register_int_gauge_vec(
+        &self,
+        metric_id: IntGaugeVecId,
+        help: String,
+        label_names: &[&str],
+        const_labels: Option<HashMap<String, String>>,
+    ) -> prometheus::Result<()> {
+        let check_labels = || {
+            if label_names.is_empty() {
+                return Err(prometheus::Error::Msg(
+                    "At least one label name must be provided".to_string(),
+                ));
+            }
+            let mut trimmed_label_names: Vec<&str> = Vec::with_capacity(label_names.len());
+            for label in label_names.iter() {
+                let label = label.trim();
+                if label.is_empty() {
+                    return Err(prometheus::Error::Msg("Labels cannot be blank".to_string()));
+                }
+                trimmed_label_names.push(label);
+            }
+            Ok(trimmed_label_names)
+        };
+
+        let label_names = check_labels()?;
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut metrics = self.int_gauge_vecs.lock().unwrap();
+        if metrics.contains_key(&metric_id) {
+            return Err(prometheus::Error::AlreadyReg);
+        }
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::IntGaugeVec::new(opts, &label_names)?;
+        self.registry.register(Box::new(metric.clone()))?;
+        metrics.insert(metric_id, metric);
+        Ok(())
+    }
+
+    /// Tries to register an int counter metric
     pub fn register_int_counter(
         &self,
         metric_id: IntCounterId,
@@ -490,6 +672,30 @@ impl MetricRegistry {
     ) -> Option<prometheus::IntCounterVec> {
         let int_counter_vecs = self.int_counter_vecs.lock().unwrap();
         int_counter_vecs.get(&metric_id).cloned()
+    }
+
+    /// Returns a Counter for the specified metric ID - if it is registered
+    pub fn gauge(&self, metric_id: &GaugeId) -> Option<prometheus::Gauge> {
+        let gauges = self.gauges.lock().unwrap();
+        gauges.get(&metric_id).cloned()
+    }
+
+    /// Returns an IntCounter for the specified metric ID - if it is registered
+    pub fn int_gauge(&self, metric_id: &IntGaugeId) -> Option<prometheus::IntGauge> {
+        let int_gauges = self.int_gauges.lock().unwrap();
+        int_gauges.get(&metric_id).cloned()
+    }
+
+    /// Returns a CounterVec for the specified metric ID - if it is registered
+    pub fn gauge_vec(&self, metric_id: &GaugeVecId) -> Option<prometheus::GaugeVec> {
+        let gauges_vecs = self.gauge_vecs.lock().unwrap();
+        gauges_vecs.get(&metric_id).cloned()
+    }
+
+    /// Returns a CounterVec for the specified metric ID - if it is registered
+    pub fn int_gauge_vec(&self, metric_id: &IntGaugeVecId) -> Option<prometheus::IntGaugeVec> {
+        let int_gauge_vecs = self.int_gauge_vecs.lock().unwrap();
+        int_gauge_vecs.get(&metric_id).cloned()
     }
 
     /// gather calls the Collect method of the registered Collectors and then gathers the collected
