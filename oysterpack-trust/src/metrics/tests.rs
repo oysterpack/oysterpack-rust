@@ -1,0 +1,834 @@
+/*
+ * Copyright 2019 OysterPack Inc.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
+//! metrics tests
+
+use super::*;
+use crate::configure_logging;
+use oysterpack_log::*;
+use std::{thread, time::Duration};
+
+const METRIC_ID_1: MetricId = MetricId(1871943882688894749067493983019708136);
+
+#[test]
+fn metric_registry_int_gauge() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_int_gauge(metric_id, "Active Sessions".to_string(), None)
+        .unwrap();
+
+    let mut gauge = registry.int_gauge(&metric_id).unwrap();
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        gauge.inc();
+    }
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_gauge() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_gauge(metric_id, "Active Sessions".to_string(), None)
+        .unwrap();
+
+    let mut gauge = registry.gauge(&metric_id).unwrap();
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        gauge.inc();
+    }
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_gauge_vec() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    let label = LabelId::generate();
+    let labels = vec![label];
+    registry
+        .register_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+        .unwrap();
+
+    let mut gauge_vec = registry.gauge_vec(&metric_id).unwrap();
+    let mut counter = gauge_vec.with_label_values(&["ABC"]);
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_int_gauge_vec() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    let label = LabelId::generate();
+    let labels = vec![label];
+    registry
+        .register_int_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+        .unwrap();
+
+    let mut gauge_vec = registry.int_gauge_vec(&metric_id).unwrap();
+    let mut counter = gauge_vec.with_label_values(&["ABC"]);
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_gauge().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_int_counter() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_int_counter(metric_id, "ReqRep timer".to_string(), None)
+        .unwrap();
+
+    let mut counter = registry.int_counter(&metric_id).unwrap().local();
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were NOT recorded because they were not flushed yet
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), 0.0);
+
+    // flush the metrics
+    counter.flush();
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_counter() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_counter(metric_id, "ReqRep timer".to_string(), None)
+        .unwrap();
+
+    let mut counter = registry.counter(&metric_id).unwrap().local();
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were NOT recorded because they were not flushed yet
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), 0.0);
+
+    // flush the metrics
+    counter.flush();
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_counter_vec() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    let label = LabelId::generate();
+    let labels = vec![label];
+    registry
+        .register_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
+        .unwrap();
+
+    let mut counter_vec = registry.counter_vec(&metric_id).unwrap().local();
+    let mut counter = counter_vec.with_label_values(&["ABC"]);
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were NOT recorded because they were not flushed yet
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), 0.0);
+
+    // flush the metrics
+    counter.flush();
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_int_counter_vec() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    let label = LabelId::generate();
+    let labels = vec![label];
+    registry
+        .register_int_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
+        .unwrap();
+
+    info!("{:#?}", registry);
+
+    let mut counter_vec = registry.int_counter_vec(&metric_id).unwrap().local();
+    let mut counter = counter_vec.with_label_values(&["ABC"]);
+    const COUNT: u64 = 10;
+    for _ in 0..COUNT {
+        counter.inc();
+    }
+
+    // check that the metrics were NOT recorded because they were not flushed yet
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), 0.0);
+
+    // flush the metrics
+    counter.flush();
+
+    // check that the metrics were recorded
+    let metrics_family = registry.gather();
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
+}
+
+#[test]
+fn metric_registry_histogram_vec() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    const METRIC_ID: MetricId = MetricId(1872045779718506837202123142606941790);
+    let registry = MetricRegistry::default();
+    registry
+        .register_histogram_vec(
+            METRIC_ID,
+            "ReqRep timer".to_string(),
+            &[LabelId::generate()],
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            None,
+        )
+        .unwrap();
+
+    info!("{:#?}", registry);
+
+    let mut reqrep_timer_local = registry.histogram_vec(&METRIC_ID).unwrap().local();
+    let reqrep_timer =
+        reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
+    let clock = quanta::Clock::new();
+    for _ in 0..10 {
+        let ulid_u128: u128 = ULID::generate().into();
+        let sleep_ms = (ulid_u128 % 100) as u32;
+        info!("sleeping for {}", sleep_ms);
+        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+        reqrep_timer.observe(as_float_secs(delta));
+        reqrep_timer.flush();
+    }
+}
+
+#[test]
+fn metric_registry_histogram() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_histogram(
+            metric_id,
+            "ReqRep timer".to_string(),
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            None,
+        )
+        .unwrap();
+
+    info!("{:#?}", registry);
+
+    let mut reqrep_timer = registry.histogram(&metric_id).unwrap().local();
+    let clock = quanta::Clock::new();
+    const METRIC_COUNT: u64 = 5;
+    for _ in 0..5 {
+        let ulid_u128: u128 = ULID::generate().into();
+        let sleep_ms = (ulid_u128 % 10) as u32;
+        info!("sleeping for {}", sleep_ms);
+        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+        reqrep_timer.observe(as_float_secs(delta));
+        reqrep_timer.flush();
+    }
+
+    let metrics_family = registry.gather();
+    info!("{:#?}", metrics_family);
+    registry.text_encode_metrics(&mut std::io::stderr());
+
+    // check that the metrics were recorded
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_histogram().get_sample_count(), METRIC_COUNT);
+}
+
+#[test]
+fn metric_registry_histogram_using_timer() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    registry
+        .register_histogram(
+            metric_id,
+            "ReqRep timer".to_string(),
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            None,
+        )
+        .unwrap();
+
+    let mut reqrep_timer = registry.histogram(&metric_id).unwrap();
+    const METRIC_COUNT: u64 = 5;
+    for _ in 0..METRIC_COUNT {
+        let ulid_u128: u128 = ULID::generate().into();
+        let sleep_ms = (ulid_u128 % 5) as u32;
+        info!("sleeping for {}", sleep_ms);
+        {
+            let timer = reqrep_timer.start_timer();
+            thread::sleep_ms(sleep_ms)
+        }
+    }
+
+    let metrics_family = registry.gather();
+    info!("{:#?}", metrics_family);
+    registry.text_encode_metrics(&mut std::io::stderr());
+
+    // check that the metrics were recorded
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    assert_eq!(metric.get_histogram().get_sample_count(), METRIC_COUNT);
+}
+
+#[test]
+fn metric_registry_histogram_vec_with_const_labels() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+    let mut const_labels = HashMap::new();
+    let label = LabelId::generate();
+    const_labels.insert(label, "  BAR".to_string());
+    registry
+        .register_histogram_vec(
+            metric_id,
+            "ReqRep timer".to_string(),
+            &[LabelId::generate()],
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            Some(const_labels),
+        )
+        .unwrap();
+
+    let mut reqrep_timer_local = registry.histogram_vec(&metric_id).unwrap().local();
+    let reqrep_timer =
+        reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
+    let clock = quanta::Clock::new();
+    const METRIC_COUNT: usize = 5;
+    for _ in 0..METRIC_COUNT {
+        let ulid_u128: u128 = ULID::generate().into();
+        let sleep_ms = (ulid_u128 % 100) as u32;
+        info!("sleeping for {}", sleep_ms);
+        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+        reqrep_timer.observe(as_float_secs(delta));
+        reqrep_timer.flush();
+    }
+
+    let metrics_family = registry.gather();
+    info!("{:#?}", metrics_family);
+
+    // check that the const label was trimmed FOO=BAR
+    let metric_family = metrics_family
+        .iter()
+        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
+        .next()
+        .unwrap();
+    let metric = &metric_family.get_metric()[0];
+    let label_pair = metric
+        .get_label()
+        .iter()
+        .filter(|label_pair| label_pair.get_name() == label.name().as_str())
+        .next()
+        .unwrap();
+    assert_eq!(label_pair.get_name(), label.name());
+    assert_eq!(label_pair.get_value(), "BAR")
+}
+
+#[test]
+fn metric_registry_histogram_vec_with_blank_const_label() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+
+    {
+        let mut const_labels = HashMap::new();
+        const_labels.insert(LabelId::generate(), "  ".to_string());
+        let result = registry.register_histogram_vec(
+            metric_id,
+            "ReqRep timer".to_string(),
+            &[LabelId::generate()],
+            vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+            Some(const_labels),
+        );
+        assert!(result.is_err());
+        assert!(result.err().unwrap().to_string().contains("value"));
+    }
+}
+
+#[test]
+fn metric_registry_histogram_vec_with_blank_help() {
+    configure_logging();
+
+    use oysterpack_uid::ULID;
+
+    let metric_id = MetricId::generate();
+    let registry = MetricRegistry::default();
+
+    let result = registry.register_histogram_vec(
+        metric_id,
+        " ".to_string(),
+        &[LabelId::generate()],
+        vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+        None,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn global_metric_registry() {
+    configure_logging();
+
+    let registry = METRIC_REGISTRY.lock().unwrap();
+    let metrics = registry.gather();
+    info!("{:#?}", metrics);
+}
+
+#[test]
+fn metric_registry_gather() {
+    configure_logging();
+
+    let registry = METRIC_REGISTRY.lock().unwrap();
+
+    let mut metric_ids = vec![];
+    let registry = MetricRegistry::default();
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let metric = registry
+            .register_counter(metric_id, "Counter".to_string(), None)
+            .unwrap();
+
+        for _ in 0..5 {
+            metric.inc();
+        }
+    }
+
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let metric = registry
+            .register_int_counter(metric_id, "IntCounter".to_string(), None)
+            .unwrap();
+
+        for _ in 0..5 {
+            metric.inc();
+        }
+    }
+
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut metric = registry
+            .register_counter_vec(
+                metric_id,
+                "CounterVec".to_string(),
+                &[LabelId::generate()],
+                None,
+            )
+            .unwrap()
+            .local();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+            counter.flush();
+        }
+    }
+
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut metric = registry
+            .register_int_counter_vec(
+                metric_id,
+                "IntCounterVec".to_string(),
+                &[LabelId::generate()],
+                None,
+            )
+            .unwrap()
+            .local();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+            counter.flush();
+        }
+    }
+
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        registry
+            .register_histogram(
+                metric_id,
+                "ReqRep timer".to_string(),
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                None,
+            )
+            .unwrap();
+
+        let mut reqrep_timer = registry.histogram(&metric_id).unwrap();
+        const METRIC_COUNT: u64 = 5;
+        for _ in 0..METRIC_COUNT {
+            let ulid_u128: u128 = ULID::generate().into();
+            let sleep_ms = (ulid_u128 % 5) as u32;
+            info!("sleeping for {}", sleep_ms);
+            {
+                let timer = reqrep_timer.start_timer();
+                thread::sleep_ms(sleep_ms)
+            }
+        }
+    }
+
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut const_labels = HashMap::new();
+        let label = LabelId::generate();
+        const_labels.insert(label, "BAR - CONST LABEL".to_string());
+        registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep timer".to_string(),
+                &[LabelId::generate()],
+                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                Some(const_labels),
+            )
+            .unwrap();
+
+        let mut reqrep_timer_local = registry.histogram_vec(&metric_id).unwrap().local();
+        let reqrep_timer = reqrep_timer_local.with_label_values(&["FOO - VAR LABEL"]);
+        let clock = quanta::Clock::new();
+        const METRIC_COUNT: usize = 5;
+        for _ in 0..METRIC_COUNT {
+            let ulid_u128: u128 = ULID::generate().into();
+            let sleep_ms = (ulid_u128 % 5) as u32;
+            info!("sleeping for {}", sleep_ms);
+            let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+            reqrep_timer.observe(as_float_secs(delta));
+            reqrep_timer.flush();
+        }
+    }
+
+    let metrics = registry.gather();
+    info!("{:#?}", metrics);
+
+    let metrics = registry.gather_metrics(&metric_ids);
+    info!("{}", serde_json::to_string_pretty(&metrics).unwrap());
+}
+
+#[test]
+fn metric_descs() {
+    configure_logging();
+
+    let metric_registry = MetricRegistry::default();
+    let descs = metric_registry.metric_descs();
+    info!("empty MetricRegistry: {:#?}", descs);
+    info!("{}", serde_json::to_string_pretty(&descs).unwrap());
+    assert!(descs.counters().is_none());
+    assert!(descs.int_counters().is_none());
+    assert!(descs.counter_vecs().is_none());
+    assert!(descs.int_counter_vecs().is_none());
+    assert!(descs.gauges().is_none());
+    assert!(descs.int_gauges().is_none());
+    assert!(descs.gauge_vecs().is_none());
+    assert!(descs.int_gauge_vecs().is_none());
+    assert!(descs.histograms().is_none());
+    assert!(descs.histogram_vecs().is_none());
+
+    let mut const_labels = HashMap::new();
+    const_labels.insert(LabelId::generate(), "FOO".to_string());
+    let labels = vec![LabelId::generate(), LabelId::generate()];
+    metric_registry
+        .register_counter(
+            MetricId::generate(),
+            "counter".to_string(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_int_counter(
+            MetricId::generate(),
+            "int_counter".to_string(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_counter_vec(
+            MetricId::generate(),
+            "counter_vec".to_string(),
+            &labels,
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_int_counter_vec(
+            MetricId::generate(),
+            "int_counter_vec".to_string(),
+            &labels,
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+
+    metric_registry
+        .register_gauge(
+            MetricId::generate(),
+            "gauge".to_string(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_int_gauge(
+            MetricId::generate(),
+            "int_gauge".to_string(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_gauge_vec(
+            MetricId::generate(),
+            "gauge_vec".to_string(),
+            &labels,
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_int_gauge_vec(
+            MetricId::generate(),
+            "int_gauge_vec".to_string(),
+            &labels,
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+
+    let buckets = vec![0.0, 1.0, 5.0, 10.0];
+    metric_registry
+        .register_histogram(
+            MetricId::generate(),
+            "histogram".to_string(),
+            buckets.clone(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    metric_registry
+        .register_histogram_vec(
+            MetricId::generate(),
+            "histogram_vec".to_string(),
+            &labels,
+            buckets.clone(),
+            Some(const_labels.clone()),
+        )
+        .unwrap();
+    let descs = metric_registry.metric_descs();
+    info!("{:#?}", descs);
+
+    let descs_json = serde_json::to_string_pretty(&descs).unwrap();
+    // verify that MetricDescs are serde compatible
+    info!("{}", descs_json);
+    assert!(descs.counters().is_some());
+    assert!(descs.int_counters().is_some());
+    assert!(descs.counter_vecs().is_some());
+    assert!(descs.int_counter_vecs().is_some());
+    assert!(descs.gauges().is_some());
+    assert!(descs.int_gauges().is_some());
+    assert!(descs.gauge_vecs().is_some());
+    assert!(descs.int_gauge_vecs().is_some());
+    assert!(descs.histograms().is_some());
+    assert!(descs.histogram_vecs().is_some());
+
+    let descs1: MetricDescs = serde_json::from_str(descs_json.as_str()).unwrap();
+
+    assert!(descs1.counters().is_some());
+    assert!(descs1.int_counters().is_some());
+    assert!(descs1.counter_vecs().is_some());
+    assert!(descs1.int_counter_vecs().is_some());
+    assert!(descs1.gauges().is_some());
+    assert!(descs1.int_gauges().is_some());
+    assert!(descs1.gauge_vecs().is_some());
+    assert!(descs1.int_gauge_vecs().is_some());
+    assert!(descs1.histograms().is_some());
+    assert!(descs1.histogram_vecs().is_some());
+
+    let bytes = bincode::serialize(&descs).unwrap();
+    let descs2: MetricDescs = bincode::deserialize(&bytes).unwrap();
+
+    assert!(descs2.counters().is_some());
+    assert!(descs2.int_counters().is_some());
+    assert!(descs2.counter_vecs().is_some());
+    assert!(descs2.int_counter_vecs().is_some());
+    assert!(descs2.gauges().is_some());
+    assert!(descs2.int_gauges().is_some());
+    assert!(descs2.gauge_vecs().is_some());
+    assert!(descs2.int_gauge_vecs().is_some());
+    assert!(descs2.histograms().is_some());
+    assert!(descs2.histogram_vecs().is_some());
+}

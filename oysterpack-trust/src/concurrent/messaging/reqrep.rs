@@ -120,6 +120,7 @@ where
         let (reqrep, req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
         let mut req_receiver = req_receiver;
         let mut executor = executor;
+        let mut processor = processor;
 
         let service = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
@@ -234,7 +235,7 @@ where
     Rep: Debug + Send + 'static,
 {
     /// request / reply processing
-    fn process(&self, req: Req) -> Rep;
+    fn process(&mut self, req: Req) -> Rep;
 }
 
 #[allow(warnings)]
@@ -296,7 +297,7 @@ mod tests {
         struct Inc;
 
         impl Processor<usize, usize> for Inc {
-            fn process(&self, req: usize) -> usize {
+            fn process(&mut self, req: usize) -> usize {
                 req + 1
             }
         }
