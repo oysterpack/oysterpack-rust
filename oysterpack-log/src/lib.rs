@@ -37,6 +37,23 @@
 //!
 //! fn run() {}
 //! ```
+//!
+//! ## Compile time filters
+//! - max_level_off
+//! - max_level_error
+//! - max_level_warn
+//! - max_level_info
+//! - max_level_debug
+//! - max_level_trace
+//! - release_max_level_off
+//! - release_max_level_error
+//! - release_max_level_warn
+//! - release_max_level_info
+//! - release_max_level_debug
+//! - release_max_level_trace
+//! - std
+//!
+//! These pass through to the [log](https://crates.io/crates/log) crate (refer to [log's docs](https://docs.rs/log/latest/log/#compile-time-filters) for details)
 
 #![deny(missing_docs, missing_debug_implementations)]
 #![doc(html_root_url = "https://docs.rs/oysterpack_log/0.1.1")]
