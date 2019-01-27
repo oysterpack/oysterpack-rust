@@ -558,6 +558,8 @@ fn metric_registry_gather() {
 
     let mut metric_ids = vec![];
     let registry = MetricRegistry::default();
+
+    // COUNTERS
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
@@ -569,7 +571,6 @@ fn metric_registry_gather() {
             metric.inc();
         }
     }
-
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
@@ -581,14 +582,35 @@ fn metric_registry_gather() {
             metric.inc();
         }
     }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut const_labels = HashMap::new();
+        const_labels.insert(LabelId::generate(), "BAR".to_string());
+        let mut metric = registry
+            .register_counter_vec(
+                metric_id,
+                "CounterVec with const labels".to_string(),
+                &[LabelId::generate()],
+                Some(const_labels),
+            )
+            .unwrap()
+            .local();
 
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+            counter.flush();
+        }
+    }
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
         let mut metric = registry
             .register_counter_vec(
                 metric_id,
-                "CounterVec".to_string(),
+                "CounterVec with no const labels".to_string(),
                 &[LabelId::generate()],
                 None,
             )
@@ -602,14 +624,35 @@ fn metric_registry_gather() {
             counter.flush();
         }
     }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut const_labels = HashMap::new();
+        const_labels.insert(LabelId::generate(), "BAR".to_string());
+        let mut metric = registry
+            .register_int_counter_vec(
+                metric_id,
+                "IntCounterVec with const labels".to_string(),
+                &[LabelId::generate()],
+                Some(const_labels),
+            )
+            .unwrap()
+            .local();
 
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+            counter.flush();
+        }
+    }
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
         let mut metric = registry
             .register_int_counter_vec(
                 metric_id,
-                "IntCounterVec".to_string(),
+                "IntCounterVec with no const labels".to_string(),
                 &[LabelId::generate()],
                 None,
             )
@@ -623,15 +666,118 @@ fn metric_registry_gather() {
             counter.flush();
         }
     }
+    // END COUNTERS
 
+    // GAUGES
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let metric = registry
+            .register_gauge(metric_id, "Gauge".to_string(), None)
+            .unwrap();
+
+        for _ in 0..5 {
+            metric.inc();
+        }
+    }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let metric = registry
+            .register_int_gauge(metric_id, "IntGauge".to_string(), None)
+            .unwrap();
+
+        for _ in 0..5 {
+            metric.inc();
+        }
+    }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut const_labels = HashMap::new();
+        const_labels.insert(LabelId::generate(), "BAR".to_string());
+        let mut metric = registry
+            .register_gauge_vec(
+                metric_id,
+                "GaugeVec with const labels".to_string(),
+                &[LabelId::generate()],
+                Some(const_labels),
+            )
+            .unwrap();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+        }
+    }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut metric = registry
+            .register_gauge_vec(
+                metric_id,
+                "GaugeVec with no const labels".to_string(),
+                &[LabelId::generate()],
+                None,
+            )
+            .unwrap();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+        }
+    }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut const_labels = HashMap::new();
+        const_labels.insert(LabelId::generate(), "BAR".to_string());
+        let mut metric = registry
+            .register_int_gauge_vec(
+                metric_id,
+                "IntGaugeVec with const labels".to_string(),
+                &[LabelId::generate()],
+                Some(const_labels),
+            )
+            .unwrap();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+        }
+    }
+    {
+        let metric_id = MetricId::generate();
+        metric_ids.push(metric_id);
+        let mut metric = registry
+            .register_int_gauge_vec(
+                metric_id,
+                "IntgaugeVec with no const labels".to_string(),
+                &[LabelId::generate()],
+                None,
+            )
+            .unwrap();
+
+        let counter = metric.with_label_values(&["FOO"]);
+
+        for _ in 0..5 {
+            counter.inc();
+        }
+    }
+    // END GAUGES
+
+    // HISTOGRAMS
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
         registry
             .register_histogram(
                 metric_id,
-                "ReqRep timer".to_string(),
-                vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
+                "Histogram with no const labels".to_string(),
+                vec![0.001, 0.0025, 0.005], // will be sorted and deduped automatically
                 None,
             )
             .unwrap();
@@ -648,7 +794,6 @@ fn metric_registry_gather() {
             }
         }
     }
-
     {
         let metric_id = MetricId::generate();
         metric_ids.push(metric_id);
@@ -658,7 +803,7 @@ fn metric_registry_gather() {
         registry
             .register_histogram_vec(
                 metric_id,
-                "ReqRep timer".to_string(),
+                "HistogramVec with const labels".to_string(),
                 &[LabelId::generate()],
                 vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
                 Some(const_labels),

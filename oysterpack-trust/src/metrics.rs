@@ -39,15 +39,18 @@
 
 use lazy_static::lazy_static;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
-use prometheus::{
-    core::{Atomic, Collector},
-    Encoder,
-};
+use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
 
 use chrono::{DateTime, Utc};
 use smallvec::SmallVec;
-use std::{collections::HashMap, fmt, io::Write, str::FromStr, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    io::Write,
+    str::FromStr,
+    sync::Mutex,
+};
 
 lazy_static! {
     /// Global metrics registry
@@ -56,7 +59,7 @@ lazy_static! {
 
 // used to minimize memory allocations on the heap
 const METRIC_DESC_SMALLVEC_SIZE: usize = 8;
-const BUCKETS_SMALLVEC_SIZE: usize = 16;
+const BUCKETS_SMALLVEC_SIZE: usize = 8;
 
 /// Metric Registry
 /// - process metrics collector is automatically added
@@ -652,86 +655,359 @@ impl MetricRegistry {
     pub fn gather(&self) -> Vec<prometheus::proto::MetricFamily> {
         self.registry.gather()
     }
-
     /// Gathers the specified metrics
     pub fn gather_metrics(&self, metric_ids: &[MetricId]) -> Metrics {
         let mut metrics = Metrics::new(metric_ids.len());
         self.gather_counter_metrics(metric_ids, &mut metrics);
         self.gather_int_counter_metrics(metric_ids, &mut metrics);
+        self.gather_counter_vec_metrics(metric_ids, &mut metrics);
+        self.gather_int_counter_vec_metrics(metric_ids, &mut metrics);
+
+        self.gather_gauge_metrics(metric_ids, &mut metrics);
+        self.gather_int_gauge_metrics(metric_ids, &mut metrics);
+        self.gather_gauge_vec_metrics(metric_ids, &mut metrics);
+        self.gather_int_gauge_vec_metrics(metric_ids, &mut metrics);
+
+        self.gather_histogram_metrics(metric_ids, &mut metrics);
+        self.gather_histogram_vec_metrics(metric_ids, &mut metrics);
         metrics
     }
 
+    fn gather_histogram_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let histograms = self.histograms.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some((metric, buckets)) = histograms.get(metric_id) {
+                let desc = HistogramDesc::new(*metric_id, metric, buckets.clone());
+                let metric_families = metric.collect();
+                let metric_family = &metric_families[0];
+                let metrics_ = metric_family.get_metric();
+                let metric = &metrics_[0];
+                let histogram = metric.get_histogram();
+                let sample_count = histogram.get_sample_count();
+                let values: Vec<BucketValue> = histogram
+                    .get_bucket()
+                    .iter()
+                    .map(|bucket| BucketValue {
+                        cumulative_count: bucket.get_cumulative_count(),
+                        upper_bound: bucket.get_upper_bound(),
+                    })
+                    .collect();
+                metrics.metrics.push(Metric::Histogram {
+                    desc,
+                    values,
+                    sample_count,
+                });
+            }
+        }
+    }
+
+    fn gather_histogram_vec_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let histogram_vecs = self.histogram_vecs.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some((metric, buckets)) = histogram_vecs.get(metric_id) {
+                let desc = HistogramVecDesc::new(*metric_id, metric, buckets.clone());
+
+                // used to filter out the const labels when building the MetricValue
+                // - the const labels are listed separately in the MetricVecDesc
+                // - in the MetricValue we only want to show the variable labels to minimize the
+                //   duplicated info
+                let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+                    Some(const_labels) => const_labels
+                        .iter()
+                        .map(|(label_id, _value)| label_id)
+                        .cloned()
+                        .collect(),
+                    None => HashSet::new(),
+                };
+
+                let values = metric
+                    .collect()
+                    .iter()
+                    .map(|metric_family| {
+                        let metrics_ = metric_family.get_metric();
+                        let metric = &metrics_[0];
+                        let histogram = metric.get_histogram();
+                        let sample_count = histogram.get_sample_count();
+                        let values: Vec<BucketValue> = histogram
+                            .get_bucket()
+                            .iter()
+                            .map(|bucket| BucketValue {
+                                cumulative_count: bucket.get_cumulative_count(),
+                                upper_bound: bucket.get_upper_bound(),
+                            })
+                            .collect();
+
+                        // variable labels, i.e., const labels are filtered out
+                        let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> =
+                            metric
+                                .get_label()
+                                .iter()
+                                .filter_map(|label_pair| {
+                                    let label_id =
+                                        LabelId::from_str(label_pair.get_name()).unwrap();
+                                    if const_label_ids.contains(&label_id) {
+                                        None
+                                    } else {
+                                        Some((label_id, label_pair.get_value().to_string()))
+                                    }
+                                })
+                                .collect();
+
+                        HistogramValue {
+                            labels,
+                            sample_count,
+                            values,
+                        }
+                    })
+                    .collect();
+                metrics.metrics.push(Metric::HistogramVec { desc, values });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_gauge_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let gauges = self.gauges.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = gauges.get(metric_id) {
+                let desc = MetricDesc::gauge_metric_desc(*metric_id, metric);
+                let value = metric.get();
+                metrics.metrics.push(Metric::Gauge { desc, value });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_int_gauge_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let gauges = self.int_gauges.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = gauges.get(metric_id) {
+                let desc = MetricDesc::int_gauge_metric_desc(*metric_id, metric);
+                let value: u64 = metric.get() as u64;
+                metrics.metrics.push(Metric::IntGauge { desc, value });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_gauge_vec_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let gauge_vecs = self.gauge_vecs.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = gauge_vecs.get(metric_id) {
+                let desc = MetricVecDesc::gauge_vec_metric_desc(*metric_id, metric);
+
+                // used to filter out the const labels when building the MetricValue
+                // - the const labels are listed separately in the MetricVecDesc
+                // - in the MetricValue we only want to show the variable labels to minimize the
+                //   duplicated info
+                let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+                    Some(const_labels) => const_labels
+                        .iter()
+                        .map(|(label_id, _value)| label_id)
+                        .cloned()
+                        .collect(),
+                    None => HashSet::new(),
+                };
+
+                let mut values = Vec::<MetricValue<f64>>::new();
+                for metric_family in metric.collect() {
+                    for metric in metric_family.get_metric() {
+                        // variable labels, i.e., const labels are filtered out
+                        let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> =
+                            metric
+                                .get_label()
+                                .iter()
+                                .filter_map(|label_pair| {
+                                    let label_id =
+                                        LabelId::from_str(label_pair.get_name()).unwrap();
+                                    if const_label_ids.contains(&label_id) {
+                                        None
+                                    } else {
+                                        Some((label_id, label_pair.get_value().to_string()))
+                                    }
+                                })
+                                .collect();
+                        let value = metric.get_gauge().get_value();
+                        values.push(MetricValue { labels, value })
+                    }
+                }
+
+                metrics.metrics.push(Metric::GaugeVec { desc, values });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_int_gauge_vec_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let int_gauge_vecs = self.int_gauge_vecs.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = int_gauge_vecs.get(metric_id) {
+                let desc = MetricVecDesc::int_gauge_vec_metric_desc(*metric_id, metric);
+
+                // used to filter out the const labels when building the MetricValue
+                // - the const labels are listed separately in the MetricVecDesc
+                // - in the MetricValue we only want to show the variable labels to minimize the
+                //   duplicated info
+                let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+                    Some(const_labels) => const_labels
+                        .iter()
+                        .map(|(label_id, _value)| label_id)
+                        .cloned()
+                        .collect(),
+                    None => HashSet::new(),
+                };
+
+                let mut values = Vec::<MetricValue<u64>>::new();
+                for metric_family in metric.collect() {
+                    for metric in metric_family.get_metric() {
+                        // variable labels, i.e., const labels are filtered out
+                        let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> =
+                            metric
+                                .get_label()
+                                .iter()
+                                .filter_map(|label_pair| {
+                                    let label_id =
+                                        LabelId::from_str(label_pair.get_name()).unwrap();
+                                    if const_label_ids.contains(&label_id) {
+                                        None
+                                    } else {
+                                        Some((label_id, label_pair.get_value().to_string()))
+                                    }
+                                })
+                                .collect();
+                        let value: u64 = metric.get_gauge().get_value() as u64;
+                        values.push(MetricValue { labels, value })
+                    }
+                }
+
+                metrics.metrics.push(Metric::IntGaugeVec { desc, values });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
     fn gather_counter_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
         let counters = self.counters.lock().unwrap();
         for metric_id in metric_ids {
             if let Some(metric) = counters.get(metric_id) {
-                let desc = Self::counter_metric_desc(*metric_id, metric);
+                let desc = MetricDesc::counter_metric_desc(*metric_id, metric);
                 let value = metric.get();
                 metrics.metrics.push(Metric::Counter { desc, value });
             }
         }
     }
 
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
     fn gather_int_counter_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
         let counters = self.int_counters.lock().unwrap();
         for metric_id in metric_ids {
             if let Some(metric) = counters.get(metric_id) {
-                let desc = Self::int_counter_metric_desc(*metric_id, metric);
+                let desc = MetricDesc::int_counter_metric_desc(*metric_id, metric);
                 let value: u64 = metric.get() as u64;
                 metrics.metrics.push(Metric::IntCounter { desc, value });
             }
         }
     }
 
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_counter_vec_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let counter_vecs = self.counter_vecs.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = counter_vecs.get(metric_id) {
+                let desc = MetricVecDesc::counter_vec_metric_desc(*metric_id, metric);
+
+                // used to filter out the const labels when building the MetricValue
+                // - the const labels are listed separately in the MetricVecDesc
+                // - in the MetricValue we only want to show the variable labels to minimize the
+                //   duplicated info
+                let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+                    Some(const_labels) => const_labels
+                        .iter()
+                        .map(|(label_id, _value)| label_id)
+                        .cloned()
+                        .collect(),
+                    None => HashSet::new(),
+                };
+
+                let mut values = Vec::<MetricValue<f64>>::new();
+                for metric_family in metric.collect() {
+                    for metric in metric_family.get_metric() {
+                        // variable labels, i.e., const labels are filtered out
+                        let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> =
+                            metric
+                                .get_label()
+                                .iter()
+                                .filter_map(|label_pair| {
+                                    let label_id =
+                                        LabelId::from_str(label_pair.get_name()).unwrap();
+                                    if const_label_ids.contains(&label_id) {
+                                        None
+                                    } else {
+                                        Some((label_id, label_pair.get_value().to_string()))
+                                    }
+                                })
+                                .collect();
+                        let value = metric.get_counter().get_value();
+                        values.push(MetricValue { labels, value })
+                    }
+                }
+
+                metrics.metrics.push(Metric::CounterVec { desc, values });
+            }
+        }
+    }
+
+    /// inserts registered metrics for the specified MetricId(s) into Metrics
+    fn gather_int_counter_vec_metrics(&self, metric_ids: &[MetricId], metrics: &mut Metrics) {
+        let int_counter_vecs = self.int_counter_vecs.lock().unwrap();
+        for metric_id in metric_ids {
+            if let Some(metric) = int_counter_vecs.get(metric_id) {
+                let desc = MetricVecDesc::int_counter_vec_metric_desc(*metric_id, metric);
+
+                // used to filter out the const labels when building the MetricValue
+                // - the const labels are listed separately in the MetricVecDesc
+                // - in the MetricValue we only want to show the variable labels to minimize the
+                //   duplicated info
+                let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+                    Some(const_labels) => const_labels
+                        .iter()
+                        .map(|(label_id, _value)| label_id)
+                        .cloned()
+                        .collect(),
+                    None => HashSet::new(),
+                };
+
+                let mut values = Vec::<MetricValue<u64>>::new();
+                for metric_family in metric.collect() {
+                    for metric in metric_family.get_metric() {
+                        // variable labels, i.e., const labels are filtered out
+                        let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> =
+                            metric
+                                .get_label()
+                                .iter()
+                                .filter_map(|label_pair| {
+                                    let label_id =
+                                        LabelId::from_str(label_pair.get_name()).unwrap();
+                                    if const_label_ids.contains(&label_id) {
+                                        None
+                                    } else {
+                                        Some((label_id, label_pair.get_value().to_string()))
+                                    }
+                                })
+                                .collect();
+                        let value: u64 = metric.get_counter().get_value() as u64;
+                        values.push(MetricValue { labels, value })
+                    }
+                }
+
+                metrics.metrics.push(Metric::IntCounterVec { desc, values });
+            }
+        }
+    }
+
     /// gathers
-    pub fn gather_all_metrics(&self, metric_ids: &[MetricId]) -> Metrics {
+    pub fn gather_all_metrics(&self) -> Metrics {
         unimplemented!()
-    }
-
-    fn counter_metric_desc(metric_id: MetricId, metric: &prometheus::Counter) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
-    }
-
-    fn int_counter_metric_desc(metric_id: MetricId, metric: &prometheus::IntCounter) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
     }
 
     /// returns the descriptors for registered metrics
@@ -744,7 +1020,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| Self::counter_metric_desc(*id, metric))
+                    .map(|(id, metric)| MetricDesc::counter_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -757,7 +1033,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| Self::int_counter_metric_desc(*id, metric))
+                    .map(|(id, metric)| MetricDesc::int_counter_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -770,38 +1046,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        let labels = desc
-                            .variable_labels
-                            .iter()
-                            .map(|label| {
-                                let label_id: LabelId = label.parse().unwrap();
-                                label_id
-                            })
-                            .collect();
-                        MetricVecDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            labels,
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricVecDesc::counter_vec_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -814,38 +1059,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        let labels = desc
-                            .variable_labels
-                            .iter()
-                            .map(|label| {
-                                let label_id: LabelId = label.parse().unwrap();
-                                label_id
-                            })
-                            .collect();
-                        MetricVecDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            labels,
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricVecDesc::int_counter_vec_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -858,29 +1072,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        MetricDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricDesc::gauge_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -893,29 +1085,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        MetricDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricDesc::int_gauge_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -928,38 +1098,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        let labels = desc
-                            .variable_labels
-                            .iter()
-                            .map(|label| {
-                                let label_id: LabelId = label.parse().unwrap();
-                                label_id
-                            })
-                            .collect();
-                        MetricVecDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            labels,
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricVecDesc::gauge_vec_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -972,38 +1111,7 @@ impl MetricRegistry {
             } else {
                 let descs = metrics
                     .iter()
-                    .map(|(id, metric)| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        let labels = desc
-                            .variable_labels
-                            .iter()
-                            .map(|label| {
-                                let label_id: LabelId = label.parse().unwrap();
-                                label_id
-                            })
-                            .collect();
-                        MetricVecDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            labels,
-                            const_labels,
-                        }
-                    })
+                    .map(|(id, metric)| MetricVecDesc::int_gauge_vec_metric_desc(*id, metric))
                     .collect();
                 Some(descs)
             }
@@ -1017,28 +1125,7 @@ impl MetricRegistry {
                 let descs = metrics
                     .iter()
                     .map(|(id, &(ref metric, ref buckets))| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        HistogramDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            const_labels,
-                            buckets: buckets.clone(),
-                        }
+                        HistogramDesc::new(*id, metric, buckets.clone())
                     })
                     .collect();
                 Some(descs)
@@ -1053,37 +1140,7 @@ impl MetricRegistry {
                 let descs = metrics
                     .iter()
                     .map(|(id, &(ref metric, ref buckets))| {
-                        let desc = metric.desc()[0];
-                        let const_labels = if desc.const_label_pairs.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                desc.const_label_pairs
-                                    .iter()
-                                    .map(|label_pair| {
-                                        let label_id: LabelId =
-                                            label_pair.get_name().parse().unwrap();
-                                        let label_value = label_pair.get_value().to_string();
-                                        (label_id, label_value)
-                                    })
-                                    .collect(),
-                            )
-                        };
-                        let labels = desc
-                            .variable_labels
-                            .iter()
-                            .map(|label| {
-                                let label_id: LabelId = label.parse().unwrap();
-                                label_id
-                            })
-                            .collect();
-                        HistogramVecDesc {
-                            id: *id,
-                            help: desc.help.clone(),
-                            const_labels,
-                            buckets: buckets.clone(),
-                            labels,
-                        }
+                        HistogramVecDesc::new(*id, metric, buckets.clone())
                     })
                     .collect();
                 Some(descs)
@@ -1144,7 +1201,7 @@ impl Default for MetricRegistry {
 pub struct MetricDesc {
     id: MetricId,
     help: String,
-    const_labels: Option<SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>>,
+    const_labels: Option<Vec<(LabelId, String)>>,
 }
 
 impl MetricDesc {
@@ -1162,6 +1219,104 @@ impl MetricDesc {
     pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
         self.const_labels.as_ref().map(|labels| labels.as_slice())
     }
+
+    // TODO: the constructors are good candidates for macros
+
+    /// MetricDesc constructor for a Gauge
+    fn gauge_metric_desc(metric_id: MetricId, metric: &prometheus::Gauge) -> MetricDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        MetricDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for an IntGauge
+    fn int_gauge_metric_desc(metric_id: MetricId, metric: &prometheus::IntGauge) -> MetricDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        MetricDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for a Counter
+    fn counter_metric_desc(metric_id: MetricId, metric: &prometheus::Counter) -> MetricDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        MetricDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for an IntCounter
+    fn int_counter_metric_desc(metric_id: MetricId, metric: &prometheus::IntCounter) -> MetricDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        MetricDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+        }
+    }
 }
 
 /// Metric Desc
@@ -1170,7 +1325,7 @@ pub struct MetricVecDesc {
     id: MetricId,
     help: String,
     labels: SmallVec<[LabelId; METRIC_DESC_SMALLVEC_SIZE]>,
-    const_labels: Option<SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>>,
+    const_labels: Option<Vec<(LabelId, String)>>,
 }
 
 impl MetricVecDesc {
@@ -1193,6 +1348,147 @@ impl MetricVecDesc {
     pub fn labels(&self) -> &[LabelId] {
         self.labels.as_slice()
     }
+
+    /// MetricDesc constructor for a GaugeVec
+    fn gauge_vec_metric_desc(metric_id: MetricId, metric: &prometheus::GaugeVec) -> MetricVecDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        let labels = desc
+            .variable_labels
+            .iter()
+            .map(|label| {
+                let label_id: LabelId = label.parse().unwrap();
+                label_id
+            })
+            .collect();
+        MetricVecDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            labels,
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for an IntGaugeVec
+    fn int_gauge_vec_metric_desc(
+        metric_id: MetricId,
+        metric: &prometheus::IntGaugeVec,
+    ) -> MetricVecDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        let labels = desc
+            .variable_labels
+            .iter()
+            .map(|label| {
+                let label_id: LabelId = label.parse().unwrap();
+                label_id
+            })
+            .collect();
+        MetricVecDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            labels,
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for a CounterVec
+    fn counter_vec_metric_desc(
+        metric_id: MetricId,
+        metric: &prometheus::CounterVec,
+    ) -> MetricVecDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        let labels = desc
+            .variable_labels
+            .iter()
+            .map(|label| {
+                let label_id: LabelId = label.parse().unwrap();
+                label_id
+            })
+            .collect();
+        MetricVecDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            labels,
+            const_labels,
+        }
+    }
+
+    /// MetricDesc constructor for an IntCounterVec
+    fn int_counter_vec_metric_desc(
+        metric_id: MetricId,
+        metric: &prometheus::IntCounterVec,
+    ) -> MetricVecDesc {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        let labels = desc
+            .variable_labels
+            .iter()
+            .map(|label| {
+                let label_id: LabelId = label.parse().unwrap();
+                label_id
+            })
+            .collect();
+        MetricVecDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            labels,
+            const_labels,
+        }
+    }
 }
 
 /// Histogram Desc
@@ -1201,9 +1497,8 @@ pub struct HistogramDesc {
     id: MetricId,
     help: String,
     buckets: Buckets,
-    const_labels: Option<SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>>,
+    const_labels: Option<Vec<(LabelId, String)>>,
 }
-
 impl HistogramDesc {
     /// returns the MetricId
     pub fn id(&self) -> &MetricId {
@@ -1223,6 +1518,32 @@ impl HistogramDesc {
     /// returns the histogram's buckets
     pub fn buckets(&self) -> &Buckets {
         &self.buckets
+    }
+
+    /// constructor
+    fn new(metric_id: MetricId, metric: &prometheus::Histogram, buckets: Buckets) -> HistogramDesc {
+        let desc = metric.desc()[0];
+        //        let metric_id_ : MetricId = desc.fq_name.as_str().parse().unwrap();
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        HistogramDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+            buckets,
+        }
     }
 }
 
@@ -1248,9 +1569,9 @@ impl fmt::Debug for HistogramDesc {
 pub struct HistogramVecDesc {
     id: MetricId,
     help: String,
-    labels: SmallVec<[LabelId; METRIC_DESC_SMALLVEC_SIZE]>,
+    labels: Vec<LabelId>,
     buckets: Buckets,
-    const_labels: Option<SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>>,
+    const_labels: Option<Vec<(LabelId, String)>>,
 }
 
 impl HistogramVecDesc {
@@ -1277,6 +1598,40 @@ impl HistogramVecDesc {
     /// returns the histogram's buckets
     pub fn buckets(&self) -> &Buckets {
         &self.buckets
+    }
+
+    /// constructor
+    fn new(metric_id: MetricId, metric: &prometheus::HistogramVec, buckets: Buckets) -> Self {
+        let desc = metric.desc()[0];
+        let const_labels = if desc.const_label_pairs.is_empty() {
+            None
+        } else {
+            Some(
+                desc.const_label_pairs
+                    .iter()
+                    .map(|label_pair| {
+                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
+                        let label_value = label_pair.get_value().to_string();
+                        (label_id, label_value)
+                    })
+                    .collect(),
+            )
+        };
+        let labels = desc
+            .variable_labels
+            .iter()
+            .map(|label| {
+                let label_id: LabelId = label.parse().unwrap();
+                label_id
+            })
+            .collect();
+        HistogramVecDesc {
+            id: metric_id,
+            help: desc.help.clone(),
+            const_labels,
+            buckets,
+            labels,
+        }
     }
 }
 
@@ -1441,6 +1796,15 @@ impl fmt::Display for MetricId {
     }
 }
 
+impl FromStr for MetricId {
+    type Err = oysterpack_uid::DecodingError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let id: ULID = s[1..].parse()?;
+        Ok(Self(id.into()))
+    }
+}
+
 /// Runs the function and returns how long it took in nanos.
 pub fn time<F>(clock: &quanta::Clock, f: F) -> u64
 where
@@ -1480,17 +1844,84 @@ pub enum Metric {
     /// CounterVec
     CounterVec {
         /// desc
-        desc: MetricDesc,
+        desc: MetricVecDesc,
         /// values
         values: Vec<MetricValue<f64>>,
     },
     /// IntCounterVec
     IntCounterVec {
         /// desc
-        desc: MetricDesc,
+        desc: MetricVecDesc,
         /// values
         values: Vec<MetricValue<u64>>,
     },
+    /// Gauge
+    Gauge {
+        /// desc
+        desc: MetricDesc,
+        /// value
+        value: f64,
+    },
+    /// IntGauge
+    IntGauge {
+        /// desc
+        desc: MetricDesc,
+        /// value
+        value: u64,
+    },
+    /// GaugeVec
+    GaugeVec {
+        /// desc
+        desc: MetricVecDesc,
+        /// values
+        values: Vec<MetricValue<f64>>,
+    },
+    /// IntGaugeVec
+    IntGaugeVec {
+        /// desc
+        desc: MetricVecDesc,
+        /// values
+        values: Vec<MetricValue<u64>>,
+    },
+    /// Histogram
+    Histogram {
+        /// desc
+        desc: HistogramDesc,
+        /// total number of data points that have been collected
+        sample_count: SampleCount,
+        /// values
+        values: Vec<BucketValue>,
+    },
+    /// HistogramVec
+    HistogramVec {
+        /// desc
+        desc: HistogramVecDesc,
+        /// values
+        values: Vec<HistogramValue>,
+    },
+}
+
+/// Type alias for a sample count
+pub type SampleCount = u64;
+
+/// Histogram bucket value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BucketValue {
+    /// cumulative count for the number of data points that are `<=` the upper bound
+    pub cumulative_count: u64,
+    /// upper bound
+    pub upper_bound: f64,
+}
+
+/// Histogram value
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramValue {
+    /// metric variable label pairs
+    pub labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>,
+    /// total number of data points that have been collected
+    pub sample_count: SampleCount,
+    /// values
+    pub values: Vec<BucketValue>,
 }
 
 /// Metric value
