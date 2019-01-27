@@ -1901,6 +1901,26 @@ pub enum Metric {
     },
 }
 
+impl Metric {
+    /// Returns the MetricId
+    pub fn metric_id(&self) -> MetricId {
+        match self {
+            Metric::Counter { desc, .. } => desc.id,
+            Metric::IntCounter { desc, .. } => desc.id,
+            Metric::CounterVec { desc, .. } => desc.id,
+            Metric::IntCounterVec { desc, .. } => desc.id,
+
+            Metric::Gauge { desc, .. } => desc.id,
+            Metric::IntGauge { desc, .. } => desc.id,
+            Metric::GaugeVec { desc, .. } => desc.id,
+            Metric::IntGaugeVec { desc, .. } => desc.id,
+
+            Metric::Histogram { desc, .. } => desc.id,
+            Metric::HistogramVec { desc, .. } => desc.id,
+        }
+    }
+}
+
 /// Type alias for a sample count
 pub type SampleCount = u64;
 
@@ -1949,7 +1969,7 @@ impl Metrics {
         }
     }
 
-    /// When the metrics started to be gathered
+    /// When the metrics were gathered
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
     }
@@ -1957,6 +1977,13 @@ impl Metrics {
     /// Metrics that were gathered
     pub fn metrics(&self) -> &[Metric] {
         self.metrics.as_slice()
+    }
+
+    /// Returns the Metric for the specified MetricId
+    pub fn metric(&self, id: MetricId) -> Option<&Metric> {
+        self.metrics
+            .iter()
+            .find(|metric| metric.metric_id() == id)
     }
 }
 
