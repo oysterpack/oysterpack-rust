@@ -34,12 +34,12 @@ use std::{
     iter::ExactSizeIterator,
     num::NonZeroUsize,
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock, Mutex},
 };
 
 lazy_static! {
     /// Global Executor registry
-    pub static ref EXECUTORS: Mutex<Executors> = Mutex::new(Executors::default());
+    pub static ref EXECUTORS: RwLock<Executors> = RwLock::new(Executors::default());
 }
 
 /// Executor registry
@@ -344,7 +344,7 @@ impl ThreadPoolConfig {
 
     /// Tries to register a thread pool Executor
     pub fn register_executor(&self) -> Result<(), ExecutorsError> {
-        let mut executors = EXECUTORS.lock().unwrap();
+        let mut executors = EXECUTORS.write().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
     }
@@ -362,7 +362,7 @@ mod tests {
     fn global_executor() {
         configure_logging();
 
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         executor.spawn(async { info!("task #1") });
         let task_handle = executor
@@ -375,7 +375,7 @@ mod tests {
     fn executor_spawn_await() {
         configure_logging();
 
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         let result = executor.spawn_await(
             async {
@@ -403,7 +403,7 @@ mod tests {
     fn executor_spawn_channel() {
         configure_logging();
 
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         let result_rx = executor.spawn_channel(
             async {
@@ -437,7 +437,7 @@ mod tests {
         let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
             .map(|i| {
                 let handle = thread::spawn(move || {
-                    let executors = EXECUTORS.lock().unwrap();
+                    let executors = EXECUTORS.read().unwrap();
                     let mut executor = executors.global_executor();
                     executor
                         .spawn(async move { info!("{:?} : task #{}", thread::current().id(), i) });
@@ -527,7 +527,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTORS.lock().unwrap();
+            let executors = EXECUTORS.read().unwrap();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -546,7 +546,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTORS.lock().unwrap();
+            let executors = EXECUTORS.read().unwrap();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -569,7 +569,7 @@ mod tests {
     fn spawned_task_panics_all_threads() {
         configure_logging();
 
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];

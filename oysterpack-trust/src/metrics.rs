@@ -16,7 +16,7 @@
 
 //! Provides metrics support for prometheus.
 //!
-//! - [METRIC_REGISTRY](struct.METRIC_REGISTRY.html) provides a global registry that can be used
+//! - [METRIC_REGISTRY](struct.METRIC_REGISTRY.html) provides a global [MetricRegistry](struct.MetricRegistry.html) that can be used
 //!   throughout the application
 //!   - it's a threadsafe singleton - protected by a Mutex
 //! - Instead of using arbitrary strings, numeric based identifiers are used (see below for rationale)
@@ -52,12 +52,12 @@ use std::{
     io::Write,
     iter::Iterator,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
 lazy_static! {
     /// Global metrics registry
-    pub static ref METRIC_REGISTRY: Mutex<MetricRegistry> = Mutex::new(MetricRegistry::default());
+    pub static ref METRIC_REGISTRY: MetricRegistry = MetricRegistry::default();
 }
 
 // used to minimize memory allocations on the heap
@@ -69,18 +69,18 @@ const BUCKETS_SMALLVEC_SIZE: usize = 8;
 pub struct MetricRegistry {
     registry: prometheus::Registry,
 
-    counters: Mutex<fnv::FnvHashMap<MetricId, prometheus::Counter>>,
-    counter_vecs: Mutex<fnv::FnvHashMap<MetricId, prometheus::CounterVec>>,
-    int_counters: Mutex<fnv::FnvHashMap<MetricId, prometheus::IntCounter>>,
-    int_counter_vecs: Mutex<fnv::FnvHashMap<MetricId, prometheus::IntCounterVec>>,
+    counters: RwLock<fnv::FnvHashMap<MetricId, prometheus::Counter>>,
+    counter_vecs: RwLock<fnv::FnvHashMap<MetricId, prometheus::CounterVec>>,
+    int_counters: RwLock<fnv::FnvHashMap<MetricId, prometheus::IntCounter>>,
+    int_counter_vecs: RwLock<fnv::FnvHashMap<MetricId, prometheus::IntCounterVec>>,
 
-    gauges: Mutex<fnv::FnvHashMap<MetricId, prometheus::Gauge>>,
-    gauge_vecs: Mutex<fnv::FnvHashMap<MetricId, prometheus::GaugeVec>>,
-    int_gauges: Mutex<fnv::FnvHashMap<MetricId, prometheus::IntGauge>>,
-    int_gauge_vecs: Mutex<fnv::FnvHashMap<MetricId, prometheus::IntGaugeVec>>,
+    gauges: RwLock<fnv::FnvHashMap<MetricId, prometheus::Gauge>>,
+    gauge_vecs: RwLock<fnv::FnvHashMap<MetricId, prometheus::GaugeVec>>,
+    int_gauges: RwLock<fnv::FnvHashMap<MetricId, prometheus::IntGauge>>,
+    int_gauge_vecs: RwLock<fnv::FnvHashMap<MetricId, prometheus::IntGaugeVec>>,
 
-    histograms: Mutex<fnv::FnvHashMap<MetricId, (prometheus::Histogram, Buckets)>>,
-    histogram_vecs: Mutex<fnv::FnvHashMap<MetricId, (prometheus::HistogramVec, Buckets)>>,
+    histograms: RwLock<fnv::FnvHashMap<MetricId, (prometheus::Histogram, Buckets)>>,
+    histogram_vecs: RwLock<fnv::FnvHashMap<MetricId, (prometheus::HistogramVec, Buckets)>>,
 
     process_collector: ProcessCollector,
 }
@@ -96,7 +96,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.int_gauges.lock().unwrap();
+        let mut metrics = self.int_gauges.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -122,7 +122,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.gauges.lock().unwrap();
+        let mut metrics = self.gauges.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -170,7 +170,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.gauge_vecs.lock().unwrap();
+        let mut metrics = self.gauge_vecs.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -219,7 +219,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.int_gauge_vecs.lock().unwrap();
+        let mut metrics = self.int_gauge_vecs.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -246,7 +246,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.int_counters.lock().unwrap();
+        let mut metrics = self.int_counters.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -272,7 +272,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.counters.lock().unwrap();
+        let mut metrics = self.counters.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -320,7 +320,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.counter_vecs.lock().unwrap();
+        let mut metrics = self.counter_vecs.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -369,7 +369,7 @@ impl MetricRegistry {
         let help = Self::check_help(help)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.int_counter_vecs.lock().unwrap();
+        let mut metrics = self.int_counter_vecs.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -415,7 +415,7 @@ impl MetricRegistry {
         let buckets = Self::check_buckets(buckets)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.histograms.lock().unwrap();
+        let mut metrics = self.histograms.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -469,7 +469,7 @@ impl MetricRegistry {
         let buckets = Self::check_buckets(buckets)?;
         let const_labels = Self::check_const_labels(const_labels)?;
 
-        let mut metrics = self.histogram_vecs.lock().unwrap();
+        let mut metrics = self.histogram_vecs.write().unwrap();
         if metrics.contains_key(&metric_id) {
             return Err(prometheus::Error::AlreadyReg);
         }
@@ -596,7 +596,7 @@ impl MetricRegistry {
 
     /// Returns a HistogramVec for the specified metric ID - if it is registered
     pub fn histogram_vec(&self, metric_id: &MetricId) -> Option<prometheus::HistogramVec> {
-        let histogram_vecs = self.histogram_vecs.lock().unwrap();
+        let histogram_vecs = self.histogram_vecs.read().unwrap();
         histogram_vecs
             .get(&metric_id)
             .map(|(metric, _opts)| metric.clone())
@@ -604,7 +604,7 @@ impl MetricRegistry {
 
     /// Returns a Histogram for the specified metric ID - if it is registered
     pub fn histogram(&self, metric_id: &MetricId) -> Option<prometheus::Histogram> {
-        let histograms = self.histograms.lock().unwrap();
+        let histograms = self.histograms.read().unwrap();
         histograms
             .get(&metric_id)
             .map(|(metric, _opts)| metric.clone())
@@ -612,49 +612,49 @@ impl MetricRegistry {
 
     /// Returns a Counter for the specified metric ID - if it is registered
     pub fn counter(&self, metric_id: &MetricId) -> Option<prometheus::Counter> {
-        let counters = self.counters.lock().unwrap();
+        let counters = self.counters.read().unwrap();
         counters.get(&metric_id).cloned()
     }
 
     /// Returns an IntCounter for the specified metric ID - if it is registered
     pub fn int_counter(&self, metric_id: &MetricId) -> Option<prometheus::IntCounter> {
-        let counters = self.int_counters.lock().unwrap();
+        let counters = self.int_counters.read().unwrap();
         counters.get(&metric_id).cloned()
     }
 
     /// Returns a CounterVec for the specified metric ID - if it is registered
     pub fn counter_vec(&self, metric_id: &MetricId) -> Option<prometheus::CounterVec> {
-        let counter_vecs = self.counter_vecs.lock().unwrap();
+        let counter_vecs = self.counter_vecs.read().unwrap();
         counter_vecs.get(&metric_id).cloned()
     }
 
     /// Returns a CounterVec for the specified metric ID - if it is registered
     pub fn int_counter_vec(&self, metric_id: &MetricId) -> Option<prometheus::IntCounterVec> {
-        let int_counter_vecs = self.int_counter_vecs.lock().unwrap();
+        let int_counter_vecs = self.int_counter_vecs.read().unwrap();
         int_counter_vecs.get(&metric_id).cloned()
     }
 
     /// Returns a Counter for the specified metric ID - if it is registered
     pub fn gauge(&self, metric_id: &MetricId) -> Option<prometheus::Gauge> {
-        let gauges = self.gauges.lock().unwrap();
+        let gauges = self.gauges.read().unwrap();
         gauges.get(&metric_id).cloned()
     }
 
     /// Returns an IntCounter for the specified metric ID - if it is registered
     pub fn int_gauge(&self, metric_id: &MetricId) -> Option<prometheus::IntGauge> {
-        let int_gauges = self.int_gauges.lock().unwrap();
+        let int_gauges = self.int_gauges.read().unwrap();
         int_gauges.get(&metric_id).cloned()
     }
 
     /// Returns a CounterVec for the specified metric ID - if it is registered
     pub fn gauge_vec(&self, metric_id: &MetricId) -> Option<prometheus::GaugeVec> {
-        let gauges_vecs = self.gauge_vecs.lock().unwrap();
+        let gauges_vecs = self.gauge_vecs.read().unwrap();
         gauges_vecs.get(&metric_id).cloned()
     }
 
     /// Returns a CounterVec for the specified metric ID - if it is registered
     pub fn int_gauge_vec(&self, metric_id: &MetricId) -> Option<prometheus::IntGaugeVec> {
-        let int_gauge_vecs = self.int_gauge_vecs.lock().unwrap();
+        let int_gauge_vecs = self.int_gauge_vecs.read().unwrap();
         int_gauge_vecs.get(&metric_id).cloned()
     }
 
@@ -670,7 +670,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let histograms = registry.histograms.lock().unwrap();
+            let histograms = registry.histograms.read().unwrap();
             for metric_id in metric_ids {
                 if let Some((metric, buckets)) = histograms.get(metric_id) {
                     let histogram = Metric::histogram(*metric_id, metric, buckets.clone());
@@ -684,7 +684,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let histogram_vecs = registry.histogram_vecs.lock().unwrap();
+            let histogram_vecs = registry.histogram_vecs.read().unwrap();
             for metric_id in metric_ids {
                 if let Some((metric, buckets)) = histogram_vecs.get(metric_id) {
                     let histogram_vec = Metric::histogram_vec(*metric_id, metric, buckets.clone());
@@ -698,7 +698,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let gauges = registry.gauges.lock().unwrap();
+            let gauges = registry.gauges.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = gauges.get(metric_id) {
                     let desc = MetricDesc::gauge_metric_desc(*metric_id, metric);
@@ -713,7 +713,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let gauges = registry.int_gauges.lock().unwrap();
+            let gauges = registry.int_gauges.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = gauges.get(metric_id) {
                     let desc = MetricDesc::int_gauge_metric_desc(*metric_id, metric);
@@ -728,7 +728,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let gauge_vecs = registry.gauge_vecs.lock().unwrap();
+            let gauge_vecs = registry.gauge_vecs.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = gauge_vecs.get(metric_id) {
                     metrics.metrics.push(Metric::gauge_vec(*metric_id, metric));
@@ -741,7 +741,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let int_gauge_vecs = registry.int_gauge_vecs.lock().unwrap();
+            let int_gauge_vecs = registry.int_gauge_vecs.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = int_gauge_vecs.get(metric_id) {
                     metrics
@@ -756,7 +756,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let counters = registry.counters.lock().unwrap();
+            let counters = registry.counters.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = counters.get(metric_id) {
                     let desc = MetricDesc::counter_metric_desc(*metric_id, metric);
@@ -771,7 +771,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let counters = registry.int_counters.lock().unwrap();
+            let counters = registry.int_counters.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = counters.get(metric_id) {
                     let desc = MetricDesc::int_counter_metric_desc(*metric_id, metric);
@@ -786,7 +786,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let counter_vecs = registry.counter_vecs.lock().unwrap();
+            let counter_vecs = registry.counter_vecs.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = counter_vecs.get(metric_id) {
                     metrics
@@ -801,7 +801,7 @@ impl MetricRegistry {
             metric_ids: &[MetricId],
             metrics: &mut Metrics,
         ) {
-            let int_counter_vecs = registry.int_counter_vecs.lock().unwrap();
+            let int_counter_vecs = registry.int_counter_vecs.read().unwrap();
             for metric_id in metric_ids {
                 if let Some(metric) = int_counter_vecs.get(metric_id) {
                     metrics
@@ -828,10 +828,11 @@ impl MetricRegistry {
         metrics
     }
 
-    /// gathers
+    /// Gathers all metrics that are registered using MetricId(s)
+    /// - this means process metrics are excluded
     pub fn gather_all_metrics(&self) -> Metrics {
         fn gather_histogram_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let histograms = registry.histograms.lock().unwrap();
+            let histograms = registry.histograms.read().unwrap();
             for (metric_id, (metric, buckets)) in histograms.iter() {
                 let histogram = Metric::histogram(*metric_id, metric, buckets.clone());
                 metrics.metrics.push(histogram);
@@ -839,7 +840,7 @@ impl MetricRegistry {
         }
 
         fn gather_histogram_vec_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let histogram_vecs = registry.histogram_vecs.lock().unwrap();
+            let histogram_vecs = registry.histogram_vecs.read().unwrap();
             for (metric_id, (metric, buckets)) in histogram_vecs.iter() {
                 let histogram_vec = Metric::histogram_vec(*metric_id, metric, buckets.clone());
                 metrics.metrics.push(histogram_vec);
@@ -847,7 +848,7 @@ impl MetricRegistry {
         }
 
         fn gather_gauge_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let gauges = registry.gauges.lock().unwrap();
+            let gauges = registry.gauges.read().unwrap();
             for (metric_id, metric) in gauges.iter() {
                 let desc = MetricDesc::gauge_metric_desc(*metric_id, metric);
                 let value = metric.get();
@@ -856,7 +857,7 @@ impl MetricRegistry {
         }
 
         fn gather_int_gauge_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let gauges = registry.int_gauges.lock().unwrap();
+            let gauges = registry.int_gauges.read().unwrap();
             for (metric_id, metric) in gauges.iter() {
                 let desc = MetricDesc::int_gauge_metric_desc(*metric_id, metric);
                 let value: u64 = metric.get() as u64;
@@ -865,14 +866,14 @@ impl MetricRegistry {
         }
 
         fn gather_gauge_vec_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let gauge_vecs = registry.gauge_vecs.lock().unwrap();
+            let gauge_vecs = registry.gauge_vecs.read().unwrap();
             for (metric_id, metric) in gauge_vecs.iter() {
                 metrics.metrics.push(Metric::gauge_vec(*metric_id, metric));
             }
         }
 
         fn gather_int_gauge_vec_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let int_gauge_vecs = registry.int_gauge_vecs.lock().unwrap();
+            let int_gauge_vecs = registry.int_gauge_vecs.read().unwrap();
             for (metric_id, metric) in int_gauge_vecs.iter() {
                 metrics
                     .metrics
@@ -881,7 +882,7 @@ impl MetricRegistry {
         }
 
         fn gather_counter_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let counters = registry.counters.lock().unwrap();
+            let counters = registry.counters.read().unwrap();
             for (metric_id, metric) in counters.iter() {
                 let desc = MetricDesc::counter_metric_desc(*metric_id, metric);
                 let value = metric.get();
@@ -890,7 +891,7 @@ impl MetricRegistry {
         }
 
         fn gather_int_counter_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let counters = registry.int_counters.lock().unwrap();
+            let counters = registry.int_counters.read().unwrap();
             for (metric_id, metric) in counters.iter() {
                 let desc = MetricDesc::int_counter_metric_desc(*metric_id, metric);
                 let value: u64 = metric.get() as u64;
@@ -899,7 +900,7 @@ impl MetricRegistry {
         }
 
         fn gather_counter_vec_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let counter_vecs = registry.counter_vecs.lock().unwrap();
+            let counter_vecs = registry.counter_vecs.read().unwrap();
             for (metric_id, metric) in counter_vecs.iter() {
                 metrics
                     .metrics
@@ -908,7 +909,7 @@ impl MetricRegistry {
         }
 
         fn gather_int_counter_vec_metrics(registry: &MetricRegistry, metrics: &mut Metrics) {
-            let int_counter_vecs = registry.int_counter_vecs.lock().unwrap();
+            let int_counter_vecs = registry.int_counter_vecs.read().unwrap();
             for (metric_id, metric) in int_counter_vecs.iter() {
                 metrics
                     .metrics
@@ -942,7 +943,7 @@ impl MetricRegistry {
     /// - this exludes the process collector metrics
     pub fn metric_descs(&self) -> MetricDescs {
         let counters: Option<Vec<MetricDesc>> = {
-            let metrics = self.counters.lock().unwrap();
+            let metrics = self.counters.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -955,7 +956,7 @@ impl MetricRegistry {
         };
 
         let int_counters: Option<Vec<MetricDesc>> = {
-            let metrics = self.int_counters.lock().unwrap();
+            let metrics = self.int_counters.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -968,7 +969,7 @@ impl MetricRegistry {
         };
 
         let counter_vecs: Option<Vec<MetricVecDesc>> = {
-            let metrics = self.counter_vecs.lock().unwrap();
+            let metrics = self.counter_vecs.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -981,7 +982,7 @@ impl MetricRegistry {
         };
 
         let int_counter_vecs: Option<Vec<MetricVecDesc>> = {
-            let metrics = self.int_counter_vecs.lock().unwrap();
+            let metrics = self.int_counter_vecs.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -994,7 +995,7 @@ impl MetricRegistry {
         };
 
         let gauges: Option<Vec<MetricDesc>> = {
-            let metrics = self.gauges.lock().unwrap();
+            let metrics = self.gauges.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1007,7 +1008,7 @@ impl MetricRegistry {
         };
 
         let int_gauges: Option<Vec<MetricDesc>> = {
-            let metrics = self.int_gauges.lock().unwrap();
+            let metrics = self.int_gauges.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1020,7 +1021,7 @@ impl MetricRegistry {
         };
 
         let gauge_vecs: Option<Vec<MetricVecDesc>> = {
-            let metrics = self.gauge_vecs.lock().unwrap();
+            let metrics = self.gauge_vecs.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1033,7 +1034,7 @@ impl MetricRegistry {
         };
 
         let int_gauge_vecs: Option<Vec<MetricVecDesc>> = {
-            let metrics = self.int_gauge_vecs.lock().unwrap();
+            let metrics = self.int_gauge_vecs.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1046,7 +1047,7 @@ impl MetricRegistry {
         };
 
         let histograms: Option<Vec<HistogramDesc>> = {
-            let metrics = self.histograms.lock().unwrap();
+            let metrics = self.histograms.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1061,7 +1062,7 @@ impl MetricRegistry {
         };
 
         let histogram_vecs: Option<Vec<HistogramVecDesc>> = {
-            let metrics = self.histogram_vecs.lock().unwrap();
+            let metrics = self.histogram_vecs.read().unwrap();
             if metrics.is_empty() {
                 None
             } else {
@@ -1107,18 +1108,18 @@ impl Default for MetricRegistry {
             .unwrap();
         Self {
             registry,
-            int_counters: Mutex::new(fnv::FnvHashMap::default()),
-            int_counter_vecs: Mutex::new(fnv::FnvHashMap::default()),
-            counters: Mutex::new(fnv::FnvHashMap::default()),
-            counter_vecs: Mutex::new(fnv::FnvHashMap::default()),
+            int_counters: RwLock::new(fnv::FnvHashMap::default()),
+            int_counter_vecs: RwLock::new(fnv::FnvHashMap::default()),
+            counters: RwLock::new(fnv::FnvHashMap::default()),
+            counter_vecs: RwLock::new(fnv::FnvHashMap::default()),
 
-            gauges: Mutex::new(fnv::FnvHashMap::default()),
-            gauge_vecs: Mutex::new(fnv::FnvHashMap::default()),
-            int_gauges: Mutex::new(fnv::FnvHashMap::default()),
-            int_gauge_vecs: Mutex::new(fnv::FnvHashMap::default()),
+            gauges: RwLock::new(fnv::FnvHashMap::default()),
+            gauge_vecs: RwLock::new(fnv::FnvHashMap::default()),
+            int_gauges: RwLock::new(fnv::FnvHashMap::default()),
+            int_gauge_vecs: RwLock::new(fnv::FnvHashMap::default()),
 
-            histogram_vecs: Mutex::new(fnv::FnvHashMap::default()),
-            histograms: Mutex::new(fnv::FnvHashMap::default()),
+            histogram_vecs: RwLock::new(fnv::FnvHashMap::default()),
+            histograms: RwLock::new(fnv::FnvHashMap::default()),
 
             process_collector,
         }
@@ -1245,6 +1246,46 @@ impl MetricDesc {
             help: desc.help.clone(),
             const_labels,
         }
+    }
+}
+
+impl From<&prometheus::Counter> for MetricDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(counter: &prometheus::Counter) -> Self {
+        let desc = counter.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricDesc::counter_metric_desc(metric_id, counter)
+    }
+}
+
+impl From<&prometheus::IntCounter> for MetricDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(counter: &prometheus::IntCounter) -> Self {
+        let desc = counter.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricDesc::int_counter_metric_desc(metric_id, counter)
+    }
+}
+
+impl From<&prometheus::Gauge> for MetricDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(gauge: &prometheus::Gauge) -> Self {
+        let desc = gauge.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricDesc::gauge_metric_desc(metric_id, gauge)
+    }
+}
+
+impl From<&prometheus::IntGauge> for MetricDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(gauge: &prometheus::IntGauge) -> Self {
+        let desc = gauge.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricDesc::int_gauge_metric_desc(metric_id, gauge)
     }
 }
 
@@ -1420,6 +1461,46 @@ impl MetricVecDesc {
     }
 }
 
+impl From<&prometheus::IntCounterVec> for MetricVecDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(counter: &prometheus::IntCounterVec) -> Self {
+        let desc = counter.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricVecDesc::int_counter_vec_metric_desc(metric_id, counter)
+    }
+}
+
+impl From<&prometheus::CounterVec> for MetricVecDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(counter: &prometheus::CounterVec) -> Self {
+        let desc = counter.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricVecDesc::counter_vec_metric_desc(metric_id, counter)
+    }
+}
+
+impl From<&prometheus::IntGaugeVec> for MetricVecDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(gauge: &prometheus::IntGaugeVec) -> Self {
+        let desc = gauge.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricVecDesc::int_gauge_vec_metric_desc(metric_id, gauge)
+    }
+}
+
+impl From<&prometheus::GaugeVec> for MetricVecDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from(gauge: &prometheus::GaugeVec) -> Self {
+        let desc = gauge.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        MetricVecDesc::gauge_vec_metric_desc(metric_id, gauge)
+    }
+}
+
 /// Histogram Desc
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HistogramDesc {
@@ -1430,8 +1511,8 @@ pub struct HistogramDesc {
 }
 impl HistogramDesc {
     /// returns the MetricId
-    pub fn id(&self) -> &MetricId {
-        &self.id
+    pub fn id(&self) -> MetricId {
+        self.id
     }
 
     /// returns the metric help
@@ -1476,6 +1557,16 @@ impl HistogramDesc {
     }
 }
 
+impl From<(&prometheus::Histogram, Buckets)> for HistogramDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from((histogram, buckets): (&prometheus::Histogram, Buckets)) -> Self {
+        let desc = histogram.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        HistogramDesc::new(metric_id, histogram, buckets)
+    }
+}
+
 impl fmt::Debug for HistogramDesc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.const_labels.as_ref() {
@@ -1505,8 +1596,8 @@ pub struct HistogramVecDesc {
 
 impl HistogramVecDesc {
     /// returns the MetricId
-    pub fn id(&self) -> &MetricId {
-        &self.id
+    pub fn id(&self) -> MetricId {
+        self.id
     }
 
     /// returns the metric help
@@ -1561,6 +1652,16 @@ impl HistogramVecDesc {
             buckets,
             labels,
         }
+    }
+}
+
+impl From<(&prometheus::HistogramVec, Buckets)> for HistogramVecDesc {
+    /// ## Panics
+    /// If the metric name fails to parse as a MetricId
+    fn from((histogram, buckets): (&prometheus::HistogramVec, Buckets)) -> Self {
+        let desc = histogram.desc()[0];
+        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
+        HistogramVecDesc::new(metric_id, histogram, buckets)
     }
 }
 
@@ -1669,6 +1770,12 @@ impl MetricDescs {
 /// Histogram buckets
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Buckets(pub SmallVec<[f64; BUCKETS_SMALLVEC_SIZE]>);
+
+impl From<&[f64]> for Buckets {
+    fn from(buckets: &[f64]) -> Self {
+        Buckets(SmallVec::from(buckets))
+    }
+}
 
 /// Label Id
 #[ulid]
@@ -2159,6 +2266,11 @@ impl fmt::Debug for ProcessCollector {
 }
 
 /// Process related metrics
+///
+/// ## Notes
+/// - the process metrics are collected by prometheus' provided process collector
+///   - the metrics are registered directly with the registry and use the prometheus provided names,
+///     i.e., they are not assigned MetricId(s)
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ProcessMetrics {
     cpu_seconds_total: f64,
@@ -2170,12 +2282,18 @@ pub struct ProcessMetrics {
 }
 
 impl ProcessMetrics {
-    const PROCESS_CPU_SECONDS_TOTAL: &'static str = "process_cpu_seconds_total";
-    const PROCESS_OPEN_FDS: &'static str = "process_open_fds";
-    const PROCESS_MAX_FDS: &'static str = "process_max_fds";
-    const PROCESS_VIRTUAL_MEMORY_BYTES: &'static str = "process_virtual_memory_bytes";
-    const PROCESS_RESIDENT_MEMORY_BYTES: &'static str = "process_resident_memory_bytes";
-    const PROCESS_START_TIME_SECONDS: &'static str = "process_start_time_seconds";
+    /// metric name for: Total user and system CPU time spent in seconds.
+    pub const PROCESS_CPU_SECONDS_TOTAL: &'static str = "process_cpu_seconds_total";
+    /// metric name for: Number of open file descriptors.
+    pub const PROCESS_OPEN_FDS: &'static str = "process_open_fds";
+    /// metric name for: Maximum number of open file descriptors.
+    pub const PROCESS_MAX_FDS: &'static str = "process_max_fds";
+    /// metric name for: Virtual memory size in bytes.
+    pub const PROCESS_VIRTUAL_MEMORY_BYTES: &'static str = "process_virtual_memory_bytes";
+    /// metric name for: Resident memory size in bytes.
+    pub const PROCESS_RESIDENT_MEMORY_BYTES: &'static str = "process_resident_memory_bytes";
+    /// metric name for: Start time of the process since unix epoch in seconds.
+    pub const PROCESS_START_TIME_SECONDS: &'static str = "process_start_time_seconds";
 
     fn collect(process_collector: &ProcessCollector) -> Self {
         let mut process_metrics = ProcessMetrics::default();

@@ -256,7 +256,7 @@ mod tests {
     fn req_rep() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         let (mut req_rep, req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
@@ -290,7 +290,7 @@ mod tests {
     fn req_rep_start_service() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
 
         // ReqRep processor //
@@ -318,7 +318,7 @@ mod tests {
     fn req_rep_with_disconnected_receiver() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let executors = EXECUTORS.lock().unwrap();
+        let executors = EXECUTORS.read().unwrap();
         let mut executor = executors.global_executor();
         let (mut req_rep, req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
