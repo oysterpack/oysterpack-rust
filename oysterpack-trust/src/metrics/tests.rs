@@ -902,7 +902,24 @@ fn metric_registry_gather() {
         assert!(metrics.metric(metric_id).is_some());
     }
 
+    let all_metrics = registry.gather_all_metrics();
+    assert_eq!(metrics.metrics().len(), all_metrics.metrics.len());
+
     // TODO: verify that metrics are reporting as expected
+}
+
+#[test]
+fn gather_process_metrics() {
+    configure_logging();
+
+    let metric_registry = MetricRegistry::default();
+    let process_metrics = metric_registry.gather_process_metrics();
+    info!("{:#?}", process_metrics);
+    assert!(process_metrics.max_fds() > 0.0);
+    assert!(process_metrics.open_fds() > 0.0);
+    assert!(process_metrics.virtual_memory_bytes() > 0.0);
+    assert!(process_metrics.resident_memory_bytes() > 0.0);
+    assert!(process_metrics.start_time_seconds() > 0.0);
 }
 
 #[test]
