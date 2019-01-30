@@ -906,37 +906,48 @@ fn metric_registry_gather() {
 
     // verify that metrics are reporting as expected
     match metrics.metric(counter_metric_id).unwrap() {
-        Metric::Counter{desc, value} => {
+        Metric::Counter { desc, value } => {
             assert_eq!(*value as u64, 5);
-            assert_eq!(desc.help,"Counter");
-        },
-        metric => panic!("Wrong metric type has been returned: {:?}", metric)
+            assert_eq!(desc.help, "Counter");
+        }
+        metric => panic!("Wrong metric type has been returned: {:?}", metric),
     }
     match metrics.metric(int_counter_metric_id).unwrap() {
-        Metric::IntCounter{desc, value} => {
-            assert_eq!(*value as u64, 5);
-            assert_eq!(desc.help,"IntCounter");
-        },
-        metric => panic!("Wrong metric type has been returned: {:?}", metric)
+        Metric::IntCounter { desc, value } => {
+            assert_eq!(*value, 5);
+            assert_eq!(desc.help, "IntCounter");
+        }
+        metric => panic!("Wrong metric type has been returned: {:?}", metric),
+    }
+    match metrics
+        .metric(counter_vec_with_const_labels_metric_id)
+        .unwrap()
+    {
+        Metric::CounterVec { desc, values } => {
+            assert_eq!(values.len(), 1);
+            assert_eq!(values[0].value as u64, 5);
+            assert_eq!(values[0].labels[0].1, "FOO".to_string());
+            assert_eq!(desc.help, "CounterVec with const labels");
+        }
+        metric => panic!("Wrong metric type has been returned: {:?}", metric),
     }
 
-//    let counter_vec_with_const_labels_metric_id = MetricId::generate();
-//    let counter_vec_metric_id = MetricId::generate();
-//    let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
-//    let int_counter_vec_metric_id = MetricId::generate();
-//
-//    let gauge_metric_id = MetricId::generate();
-//    let int_gauge_metric_id = MetricId::generate();
-//    let gauge_vec_with_const_labels_metric_id = MetricId::generate();
-//    let gauge_vec_metric_id = MetricId::generate();
-//    let int_gauge_vec_with_const_labels_metric_id = MetricId::generate();
-//    let int_gauge_vec_metric_id = MetricId::generate();
-//
-//    let histogram_metric_id = MetricId::generate();
-//    let histogram_with_const_labels_metric_id = MetricId::generate();
-//    let histogram_vec_metric_id = MetricId::generate();
-//    let histogram_vec_with_const_labels_metric_id = MetricId::generate();
-
+    //    let counter_vec_with_const_labels_metric_id = MetricId::generate();
+    //    let counter_vec_metric_id = MetricId::generate();
+    //    let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
+    //    let int_counter_vec_metric_id = MetricId::generate();
+    //
+    //    let gauge_metric_id = MetricId::generate();
+    //    let int_gauge_metric_id = MetricId::generate();
+    //    let gauge_vec_with_const_labels_metric_id = MetricId::generate();
+    //    let gauge_vec_metric_id = MetricId::generate();
+    //    let int_gauge_vec_with_const_labels_metric_id = MetricId::generate();
+    //    let int_gauge_vec_metric_id = MetricId::generate();
+    //
+    //    let histogram_metric_id = MetricId::generate();
+    //    let histogram_with_const_labels_metric_id = MetricId::generate();
+    //    let histogram_vec_metric_id = MetricId::generate();
+    //    let histogram_vec_with_const_labels_metric_id = MetricId::generate();
 }
 
 #[test]

@@ -39,12 +39,11 @@
 //! - the prometheus metric `help` attribute can be used to provide a human friendly label and
 //!   short description
 
+use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
-
-use chrono::{DateTime, Utc};
 use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet},
@@ -69,6 +68,7 @@ const BUCKETS_SMALLVEC_SIZE: usize = 8;
 pub struct MetricRegistry {
     registry: prometheus::Registry,
 
+    // TODO: remove f64 based counters - int based counters provide better performance and are more practical as counters
     counters: RwLock<fnv::FnvHashMap<MetricId, prometheus::Counter>>,
     counter_vecs: RwLock<fnv::FnvHashMap<MetricId, prometheus::CounterVec>>,
     int_counters: RwLock<fnv::FnvHashMap<MetricId, prometheus::IntCounter>>,

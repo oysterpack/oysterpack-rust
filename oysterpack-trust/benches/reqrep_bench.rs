@@ -63,6 +63,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+struct EchoService;
+
+impl Processor<(),()> for EchoService {
+    fn process(&mut self, req: ()) -> () {}
+}
+
 /// This is benchmarking how fast messages can flow in a request/reply workflow.
 /// - the request message is imply echoed back, and the message type is ()
 ///
@@ -70,21 +76,9 @@ use std::{
 fn reqrep_bench_single_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
-    let executors = EXECUTORS.lock().unwrap();
+    let executors = EXECUTORS.read().unwrap();
     let mut executor = executors.global_executor();
-    let (req_rep, req_receiver) = ReqRep::<(), ()>::new(REQREP_ID, 1);
-    let server = async move {
-        let mut req_receiver = req_receiver;
-        while let Some(mut msg) = await!(req_receiver.next()) {
-            // echo the request message back in the reply
-            let req = msg.take_request().unwrap();
-            if let Err(err) = msg.reply(req) {
-                warn!("{}", err);
-            }
-        }
-        info!("reqrep_bench_single_threaded: message listener has exited");
-    };
-    executor.spawn(server);
+    let req_rep = ReqRep::start_service(REQREP_ID, 1, EchoService, executor.clone()).unwrap();
 
     let req_rep_1 = req_rep.clone();
     let start = Instant::now();
@@ -110,21 +104,9 @@ fn reqrep_bench_single_threaded(count: usize) -> Duration {
 fn reqrep_bench_multi_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
-    let executors = EXECUTORS.lock().unwrap();
+    let executors = EXECUTORS.read().unwrap();
     let mut executor = executors.global_executor();
-    let (req_rep, req_receiver) = ReqRep::<(), ()>::new(REQREP_ID, num_cpus::get());
-    let server = async move {
-        let mut req_receiver = req_receiver;
-        while let Some(mut msg) = await!(req_receiver.next()) {
-            // echo the request message back in the reply
-            let req = msg.take_request().unwrap();
-            if let Err(err) = msg.reply(req) {
-                warn!("{}", err);
-            }
-        }
-        info!("reqrep_bench_multi_threaded: message listener has exited");
-    };
-    executor.spawn(server);
+    let req_rep = ReqRep::start_service(REQREP_ID, num_cpus::get(), EchoService, executor.clone()).unwrap();
 
     let mut handles = Vec::with_capacity(count);
     let start = Instant::now();
@@ -151,7 +133,7 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
 
 // avg response time ~11 nanos
 fn reqrep_function_single_threaded_baseline(count: usize) -> Duration {
-    let executors = EXECUTORS.lock().unwrap();
+    let executors = EXECUTORS.read().unwrap();
     let mut executor = executors.global_executor();
     let f = |msg| Result::<_, ()>::Ok(msg);
 
@@ -183,7 +165,7 @@ fn reqrep_function_single_threaded_sync_baseline(count: usize) -> Duration {
 /// baseline that wasn't made up with parallel processing
 /// - overall throughput decreased by ~40x
 fn reqrep_function_multi_threaded_baseline(count: usize) -> Duration {
-    let executors = EXECUTORS.lock().unwrap();
+    let executors = EXECUTORS.read().unwrap();
     let mut executor = executors.global_executor();
 
     let f = |msg| Result::<_, ()>::Ok(msg);

@@ -18,6 +18,7 @@
 //! - async executors
 //!
 
+use crate::metrics;
 use failure::Fail;
 use futures::{
     channel,
@@ -30,26 +31,43 @@ use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::{
-    io,
+    fmt, io,
     iter::ExactSizeIterator,
     num::NonZeroUsize,
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::{Arc, RwLock, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 lazy_static! {
     /// Global Executor registry
     pub static ref EXECUTORS: RwLock<Executors> = RwLock::new(Executors::default());
+
+    /// Global Executor
+    pub static ref GLOBAL_EXECUTOR: Executor = EXECUTORS.read().unwrap().global_executor();
+
+    /// Metric: Number of tasks that the Executor has spawned
+    pub static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::METRIC_REGISTRY.register_int_counter_vec(
+        Executors::SPAWNED_TASK_COUNTER_METRIC_ID,
+        "Number of tasks that the Executor has spawned".to_string(),
+        &[Executors::EXECUTOR_ID_LABEL_ID],
+        None
+    ).unwrap();
 }
 
 /// Executor registry
-#[derive(Debug)]
 pub struct Executors {
     global_executor: Executor,
     thread_pools: fnv::FnvHashMap<ExecutorId, Executor>,
 }
 
 impl Executors {
+    /// MetricId for spawned task counter
+    pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+        metrics::MetricId(1872376925834227814610238473431346961);
+    /// The ExecutorId will be used as the label value
+    pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
+        metrics::LabelId(1872377054303353796724661249788899528);
+
     /// An executor can only be registered once, and once it is registered, it stays registered for
     /// life of the app.
     /// - returns false is an excutor with the same ID is already registered
@@ -108,15 +126,32 @@ impl Default for Executors {
     }
 }
 
+impl fmt::Debug for Executors {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Executors(thread pool count = {})",
+            self.thread_pools.len()
+        )
+    }
+}
+
 /// Is a threadsafe futures based async executor.
 /// - clone the Executor in order to share it
 ///
 /// ## Notes
 /// - threadsafe wrapper around futures [ThreadPool](https://rust-lang-nursery.github.io/futures-api-docs/0.3.0-alpha.12/futures/executor/struct.ThreadPool.html) executor
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Executor {
     id: ExecutorId,
     thread_pool: Arc<Mutex<ThreadPool>>,
+    spawned_task_counter: prometheus::IntCounter,
+}
+
+impl fmt::Debug for Executor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Executor({})", self.id)
+    }
 }
 
 impl Executor {
@@ -132,6 +167,8 @@ impl Executor {
                     .create()
                     .map_err(ExecutorsError::ThreadPoolCreateFailed)?,
             )),
+            spawned_task_counter: SPAWNED_TASK_COUNTER
+                .with_label_values(&[id.to_string().as_str()]),
         })
     }
 
@@ -226,7 +263,9 @@ impl Executor {
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
         let mut thread_pool = self.thread_pool.lock().unwrap();
-        thread_pool.spawn_obj(future)
+        thread_pool.spawn_obj(future)?;
+        self.spawned_task_counter.inc();
+        Ok(())
     }
 
     fn status(&self) -> Result<(), SpawnError> {
@@ -355,8 +394,9 @@ impl ThreadPoolConfig {
 mod tests {
     use super::*;
     use crate::configure_logging;
+    use crate::metrics;
     use futures::task::SpawnExt;
-    use std::thread;
+    use std::{iter::Iterator, thread};
 
     #[test]
     fn global_executor() {
@@ -369,6 +409,32 @@ mod tests {
             .spawn_with_handle(async { info!("spawned task says hello") })
             .unwrap();
         executor.run(task_handle);
+
+        let gathered_metrics =
+            metrics::METRIC_REGISTRY.gather_metrics(&[Executors::SPAWNED_TASK_COUNTER_METRIC_ID]);
+        info!("gathered_metrics: {:#?}", gathered_metrics);
+        if let metrics::Metric::IntCounterVec { desc, values } = gathered_metrics
+            .metric(Executors::SPAWNED_TASK_COUNTER_METRIC_ID)
+            .unwrap()
+        {
+            assert_eq!(desc.id(), Executors::SPAWNED_TASK_COUNTER_METRIC_ID);
+            let metric_value = values
+                .iter()
+                .find(|metric_value| {
+                    metric_value
+                        .labels
+                        .iter()
+                        .find(|(label_id, value)| {
+                            *label_id == Executors::EXECUTOR_ID_LABEL_ID
+                                && *value == Executor::DEFAULT_EXECUTOR_ID.to_string()
+                        })
+                        .is_some()
+                })
+                .unwrap();
+            assert!(metric_value.value > 0);
+        } else {
+            panic!("Metric was not found for Executors::SPAWNED_TASK_COUNTER_METRIC_ID");
+        }
     }
 
     #[test]
