@@ -19,20 +19,15 @@
 /*
 Test Results
 ====================================================================================================
-[INFO][2019-01-22T11:05:14.476Z][reqrep_function_single_threaded_sync_baseline][reqrep_bench:217]
-*** count = 100000, duration = 107ns, ns/req = 0
-[INFO][2019-01-22T11:05:14.477Z][reqrep_function_single_threaded_baseline][reqrep_bench:224]
-*** count = 100000, duration = 819.095µs, ns/req = 8
-[INFO][2019-01-22T11:05:15.495Z][reqrep_bench][reqrep_bench:77]
-reqrep_bench_single_threaded: message listener has exited
-[INFO][2019-01-22T11:05:15.495Z][reqrep_bench_single_threaded][reqrep_bench:231]
-*** count = 100000, duration = 1.017336271s, ns/req = 10173
-[INFO][2019-01-22T11:05:15.579Z][reqrep_function_multi_threaded_baseline][reqrep_bench:238]
-*** count = 100000, duration = 83.913326ms, ns/req = 839
-[INFO][2019-01-22T11:05:15.827Z][reqrep_bench][reqrep_bench:117]
-reqrep_bench_multi_threaded: message listener has exited
-[INFO][2019-01-22T11:05:15.827Z][reqrep_bench_multi_threaded][reqrep_bench:245]
-*** count = 100000, duration = 238.015987ms, ns/req = 2380
+*** count = 100000, duration = 78ns, ns/req = 0
+[INFO][2019-01-30T23:22:02.556Z][reqrep_function_single_threaded_baseline][reqrep_bench:207]
+*** count = 100000, duration = 823.307µs, ns/req = 8
+[INFO][2019-01-30T23:22:03.631Z][reqrep_bench_single_threaded][reqrep_bench:214]
+*** count = 100000, duration = 1.074568774s, ns/req = 10745
+[INFO][2019-01-30T23:22:03.700Z][reqrep_function_multi_threaded_baseline][reqrep_bench:221]
+*** count = 100000, duration = 69.123933ms, ns/req = 691
+[INFO][2019-01-30T23:22:03.883Z][reqrep_bench_multi_threaded][reqrep_bench:228]
+*** count = 100000, duration = 176.641612ms, ns/req = 1766
 ====================================================================================================
 Analysis
 - the async overhead is ~7650x as compared to calling the function directly
@@ -76,8 +71,7 @@ impl Processor<(), ()> for EchoService {
 fn reqrep_bench_single_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
-    let executors = EXECUTORS.read().unwrap();
-    let mut executor = executors.global_executor();
+    let mut executor = global_executor();
     let req_rep = ReqRep::start_service(REQREP_ID, 1, EchoService, executor.clone()).unwrap();
 
     let req_rep_1 = req_rep.clone();
@@ -104,8 +98,7 @@ fn reqrep_bench_single_threaded(count: usize) -> Duration {
 fn reqrep_bench_multi_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
-    let executors = EXECUTORS.read().unwrap();
-    let mut executor = executors.global_executor();
+    let mut executor = global_executor();
     let req_rep =
         ReqRep::start_service(REQREP_ID, num_cpus::get(), EchoService, executor.clone()).unwrap();
 
@@ -134,8 +127,7 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
 
 // avg response time ~11 nanos
 fn reqrep_function_single_threaded_baseline(count: usize) -> Duration {
-    let executors = EXECUTORS.read().unwrap();
-    let mut executor = executors.global_executor();
+    let mut executor = global_executor();
     let f = |msg| Result::<_, ()>::Ok(msg);
 
     let start = Instant::now();
@@ -166,8 +158,7 @@ fn reqrep_function_single_threaded_sync_baseline(count: usize) -> Duration {
 /// baseline that wasn't made up with parallel processing
 /// - overall throughput decreased by ~40x
 fn reqrep_function_multi_threaded_baseline(count: usize) -> Duration {
-    let executors = EXECUTORS.read().unwrap();
-    let mut executor = executors.global_executor();
+    let mut executor = global_executor();
 
     let f = |msg| Result::<_, ()>::Ok(msg);
     let mut handles = Vec::with_capacity(count);

@@ -35,23 +35,62 @@ use std::{
     iter::ExactSizeIterator,
     num::NonZeroUsize,
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::{Arc, Mutex, RwLock},
+    sync::RwLock,
 };
 
 lazy_static! {
     /// Global Executor registry
-    pub static ref EXECUTORS: RwLock<Executors> = RwLock::new(Executors::default());
-
-    /// Global Executor
-    pub static ref GLOBAL_EXECUTOR: Executor = EXECUTORS.read().unwrap().global_executor();
+    static ref EXECUTORS: RwLock<Executors> = RwLock::new(Executors::default());
 
     /// Metric: Number of tasks that the Executor has spawned
-    pub static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::METRIC_REGISTRY.register_int_counter_vec(
+    static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::METRIC_REGISTRY.register_int_counter_vec(
         Executors::SPAWNED_TASK_COUNTER_METRIC_ID,
         "Number of tasks that the Executor has spawned".to_string(),
         &[Executors::EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
+}
+
+/// An executor can only be registered once, and once it is registered, it stays registered for the
+/// life of the app.
+/// - returns false is an executor with the same ID is already registered
+pub fn register(
+    id: ExecutorId,
+    builder: &mut ThreadPoolBuilder,
+) -> Result<Executor, ExecutorsError> {
+    let mut executors = EXECUTORS.write().unwrap();
+    if executors.thread_pools.contains_key(&id) {
+        return Err(ExecutorsError::ExecutorAlreadyRegistered(id));
+    }
+    let executor = Executor::new(id, builder)?;
+    executors.thread_pools.insert(id, executor.clone());
+    Ok(executor)
+}
+
+/// Returns the registered executor IDs
+pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
+    let executors = EXECUTORS.read().unwrap();
+    executors.thread_pools.keys().cloned().collect()
+}
+
+/// returns the Executor for the specified ID
+pub fn executor(id: ExecutorId) -> Option<Executor> {
+    let executors = EXECUTORS.read().unwrap();
+    match executors.thread_pools.get(&id) {
+        Some(executor) => Some(executor.clone()),
+        None => {
+            if id == Executor::GLOBAL_EXECUTOR_ID {
+                return Some(executors.global_executor.clone());
+            }
+            None
+        }
+    }
+}
+
+/// Returns the global executor, which is provided by default.
+pub fn global_executor() -> Executor {
+    let executors = EXECUTORS.read().unwrap();
+    executors.global_executor.clone()
 }
 
 /// Executor registry
@@ -61,26 +100,27 @@ pub struct Executors {
 }
 
 impl Executors {
-    /// MetricId for spawned task counter
+    /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
     pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
         metrics::MetricId(1872376925834227814610238473431346961);
-    /// The ExecutorId will be used as the label value
+    /// The ExecutorId will be used as the label value: `L01D2DN1VBMW6XC7EQ971PBGW68`
     pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
         metrics::LabelId(1872377054303353796724661249788899528);
 
-    /// An executor can only be registered once, and once it is registered, it stays registered for
+    /// An executor can only be registered once, and once it is registered, it stays registered for the
     /// life of the app.
-    /// - returns false is an excutor with the same ID is already registered
+    /// - returns false is an executor with the same ID is already registered
     pub fn register(
         &mut self,
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
-    ) -> Result<(), ExecutorsError> {
+    ) -> Result<Executor, ExecutorsError> {
         if self.thread_pools.contains_key(&id) {
             return Err(ExecutorsError::ExecutorAlreadyRegistered(id));
         }
-        self.thread_pools.insert(id, Executor::new(id, builder)?);
-        Ok(())
+        let executor = Executor::new(id, builder)?;
+        self.thread_pools.insert(id, executor.clone());
+        Ok(executor)
     }
 
     /// Returns the registered executor IDs
@@ -98,7 +138,7 @@ impl Executors {
         match self.thread_pools.get(&id) {
             Some(executor) => Some(executor.clone()),
             None => {
-                if id == Executor::DEFAULT_EXECUTOR_ID {
+                if id == Executor::GLOBAL_EXECUTOR_ID {
                     return Some(self.global_executor.clone());
                 }
                 None
@@ -115,8 +155,8 @@ impl Executors {
 impl Default for Executors {
     fn default() -> Self {
         fn default_executor() -> Executor {
-            let mut builder = ThreadPoolConfig::new(Executor::DEFAULT_EXECUTOR_ID).builder();
-            Executor::new(Executor::DEFAULT_EXECUTOR_ID, &mut builder).unwrap()
+            let mut builder = ThreadPoolConfig::new(Executor::GLOBAL_EXECUTOR_ID).builder();
+            Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder).unwrap()
         }
 
         Self {
@@ -136,15 +176,18 @@ impl fmt::Debug for Executors {
     }
 }
 
-/// Is a threadsafe futures based async executor.
-/// - clone the Executor in order to share it
+/// A general-purpose thread pool based executor for scheduling tasks that poll futures to completion.
+/// - The thread pool multiplexes any number of tasks onto a fixed number of worker threads.
+/// - This type is a clonable handle to the threadpool itself. Cloning it will only create a new reference, not a new threadpool.
+/// - is a thin wrapper around futures [ThreadPool](https://rust-lang-nursery.github.io/futures-api-docs/0.3.0-alpha.12/futures/executor/struct.ThreadPool.html)
+///   executor
 ///
-/// ## Notes
-/// - threadsafe wrapper around futures [ThreadPool](https://rust-lang-nursery.github.io/futures-api-docs/0.3.0-alpha.12/futures/executor/struct.ThreadPool.html) executor
+/// ## Metrics
+///
 #[derive(Clone)]
 pub struct Executor {
     id: ExecutorId,
-    thread_pool: Arc<Mutex<ThreadPool>>,
+    thread_pool: ThreadPool,
     spawned_task_counter: prometheus::IntCounter,
 }
 
@@ -155,18 +198,16 @@ impl fmt::Debug for Executor {
 }
 
 impl Executor {
-    /// Default ExecutorId
-    pub const DEFAULT_EXECUTOR_ID: ExecutorId = ExecutorId(1871427164235073850597045237139528853);
+    /// Global ExecutorId, i.e., for the global Executor
+    pub const GLOBAL_EXECUTOR_ID: ExecutorId = ExecutorId(1871427164235073850597045237139528853);
 
     /// constructor
     pub fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorsError> {
         Ok(Self {
             id,
-            thread_pool: Arc::new(Mutex::new(
-                builder
-                    .create()
-                    .map_err(ExecutorsError::ThreadPoolCreateFailed)?,
-            )),
+            thread_pool: builder
+                .create()
+                .map_err(ExecutorsError::ThreadPoolCreateFailed)?,
             spawned_task_counter: SPAWNED_TASK_COUNTER
                 .with_label_values(&[id.to_string().as_str()]),
         })
@@ -177,7 +218,7 @@ impl Executor {
         self.id
     }
 
-    /// Runs the given future with this thread pool as the default spawner for spawning tasks.
+    /// Runs the given future with this Executor.
     ///
     /// ## Notes
     /// - This function will block the calling thread until the given future is complete. This also
@@ -188,10 +229,7 @@ impl Executor {
     /// ## Panics
     /// If the task panics.
     pub fn run<F: Future>(&mut self, f: F) -> F::Output {
-        let result = {
-            let mut thread_pool = self.thread_pool.lock().unwrap();
-            catch_unwind(AssertUnwindSafe(|| thread_pool.run(f)))
-        };
+        let result = { catch_unwind(AssertUnwindSafe(|| self.thread_pool.run(f))) };
         match result {
             Ok(res) => res,
             Err(err) => panic!(err),
@@ -212,8 +250,7 @@ impl Executor {
     {
         let (sender, receiver) = crossbeam::channel::bounded(0);
         {
-            let mut thread_pool = self.thread_pool.lock().unwrap();
-            thread_pool
+            self.thread_pool
                 .spawn(
                     async move {
                         let result = await!(f);
@@ -244,8 +281,7 @@ impl Executor {
     {
         let (sender, receiver) = channel::oneshot::channel::<F::Output>();
         {
-            let mut thread_pool = self.thread_pool.lock().unwrap();
-            thread_pool
+            self.thread_pool
                 .spawn(
                     async move {
                         let result = await!(f);
@@ -258,19 +294,22 @@ impl Executor {
         }
         Ok(receiver)
     }
+
+    /// returns the number of tasks that have been spawned by this Executor
+    pub fn spawned_task_count(&self) -> u64 {
+        self.spawned_task_counter.get() as u64
+    }
 }
 
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-        let mut thread_pool = self.thread_pool.lock().unwrap();
-        thread_pool.spawn_obj(future)?;
+        self.thread_pool.spawn_obj(future)?;
         self.spawned_task_counter.inc();
         Ok(())
     }
 
     fn status(&self) -> Result<(), SpawnError> {
-        let thread_pool = self.thread_pool.lock().unwrap();
-        thread_pool.status()
+        self.thread_pool.status()
     }
 }
 
@@ -361,14 +400,14 @@ impl ThreadPoolConfig {
             .after_start(|thread_index| {
                 debug!(
                     "Executer thread has started: {}-{}",
-                    Executor::DEFAULT_EXECUTOR_ID,
+                    Executor::GLOBAL_EXECUTOR_ID,
                     thread_index
                 )
             })
             .before_stop(|thread_index| {
                 debug!(
                     "Executer thread is stopping: {}-{}",
-                    Executor::DEFAULT_EXECUTOR_ID,
+                    Executor::GLOBAL_EXECUTOR_ID,
                     thread_index
                 )
             });
@@ -382,7 +421,7 @@ impl ThreadPoolConfig {
     }
 
     /// Tries to register a thread pool Executor
-    pub fn register_executor(&self) -> Result<(), ExecutorsError> {
+    pub fn register_executor(&self) -> Result<Executor, ExecutorsError> {
         let mut executors = EXECUTORS.write().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
@@ -402,13 +441,35 @@ mod tests {
     fn global_executor() {
         configure_logging();
 
-        let executors = EXECUTORS.read().unwrap();
-        let mut executor = executors.global_executor();
-        executor.spawn(async { info!("task #1") });
+        let EXECUTOR_ID = ExecutorId::generate();
+        let mut executor = ThreadPoolConfig::new(EXECUTOR_ID)
+            .register_executor()
+            .unwrap();
+        let mut task_executor = executor.clone();
+        executor.spawn(
+            async move {
+                info!("global_executor(): task #1");
+                let mut task_executor_2 = task_executor.clone();
+                task_executor.spawn(
+                    async move {
+                        info!("global_executor(): task #1.1");
+                        task_executor_2
+                            .spawn(async move { info!("global_executor(): task #1.1.1") });
+                    },
+                );
+            },
+        );
+        let mut task_executor = executor.clone();
         let task_handle = executor
-            .spawn_with_handle(async { info!("spawned task says hello") })
+            .spawn_with_handle(
+                async move {
+                    info!("global_executor(): task #2");
+                    task_executor.spawn(async { info!("global_executor(): task #2.1") });
+                },
+            )
             .unwrap();
         executor.run(task_handle);
+        executor.run(async { info!("global_executor(): task #3") });
 
         let gathered_metrics =
             metrics::METRIC_REGISTRY.gather_metrics(&[Executors::SPAWNED_TASK_COUNTER_METRIC_ID]);
@@ -426,12 +487,13 @@ mod tests {
                         .iter()
                         .find(|(label_id, value)| {
                             *label_id == Executors::EXECUTOR_ID_LABEL_ID
-                                && *value == Executor::DEFAULT_EXECUTOR_ID.to_string()
+                                && *value == EXECUTOR_ID.to_string()
                         })
                         .is_some()
                 })
                 .unwrap();
-            assert!(metric_value.value > 0);
+            assert_eq!(metric_value.value, 5);
+            assert_eq!(executor.spawned_task_count(), metric_value.value);
         } else {
             panic!("Metric was not found for Executors::SPAWNED_TASK_COUNTER_METRIC_ID");
         }
@@ -517,7 +579,7 @@ mod tests {
                                         thread::current().id(),
                                         i
                                     );
-                                    thread::sleep_ms(1000 * 5);
+                                    thread::sleep_ms(1000);
                                     info!("{:?} : task #{} awoke ...", thread::current().id(), i);
                                 }
 
