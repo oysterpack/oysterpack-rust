@@ -188,93 +188,6 @@ fn metric_registry_int_counter() {
 }
 
 #[test]
-fn metric_registry_counter() {
-    configure_logging();
-
-    use oysterpack_uid::ULID;
-
-    let metric_id = MetricId::generate();
-    let registry = MetricRegistry::default();
-    registry
-        .register_counter(metric_id, "ReqRep timer".to_string(), None)
-        .unwrap();
-
-    let mut counter = registry.counter(&metric_id).unwrap().local();
-    const COUNT: u64 = 10;
-    for _ in 0..COUNT {
-        counter.inc();
-    }
-
-    // check that the metrics were NOT recorded because they were not flushed yet
-    let metrics_family = registry.gather();
-    let metric_family = metrics_family
-        .iter()
-        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
-        .next()
-        .unwrap();
-    let metric = &metric_family.get_metric()[0];
-    assert_eq!(metric.get_counter().get_value(), 0.0);
-
-    // flush the metrics
-    counter.flush();
-
-    // check that the metrics were recorded
-    let metrics_family = registry.gather();
-    let metric_family = metrics_family
-        .iter()
-        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
-        .next()
-        .unwrap();
-    let metric = &metric_family.get_metric()[0];
-    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-}
-
-#[test]
-fn metric_registry_counter_vec() {
-    configure_logging();
-
-    use oysterpack_uid::ULID;
-
-    let metric_id = MetricId::generate();
-    let registry = MetricRegistry::default();
-    let label = LabelId::generate();
-    let labels = vec![label];
-    registry
-        .register_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
-        .unwrap();
-
-    let mut counter_vec = registry.counter_vec(&metric_id).unwrap().local();
-    let mut counter = counter_vec.with_label_values(&["ABC"]);
-    const COUNT: u64 = 10;
-    for _ in 0..COUNT {
-        counter.inc();
-    }
-
-    // check that the metrics were NOT recorded because they were not flushed yet
-    let metrics_family = registry.gather();
-    let metric_family = metrics_family
-        .iter()
-        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
-        .next()
-        .unwrap();
-    let metric = &metric_family.get_metric()[0];
-    assert_eq!(metric.get_counter().get_value(), 0.0);
-
-    // flush the metrics
-    counter.flush();
-
-    // check that the metrics were recorded
-    let metrics_family = registry.gather();
-    let metric_family = metrics_family
-        .iter()
-        .filter(|metric_family| metric_family.get_name() == metric_id.name().as_str())
-        .next()
-        .unwrap();
-    let metric = &metric_family.get_metric()[0];
-    assert_eq!(metric.get_counter().get_value(), COUNT as f64);
-}
-
-#[test]
 fn metric_registry_int_counter_vec() {
     configure_logging();
 
@@ -555,10 +468,7 @@ fn metric_registry_gather() {
 
     let registry = &METRIC_REGISTRY;
 
-    let counter_metric_id = MetricId::generate();
     let int_counter_metric_id = MetricId::generate();
-    let counter_vec_with_const_labels_metric_id = MetricId::generate();
-    let counter_vec_metric_id = MetricId::generate();
     let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
     let int_counter_vec_metric_id = MetricId::generate();
 
@@ -575,10 +485,7 @@ fn metric_registry_gather() {
     let histogram_vec_with_const_labels_metric_id = MetricId::generate();
 
     let metric_ids = vec![
-        counter_metric_id,
         int_counter_metric_id,
-        counter_vec_with_const_labels_metric_id,
-        counter_vec_metric_id,
         int_counter_vec_with_const_labels_metric_id,
         int_counter_vec_metric_id,
         gauge_metric_id,
@@ -598,58 +505,11 @@ fn metric_registry_gather() {
     let mut register_counters = || {
         {
             let metric = registry
-                .register_counter(counter_metric_id, "Counter".to_string(), None)
-                .unwrap();
-
-            for _ in 0..5 {
-                metric.inc();
-            }
-        }
-        {
-            let metric = registry
                 .register_int_counter(int_counter_metric_id, "IntCounter".to_string(), None)
                 .unwrap();
 
             for _ in 0..5 {
                 metric.inc();
-            }
-        }
-        {
-            let mut const_labels = HashMap::new();
-            const_labels.insert(LabelId::generate(), "BAR".to_string());
-            let mut metric = registry
-                .register_counter_vec(
-                    counter_vec_with_const_labels_metric_id,
-                    "CounterVec with const labels".to_string(),
-                    &[LabelId::generate()],
-                    Some(const_labels),
-                )
-                .unwrap()
-                .local();
-
-            let counter = metric.with_label_values(&["FOO"]);
-
-            for _ in 0..5 {
-                counter.inc();
-                counter.flush();
-            }
-        }
-        {
-            let mut metric = registry
-                .register_counter_vec(
-                    counter_vec_metric_id,
-                    "CounterVec with no const labels".to_string(),
-                    &[LabelId::generate()],
-                    None,
-                )
-                .unwrap()
-                .local();
-
-            let counter = metric.with_label_values(&["FOO"]);
-
-            for _ in 0..5 {
-                counter.inc();
-                counter.flush();
             }
         }
         {
@@ -905,13 +765,6 @@ fn metric_registry_gather() {
     assert_eq!(metrics.metrics().len(), all_metrics.metrics.len());
 
     // verify that metrics are reporting as expected
-    match metrics.metric(counter_metric_id).unwrap() {
-        Metric::Counter { desc, value } => {
-            assert_eq!(*value as u64, 5);
-            assert_eq!(desc.help, "Counter");
-        }
-        metric => panic!("Wrong metric type has been returned: {:?}", metric),
-    }
     match metrics.metric(int_counter_metric_id).unwrap() {
         Metric::IntCounter { desc, value } => {
             assert_eq!(*value, 5);
@@ -920,20 +773,18 @@ fn metric_registry_gather() {
         metric => panic!("Wrong metric type has been returned: {:?}", metric),
     }
     match metrics
-        .metric(counter_vec_with_const_labels_metric_id)
+        .metric(int_counter_vec_with_const_labels_metric_id)
         .unwrap()
     {
-        Metric::CounterVec { desc, values } => {
+        Metric::IntCounterVec { desc, values } => {
             assert_eq!(values.len(), 1);
-            assert_eq!(values[0].value as u64, 5);
+            assert_eq!(values[0].value, 5);
             assert_eq!(values[0].labels[0].1, "FOO".to_string());
-            assert_eq!(desc.help, "CounterVec with const labels");
+            assert_eq!(desc.help, "IntCounterVec with const labels");
         }
         metric => panic!("Wrong metric type has been returned: {:?}", metric),
     }
 
-    //    let counter_vec_with_const_labels_metric_id = MetricId::generate();
-    //    let counter_vec_metric_id = MetricId::generate();
     //    let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
     //    let int_counter_vec_metric_id = MetricId::generate();
     //
@@ -972,9 +823,7 @@ fn metric_descs() {
     let descs = metric_registry.metric_descs();
     info!("empty MetricRegistry: {:#?}", descs);
     info!("{}", serde_json::to_string_pretty(&descs).unwrap());
-    assert!(descs.counters().is_none());
     assert!(descs.int_counters().is_none());
-    assert!(descs.counter_vecs().is_none());
     assert!(descs.int_counter_vecs().is_none());
     assert!(descs.gauges().is_none());
     assert!(descs.int_gauges().is_none());
@@ -986,24 +835,6 @@ fn metric_descs() {
     let mut const_labels = HashMap::new();
     const_labels.insert(LabelId::generate(), "FOO".to_string());
     let labels = vec![LabelId::generate(), LabelId::generate()];
-
-    let metric_id = MetricId::generate();
-    let metric = metric_registry
-        .register_counter(metric_id, "counter".to_string(), Some(const_labels.clone()))
-        .unwrap();
-    let metric_desc = MetricDesc::from(&metric);
-    assert_eq!(metric_desc.id(), metric_id);
-    assert_eq!(metric_desc.help(), "counter");
-    assert_eq!(
-        metric_desc.const_labels().unwrap().iter().fold(
-            HashMap::new(),
-            |mut map, (label_id, value)| {
-                map.insert(*label_id, value.clone());
-                map
-            }
-        ),
-        const_labels
-    );
 
     let metric_id = MetricId::generate();
     let metric = metric_registry
@@ -1025,37 +856,6 @@ fn metric_descs() {
             }
         ),
         const_labels
-    );
-
-    let metric_id = MetricId::generate();
-    let metric = metric_registry
-        .register_counter_vec(
-            metric_id,
-            "counter_vec".to_string(),
-            &labels,
-            Some(const_labels.clone()),
-        )
-        .unwrap();
-    let metric_desc = MetricVecDesc::from(&metric);
-    assert_eq!(metric_desc.id(), metric_id);
-    assert_eq!(metric_desc.help(), "counter_vec");
-    assert_eq!(
-        metric_desc.const_labels().unwrap().iter().fold(
-            HashMap::new(),
-            |mut map, (label_id, value)| {
-                map.insert(*label_id, value.clone());
-                map
-            }
-        ),
-        const_labels
-    );
-    assert_eq!(
-        metric_desc
-            .labels()
-            .iter()
-            .cloned()
-            .collect::<HashSet<LabelId>>(),
-        labels.iter().cloned().collect::<HashSet<LabelId>>()
     );
 
     let metric_id = MetricId::generate();
@@ -1266,9 +1066,7 @@ fn metric_descs() {
     let descs_json = serde_json::to_string_pretty(&descs).unwrap();
     // verify that MetricDescs are serde compatible
     info!("{}", descs_json);
-    assert!(descs.counters().is_some());
     assert!(descs.int_counters().is_some());
-    assert!(descs.counter_vecs().is_some());
     assert!(descs.int_counter_vecs().is_some());
     assert!(descs.gauges().is_some());
     assert!(descs.int_gauges().is_some());
@@ -1279,9 +1077,7 @@ fn metric_descs() {
 
     let descs1: MetricDescs = serde_json::from_str(descs_json.as_str()).unwrap();
 
-    assert!(descs1.counters().is_some());
     assert!(descs1.int_counters().is_some());
-    assert!(descs1.counter_vecs().is_some());
     assert!(descs1.int_counter_vecs().is_some());
     assert!(descs1.gauges().is_some());
     assert!(descs1.int_gauges().is_some());
@@ -1293,9 +1089,7 @@ fn metric_descs() {
     let bytes = bincode::serialize(&descs).unwrap();
     let descs2: MetricDescs = bincode::deserialize(&bytes).unwrap();
 
-    assert!(descs2.counters().is_some());
     assert!(descs2.int_counters().is_some());
-    assert!(descs2.counter_vecs().is_some());
     assert!(descs2.int_counter_vecs().is_some());
     assert!(descs2.gauges().is_some());
     assert!(descs2.int_gauges().is_some());

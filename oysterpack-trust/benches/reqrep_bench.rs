@@ -65,7 +65,7 @@ use std::{
 
 struct EchoService;
 
-impl Processor<(),()> for EchoService {
+impl Processor<(), ()> for EchoService {
     fn process(&mut self, req: ()) -> () {}
 }
 
@@ -106,7 +106,8 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
 
     let executors = EXECUTORS.read().unwrap();
     let mut executor = executors.global_executor();
-    let req_rep = ReqRep::start_service(REQREP_ID, num_cpus::get(), EchoService, executor.clone()).unwrap();
+    let req_rep =
+        ReqRep::start_service(REQREP_ID, num_cpus::get(), EchoService, executor.clone()).unwrap();
 
     let mut handles = Vec::with_capacity(count);
     let start = Instant::now();

@@ -22,16 +22,14 @@ extern crate criterion;
 
 use criterion::Criterion;
 
+use futures::{sink::SinkExt, stream::StreamExt, task::SpawnExt};
+use oysterpack_log::*;
+use oysterpack_trust::{concurrent::execution::*, metrics::*};
 use oysterpack_uid::ULID;
 use std::time::Duration;
-use oysterpack_trust::{
-    metrics::*,
-    concurrent::execution::*
-};
-use futures::{sink::SinkExt, task::SpawnExt, stream::StreamExt};
-use oysterpack_log::*;
 
-criterion_group!(benches,
+criterion_group!(
+    benches,
     prometheus_histogram_vec_observe_bench,
     metrics_local_counter_bench
 );
@@ -48,11 +46,13 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
     }
 
     impl LocalCounter {
-
         /// constructor
         /// - spawns a bacground async task to update the metric
         ///
-        pub fn new(counter: prometheus::core::GenericLocalCounter<prometheus::core::AtomicI64>, executor: Executor) -> Result<Self,futures::task::SpawnError> {
+        pub fn new(
+            counter: prometheus::core::GenericLocalCounter<prometheus::core::AtomicI64>,
+            executor: Executor,
+        ) -> Result<Self, futures::task::SpawnError> {
             let (sender, mut receiver) = futures::channel::mpsc::channel(1);
             let mut executor = executor;
             let mut counter = counter;
@@ -66,16 +66,13 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
                                 if let Err(_) = reply.send(()) {
                                     warn!("Failed to send Flush reply");
                                 }
-                            },
-                            CounterMessage::Close => break
+                            }
+                            CounterMessage::Close => break,
                         }
                     }
-                }
+                },
             )?;
-            Ok(Self {
-                sender,
-                executor
-            })
+            Ok(Self { sender, executor })
         }
 
         /// increment the counter
@@ -102,10 +99,12 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
         Close,
     }
 
-
     let metric_id = MetricId::generate();
-    let counter = METRIC_REGISTRY.register_int_counter(metric_id, ULID::generate().to_string(), None).unwrap();
-    let mut async_local_counter = LocalCounter::new(counter.local(), GLOBAL_EXECUTOR.clone()).unwrap();
+    let counter = METRIC_REGISTRY
+        .register_int_counter(metric_id, ULID::generate().to_string(), None)
+        .unwrap();
+    let mut async_local_counter =
+        LocalCounter::new(counter.local(), GLOBAL_EXECUTOR.clone()).unwrap();
 
     let mut local_counter = counter.local();
     c.bench_function("metrics_local_counter_bench - local", move |b| {
