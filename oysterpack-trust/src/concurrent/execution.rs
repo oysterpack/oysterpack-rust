@@ -40,13 +40,13 @@ use std::{
 
 lazy_static! {
     /// Global Executor registry
-    static ref EXECUTORS: RwLock<Executors> = RwLock::new(Executors::default());
+    static ref EXECUTORS: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
 
     /// Metric: Number of tasks that the Executor has spawned
     static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::METRIC_REGISTRY.register_int_counter_vec(
-        Executors::SPAWNED_TASK_COUNTER_METRIC_ID,
+        ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID,
         "Number of tasks that the Executor has spawned".to_string(),
-        &[Executors::EXECUTOR_ID_LABEL_ID],
+        &[ExecutorRegistry::EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
 }
@@ -57,10 +57,10 @@ lazy_static! {
 pub fn register(
     id: ExecutorId,
     builder: &mut ThreadPoolBuilder,
-) -> Result<Executor, ExecutorsError> {
+) -> Result<Executor, ExecutorRegistryError> {
     let mut executors = EXECUTORS.write().unwrap();
     if executors.thread_pools.contains_key(&id) {
-        return Err(ExecutorsError::ExecutorAlreadyRegistered(id));
+        return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
     }
     let executor = Executor::new(id, builder)?;
     executors.thread_pools.insert(id, executor.clone());
@@ -94,12 +94,12 @@ pub fn global_executor() -> Executor {
 }
 
 /// Executor registry
-pub struct Executors {
+pub struct ExecutorRegistry {
     global_executor: Executor,
     thread_pools: fnv::FnvHashMap<ExecutorId, Executor>,
 }
 
-impl Executors {
+impl ExecutorRegistry {
     /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
     pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
         metrics::MetricId(1872376925834227814610238473431346961);
@@ -114,9 +114,9 @@ impl Executors {
         &mut self,
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
-    ) -> Result<Executor, ExecutorsError> {
+    ) -> Result<Executor, ExecutorRegistryError> {
         if self.thread_pools.contains_key(&id) {
-            return Err(ExecutorsError::ExecutorAlreadyRegistered(id));
+            return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
         }
         let executor = Executor::new(id, builder)?;
         self.thread_pools.insert(id, executor.clone());
@@ -152,10 +152,10 @@ impl Executors {
     }
 }
 
-impl Default for Executors {
+impl Default for ExecutorRegistry {
     fn default() -> Self {
         fn default_executor() -> Executor {
-            let mut builder = ThreadPoolConfig::new(Executor::GLOBAL_EXECUTOR_ID).builder();
+            let mut builder = ExecutorBuilder::new(Executor::GLOBAL_EXECUTOR_ID).builder();
             Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder).unwrap()
         }
 
@@ -166,7 +166,7 @@ impl Default for Executors {
     }
 }
 
-impl fmt::Debug for Executors {
+impl fmt::Debug for ExecutorRegistry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -202,12 +202,12 @@ impl Executor {
     pub const GLOBAL_EXECUTOR_ID: ExecutorId = ExecutorId(1871427164235073850597045237139528853);
 
     /// constructor
-    pub fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorsError> {
+    fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorRegistryError> {
         Ok(Self {
             id,
             thread_pool: builder
                 .create()
-                .map_err(ExecutorsError::ThreadPoolCreateFailed)?,
+                .map_err(ExecutorRegistryError::ThreadPoolCreateFailed)?,
             spawned_task_counter: SPAWNED_TASK_COUNTER
                 .with_label_values(&[id.to_string().as_str()]),
         })
@@ -317,9 +317,9 @@ impl Spawn for Executor {
 /// Unique Executor ID
 pub struct ExecutorId(pub u128);
 
-/// Executors related errors
+/// Executor registry related errors
 #[derive(Fail, Debug)]
-pub enum ExecutorsError {
+pub enum ExecutorRegistryError {
     /// When a ThreadPool creation failure occurs.
     #[fail(display = "Failed to create ThreadPool: {}", _0)]
     ThreadPoolCreateFailed(io::Error),
@@ -347,13 +347,13 @@ pub enum ExecutorError {
 
 /// ThreadPool config
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThreadPoolConfig {
+pub struct ExecutorBuilder {
     id: ExecutorId,
     stack_size: Option<NonZeroUsize>,
     pool_size: Option<NonZeroUsize>,
 }
 
-impl ThreadPoolConfig {
+impl ExecutorBuilder {
     /// constructor
     pub fn new(id: ExecutorId) -> Self {
         Self {
@@ -392,8 +392,7 @@ impl ThreadPoolConfig {
         self.pool_size.map(|size| size.get())
     }
 
-    /// ThreadPoolVBuilder constructor
-    pub fn builder(&self) -> ThreadPoolBuilder {
+    fn builder(&self) -> ThreadPoolBuilder {
         let mut builder = ThreadPool::builder();
         builder
             .name_prefix(format!("{}-", self.id))
@@ -420,8 +419,8 @@ impl ThreadPoolConfig {
         builder
     }
 
-    /// Tries to register a thread pool Executor
-    pub fn register_executor(&self) -> Result<Executor, ExecutorsError> {
+    /// Tries to build and register the Executor with the global ExecutorRegistry
+    pub fn register(&self) -> Result<Executor, ExecutorRegistryError> {
         let mut executors = EXECUTORS.write().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
@@ -442,9 +441,7 @@ mod tests {
         configure_logging();
 
         let EXECUTOR_ID = ExecutorId::generate();
-        let mut executor = ThreadPoolConfig::new(EXECUTOR_ID)
-            .register_executor()
-            .unwrap();
+        let mut executor = ExecutorBuilder::new(EXECUTOR_ID).register().unwrap();
         let mut task_executor = executor.clone();
         executor.spawn(
             async move {
@@ -471,14 +468,14 @@ mod tests {
         executor.run(task_handle);
         executor.run(async { info!("global_executor(): task #3") });
 
-        let gathered_metrics =
-            metrics::METRIC_REGISTRY.gather_metrics(&[Executors::SPAWNED_TASK_COUNTER_METRIC_ID]);
+        let gathered_metrics = metrics::METRIC_REGISTRY
+            .gather_metrics(&[ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID]);
         info!("gathered_metrics: {:#?}", gathered_metrics);
         if let metrics::Metric::IntCounterVec { desc, values } = gathered_metrics
-            .metric(Executors::SPAWNED_TASK_COUNTER_METRIC_ID)
+            .metric(ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID)
             .unwrap()
         {
-            assert_eq!(desc.id(), Executors::SPAWNED_TASK_COUNTER_METRIC_ID);
+            assert_eq!(desc.id(), ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID);
             let metric_value = values
                 .iter()
                 .find(|metric_value| {
@@ -486,7 +483,7 @@ mod tests {
                         .labels
                         .iter()
                         .find(|(label_id, value)| {
-                            *label_id == Executors::EXECUTOR_ID_LABEL_ID
+                            *label_id == ExecutorRegistry::EXECUTOR_ID_LABEL_ID
                                 && *value == EXECUTOR_ID.to_string()
                         })
                         .is_some()
@@ -612,18 +609,18 @@ mod tests {
         configure_logging();
 
         for _ in 0..32 {
-            assert!(ThreadPoolConfig::new(ExecutorId::generate())
-                .register_executor()
+            assert!(ExecutorBuilder::new(ExecutorId::generate())
+                .register()
                 .is_ok());
         }
 
-        let threadpool_config = ThreadPoolConfig::new(ExecutorId::generate());
-        assert!(threadpool_config.register_executor().is_ok());
+        let threadpool_config = ExecutorBuilder::new(ExecutorId::generate());
+        assert!(threadpool_config.register().is_ok());
         match threadpool_config
-            .register_executor()
+            .register()
             .expect_err("expected ExecutorAlreadyRegistered")
         {
-            ExecutorsError::ExecutorAlreadyRegistered(id) => {
+            ExecutorRegistryError::ExecutorAlreadyRegistered(id) => {
                 assert_eq!(id, threadpool_config.executor_id())
             }
             err => panic!(
@@ -636,7 +633,7 @@ mod tests {
     #[test]
     fn threadpool_config() {
         let id = ExecutorId::generate();
-        let config = ThreadPoolConfig::new(id);
+        let config = ExecutorBuilder::new(id);
         assert_eq!(config.executor_id(), id);
         assert!(config.stack_size().is_none());
         assert!(config.pool_size().is_none());

@@ -105,9 +105,8 @@ where
         )
     }
 
-    // TODO: metrics
-    /// Spawns the backend Service and returns the frontend ReqRep.
-    /// - the backend Service is spawned using the specified Executor
+    /// Spawns the backend service message processor and returns the frontend ReqRep.
+    /// - the backend service is spawned using the specified Executor
     pub fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
