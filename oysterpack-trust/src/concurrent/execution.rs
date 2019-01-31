@@ -43,7 +43,7 @@ lazy_static! {
     static ref EXECUTORS: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
 
     /// Metric: Number of tasks that the Executor has spawned
-    static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::METRIC_REGISTRY.register_int_counter_vec(
+    static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID,
         "Number of tasks that the Executor has spawned".to_string(),
         &[ExecutorRegistry::EXECUTOR_ID_LABEL_ID],
@@ -433,7 +433,7 @@ mod tests {
     use super::*;
     use crate::configure_logging;
     use crate::metrics;
-    use futures::task::SpawnExt;
+    use futures::{future::FutureExt, task::SpawnExt};
     use std::{iter::Iterator, thread};
 
     #[test]
@@ -450,8 +450,11 @@ mod tests {
                 task_executor.spawn(
                     async move {
                         info!("global_executor(): task #1.1");
-                        task_executor_2
-                            .spawn(async move { info!("global_executor(): task #1.1.1") });
+                        await!(task_executor_2
+                            .spawn_with_handle(
+                                async move { info!("global_executor(): task #1.1.1") }
+                            )
+                            .unwrap());
                     },
                 );
             },
@@ -461,15 +464,17 @@ mod tests {
             .spawn_with_handle(
                 async move {
                     info!("global_executor(): task #2");
-                    task_executor.spawn(async { info!("global_executor(): task #2.1") });
+                    await!(task_executor
+                        .spawn_with_handle(async { info!("global_executor(): task #2.1") })
+                        .unwrap());
                 },
             )
             .unwrap();
         executor.run(task_handle);
         executor.run(async { info!("global_executor(): task #3") });
 
-        let gathered_metrics = metrics::METRIC_REGISTRY
-            .gather_metrics(&[ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID]);
+        let gathered_metrics =
+            metrics::registry().gather_metrics(&[ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID]);
         info!("gathered_metrics: {:#?}", gathered_metrics);
         if let metrics::Metric::IntCounterVec { desc, values } = gathered_metrics
             .metric(ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID)

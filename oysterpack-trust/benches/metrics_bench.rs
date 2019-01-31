@@ -24,7 +24,10 @@ use criterion::Criterion;
 
 use futures::{sink::SinkExt, stream::StreamExt, task::SpawnExt};
 use oysterpack_log::*;
-use oysterpack_trust::{concurrent::execution::*, metrics::*};
+use oysterpack_trust::{
+    concurrent::execution::*,
+    metrics::{self, *},
+};
 use oysterpack_uid::ULID;
 use std::time::Duration;
 
@@ -100,7 +103,7 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
     }
 
     let metric_id = MetricId::generate();
-    let counter = METRIC_REGISTRY
+    let counter = metrics::registry()
         .register_int_counter(metric_id, ULID::generate().to_string(), None)
         .unwrap();
     let mut async_local_counter =

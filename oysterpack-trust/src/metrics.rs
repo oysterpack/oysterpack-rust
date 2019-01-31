@@ -44,7 +44,6 @@ use lazy_static::lazy_static;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -56,12 +55,13 @@ use std::{
 
 lazy_static! {
     /// Global metrics registry
-    pub static ref METRIC_REGISTRY: MetricRegistry = MetricRegistry::default();
+    static ref METRIC_REGISTRY: MetricRegistry = MetricRegistry::default();
 }
 
-// used to minimize memory allocations on the heap
-const METRIC_DESC_SMALLVEC_SIZE: usize = 8;
-const BUCKETS_SMALLVEC_SIZE: usize = 8;
+/// Returns the global metric registry
+pub fn registry() -> &'static MetricRegistry {
+    &METRIC_REGISTRY
+}
 
 /// Metric Registry
 /// - process metrics collector is automatically added
@@ -350,10 +350,7 @@ impl MetricRegistry {
 
         let metric = prometheus::Histogram::with_opts(opts)?;
         self.registry.register(Box::new(metric.clone()))?;
-        metrics.insert(
-            metric_id,
-            (metric.clone(), Buckets(SmallVec::from(buckets))),
-        );
+        metrics.insert(metric_id, (metric.clone(), Buckets(buckets)));
         Ok(metric)
     }
 
@@ -405,10 +402,7 @@ impl MetricRegistry {
         let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::HistogramVec::new(opts, &label_names)?;
         self.registry.register(Box::new(metric.clone()))?;
-        metrics.insert(
-            metric_id,
-            (metric.clone(), Buckets(SmallVec::from(buckets))),
-        );
+        metrics.insert(metric_id, (metric.clone(), Buckets(buckets)));
         Ok(metric)
     }
 
@@ -1123,7 +1117,7 @@ impl From<&prometheus::IntGauge> for MetricDesc {
 pub struct MetricVecDesc {
     id: MetricId,
     help: String,
-    labels: SmallVec<[LabelId; METRIC_DESC_SMALLVEC_SIZE]>,
+    labels: Vec<LabelId>,
     const_labels: Option<Vec<(LabelId, String)>>,
 }
 
@@ -1584,11 +1578,11 @@ impl MetricDescs {
 
 /// Histogram buckets
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Buckets(pub SmallVec<[f64; BUCKETS_SMALLVEC_SIZE]>);
+pub struct Buckets(pub Vec<f64>);
 
 impl From<&[f64]> for Buckets {
     fn from(buckets: &[f64]) -> Self {
-        Buckets(SmallVec::from(buckets))
+        Buckets(Vec::from(buckets))
     }
 }
 
@@ -1653,6 +1647,12 @@ impl FromStr for MetricId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let id: ULID = s[1..].parse()?;
         Ok(Self(id.into()))
+    }
+}
+
+impl From<ULID> for MetricId {
+    fn from(ulid: ULID) -> Self {
+        Self(ulid.into())
     }
 }
 
@@ -1887,7 +1887,7 @@ impl Metric {
         for metric_family in metric.collect() {
             for metric in metric_family.get_metric() {
                 // variable labels, i.e., const labels are filtered out
-                let labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> = metric
+                let labels: Vec<(LabelId, String)> = metric
                     .get_label()
                     .iter()
                     .filter_map(|label_pair| {
@@ -1911,7 +1911,7 @@ impl Metric {
     fn variable_labels(
         labels: &[prometheus::proto::LabelPair],
         const_label_ids: &HashSet<LabelId>,
-    ) -> SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]> {
+    ) -> Vec<(LabelId, String)> {
         labels
             .iter()
             .filter_map(|label_pair| {
@@ -1954,7 +1954,7 @@ pub struct BucketValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistogramValue {
     /// metric variable label pairs
-    pub labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>,
+    pub labels: Vec<(LabelId, String)>,
     /// total number of data points that have been collected
     pub sample_count: SampleCount,
     /// values
@@ -1965,7 +1965,7 @@ pub struct HistogramValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricValue<T> {
     /// metric variable label pairs
-    pub labels: SmallVec<[(LabelId, String); METRIC_DESC_SMALLVEC_SIZE]>,
+    pub labels: Vec<(LabelId, String)>,
     /// metric value
     pub value: T,
 }

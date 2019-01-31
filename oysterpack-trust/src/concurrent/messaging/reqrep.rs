@@ -35,16 +35,37 @@ use crate::concurrent::{
     execution::Executor,
     messaging::{errors::ChannelSendError, MessageId},
 };
+use crate::metrics;
 use futures::{
     channel,
     sink::SinkExt,
     stream::StreamExt,
     task::{SpawnError, SpawnExt},
 };
+use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+
+lazy_static! {
+    static ref REQ_REP_MSG_PROCESSOR_TIMER: prometheus::HistogramVec = metrics::registry()
+        .register_histogram_vec(
+            REQ_REP_MSG_PROCESSOR_TIMER_METRIC_ID,
+            "request/reply message processor timer in seconds".to_string(),
+            &[REQ_REP_LABEL_ID],
+            vec![0.0, 0.1, 0.2, 0.3, 0.5, 0.8, 1.3, 2.1],
+            None
+        )
+        .unwrap();
+}
+
+/// ReqRep message processor timer MetricId: `M01D2GPHC510B0P415A6BFHS0YP`
+pub const REQ_REP_MSG_PROCESSOR_TIMER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1872500631411639146232560523562222550);
+/// Histogram label used to store the ReqRepId ULID
+pub const REQ_REP_LABEL_ID: metrics::LabelId =
+    metrics::LabelId(1872501146252014427646493057098991464);
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
