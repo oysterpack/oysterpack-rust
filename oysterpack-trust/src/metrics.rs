@@ -79,7 +79,7 @@ pub struct MetricRegistry {
     histograms: RwLock<fnv::FnvHashMap<MetricId, (prometheus::Histogram, Buckets)>>,
     histogram_vecs: RwLock<fnv::FnvHashMap<MetricId, (prometheus::HistogramVec, Buckets)>>,
 
-    process_collector: ProcessCollector,
+    process_collector: ArcCollector,
 }
 
 impl MetricRegistry {
@@ -927,7 +927,7 @@ impl fmt::Debug for MetricRegistry {
 impl Default for MetricRegistry {
     fn default() -> Self {
         let registry = prometheus::Registry::new();
-        let process_collector = ProcessCollector::default();
+        let process_collector = ArcCollector::process_collector();
         registry
             .register(Box::new(process_collector.clone()))
             .unwrap();
@@ -2023,19 +2023,19 @@ impl Default for Metrics {
     }
 }
 
-/// Process metrics collector
+/// Arc wrapped metrics collector
 #[derive(Clone)]
-pub struct ProcessCollector(Arc<prometheus::process_collector::ProcessCollector>);
+pub struct ArcCollector(Arc<dyn prometheus::core::Collector>);
 
-impl Default for ProcessCollector {
-    fn default() -> Self {
-        ProcessCollector(Arc::new(
+impl ArcCollector {
+    fn process_collector() -> Self {
+        ArcCollector(Arc::new(
             prometheus::process_collector::ProcessCollector::for_self(),
         ))
     }
 }
 
-impl prometheus::core::Collector for ProcessCollector {
+impl prometheus::core::Collector for ArcCollector {
     /// Return descriptors for metrics.
     fn desc(&self) -> Vec<&prometheus::core::Desc> {
         self.0.desc()
@@ -2047,7 +2047,7 @@ impl prometheus::core::Collector for ProcessCollector {
     }
 }
 
-impl fmt::Debug for ProcessCollector {
+impl fmt::Debug for ArcCollector {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("ProcessCollector")
     }
@@ -2083,7 +2083,7 @@ impl ProcessMetrics {
     /// metric name for: Start time of the process since unix epoch in seconds.
     pub const PROCESS_START_TIME_SECONDS: &'static str = "process_start_time_seconds";
 
-    fn collect(process_collector: &ProcessCollector) -> Self {
+    fn collect(process_collector: &ArcCollector) -> Self {
         let mut process_metrics = ProcessMetrics::default();
         for metric_family in process_collector.collect() {
             match metric_family.get_name() {
