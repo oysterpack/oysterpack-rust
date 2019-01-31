@@ -780,7 +780,7 @@ fn metric_registry_gather() {
             assert_eq!(values.len(), 1);
             assert_eq!(values[0].value, 5);
             assert_eq!(values[0].labels[0].1, "FOO".to_string());
-            assert_eq!(desc.help, "IntCounterVec with const labels");
+            assert_eq!(desc.help(), "IntCounterVec with const labels");
         }
         metric => panic!("Wrong metric type has been returned: {:?}", metric),
     }

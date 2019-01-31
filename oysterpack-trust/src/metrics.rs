@@ -1115,26 +1115,29 @@ impl From<&prometheus::IntGauge> for MetricDesc {
 /// Metric Desc
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricVecDesc {
-    id: MetricId,
-    help: String,
+    desc: MetricDesc,
     labels: Vec<LabelId>,
-    const_labels: Option<Vec<(LabelId, String)>>,
 }
 
 impl MetricVecDesc {
     /// returns the MetricId
     pub fn id(&self) -> MetricId {
-        self.id
+        self.desc.id()
     }
 
     /// returns the metric help
     pub fn help(&self) -> &str {
-        &self.help
+        self.desc.help()
     }
 
     /// returns the metric's constant labels
     pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.const_labels.as_ref().map(|labels| labels.as_slice())
+        self.desc.const_labels()
+    }
+
+    /// returns the base MetricDesc
+    pub fn desc(&self) -> &MetricDesc {
+        &self.desc
     }
 
     /// returns the metric's dimension labels
@@ -1168,10 +1171,12 @@ impl MetricVecDesc {
             })
             .collect();
         MetricVecDesc {
-            id: metric_id,
-            help: desc.help.clone(),
+            desc: MetricDesc {
+                id: metric_id,
+                help: desc.help.clone(),
+                const_labels,
+            },
             labels,
-            const_labels,
         }
     }
 
@@ -1204,10 +1209,12 @@ impl MetricVecDesc {
             })
             .collect();
         MetricVecDesc {
-            id: metric_id,
-            help: desc.help.clone(),
+            desc: MetricDesc {
+                id: metric_id,
+                help: desc.help.clone(),
+                const_labels,
+            },
             labels,
-            const_labels,
         }
     }
 
@@ -1240,10 +1247,12 @@ impl MetricVecDesc {
             })
             .collect();
         MetricVecDesc {
-            id: metric_id,
-            help: desc.help.clone(),
+            desc: MetricDesc {
+                id: metric_id,
+                help: desc.help.clone(),
+                const_labels,
+            },
             labels,
-            const_labels,
         }
     }
 
@@ -1276,10 +1285,12 @@ impl MetricVecDesc {
             })
             .collect();
         MetricVecDesc {
-            id: metric_id,
-            help: desc.help.clone(),
+            desc: MetricDesc {
+                id: metric_id,
+                help: desc.help.clone(),
+                const_labels,
+            },
             labels,
-            const_labels,
         }
     }
 }
@@ -1334,7 +1345,7 @@ pub struct HistogramDesc {
 }
 impl HistogramDesc {
     /// returns the MetricId
-    pub fn id(&self) -> MetricId {
+    pub const fn id(&self) -> MetricId {
         self.id
     }
 
@@ -1410,37 +1421,39 @@ impl fmt::Debug for HistogramDesc {
 /// HistogramVec Desc
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HistogramVecDesc {
-    id: MetricId,
-    help: String,
+    desc: HistogramDesc,
     labels: Vec<LabelId>,
-    buckets: Buckets,
-    const_labels: Option<Vec<(LabelId, String)>>,
 }
 
 impl HistogramVecDesc {
     /// returns the MetricId
     pub fn id(&self) -> MetricId {
-        self.id
+        self.desc.id
     }
 
     /// returns the metric help
     pub fn help(&self) -> &str {
-        &self.help
+        self.desc.help()
     }
 
     /// returns the metric's constant labels
     pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.const_labels.as_ref().map(|labels| labels.as_slice())
+        self.desc.const_labels()
+    }
+
+    /// returns the histogram's buckets
+    pub fn buckets(&self) -> &Buckets {
+        self.desc.buckets()
+    }
+
+    /// returns the base HistogramDesc
+    pub fn desc(&self) -> &HistogramDesc {
+        &self.desc
     }
 
     /// returns the metric's dimension labels
     pub fn labels(&self) -> &[LabelId] {
         self.labels.as_slice()
-    }
-
-    /// returns the histogram's buckets
-    pub fn buckets(&self) -> &Buckets {
-        &self.buckets
     }
 
     /// constructor
@@ -1469,10 +1482,12 @@ impl HistogramVecDesc {
             })
             .collect();
         HistogramVecDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-            buckets,
+            desc: HistogramDesc {
+                id: metric_id,
+                help: desc.help.clone(),
+                const_labels,
+                buckets,
+            },
             labels,
         }
     }
@@ -1490,16 +1505,16 @@ impl From<(&prometheus::HistogramVec, Buckets)> for HistogramVecDesc {
 
 impl fmt::Debug for HistogramVecDesc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.const_labels.as_ref() {
+        match self.desc.const_labels() {
             Some(const_labels) => write!(
                 f,
                 "id = {}, help = {}, buckets = {:?}, labels = {:?}, const_labels = {:?}",
-                self.id, self.help, self.buckets, self.labels, const_labels
+                self.desc.id, self.desc.help, self.desc.buckets, self.labels, const_labels
             ),
             None => write!(
                 f,
                 "id = {}, help = {}, buckets = {:?}, labels = {:?}",
-                self.id, self.help, self.buckets, self.labels
+                self.desc.id, self.desc.help, self.desc.buckets, self.labels
             ),
         }
     }
@@ -1742,16 +1757,16 @@ impl Metric {
     /// Returns the MetricId
     pub fn metric_id(&self) -> MetricId {
         match self {
-            Metric::IntCounter { desc, .. } => desc.id,
-            Metric::IntCounterVec { desc, .. } => desc.id,
+            Metric::IntCounter { desc, .. } => desc.id(),
+            Metric::IntCounterVec { desc, .. } => desc.id(),
 
-            Metric::Gauge { desc, .. } => desc.id,
-            Metric::IntGauge { desc, .. } => desc.id,
-            Metric::GaugeVec { desc, .. } => desc.id,
-            Metric::IntGaugeVec { desc, .. } => desc.id,
+            Metric::Gauge { desc, .. } => desc.id(),
+            Metric::IntGauge { desc, .. } => desc.id(),
+            Metric::GaugeVec { desc, .. } => desc.id(),
+            Metric::IntGaugeVec { desc, .. } => desc.id(),
 
-            Metric::Histogram { desc, .. } => desc.id,
-            Metric::HistogramVec { desc, .. } => desc.id,
+            Metric::Histogram { desc, .. } => desc.id(),
+            Metric::HistogramVec { desc, .. } => desc.id(),
         }
     }
 
@@ -1789,8 +1804,7 @@ impl Metric {
         // - the const labels are listed separately in the MetricVecDesc
         // - in the MetricValue we only want to show the variable labels to minimize the
         //   duplicated info
-        let const_label_ids =
-            Self::const_label_ids(desc.const_labels.as_ref().map(|labels| labels.as_slice()));
+        let const_label_ids = Self::const_label_ids(desc.const_labels());
 
         let values = metric
             .collect()
@@ -1828,8 +1842,7 @@ impl Metric {
         // - the const labels are listed separately in the MetricVecDesc
         // - in the MetricValue we only want to show the variable labels to minimize the
         //   duplicated info
-        let const_label_ids =
-            Self::const_label_ids(desc.const_labels.as_ref().map(|labels| labels.as_slice()));
+        let const_label_ids = Self::const_label_ids(desc.const_labels());
 
         let mut values = Vec::<MetricValue<f64>>::new();
         for metric_family in metric.collect() {
@@ -1851,8 +1864,7 @@ impl Metric {
         // - the const labels are listed separately in the MetricVecDesc
         // - in the MetricValue we only want to show the variable labels to minimize the
         //   duplicated info
-        let const_label_ids =
-            Self::const_label_ids(desc.const_labels.as_ref().map(|labels| labels.as_slice()));
+        let const_label_ids = Self::const_label_ids(desc.const_labels());
 
         let mut values = Vec::<MetricValue<u64>>::new();
         for metric_family in metric.collect() {
@@ -1874,7 +1886,7 @@ impl Metric {
         // - the const labels are listed separately in the MetricVecDesc
         // - in the MetricValue we only want to show the variable labels to minimize the
         //   duplicated info
-        let const_label_ids: HashSet<LabelId> = match desc.const_labels.as_ref() {
+        let const_label_ids: HashSet<LabelId> = match desc.const_labels() {
             Some(const_labels) => const_labels
                 .iter()
                 .map(|(label_id, _value)| label_id)

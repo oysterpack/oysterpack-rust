@@ -494,6 +494,18 @@ mod tests {
                         .is_some()
                 })
                 .unwrap();
+
+            for i in 0..5 {
+                if metric_value.value != 5 {
+                    info!(
+                        "yielding to give the spawned tasks a chance to run: ({})",
+                        i
+                    );
+                    thread::yield_now();
+                } else {
+                    break;
+                }
+            }
             assert_eq!(metric_value.value, 5);
             assert_eq!(executor.spawned_task_count(), metric_value.value);
         } else {
