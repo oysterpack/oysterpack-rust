@@ -79,10 +79,30 @@ pub struct MetricRegistry {
     histograms: RwLock<fnv::FnvHashMap<MetricId, (prometheus::Histogram, Buckets)>>,
     histogram_vecs: RwLock<fnv::FnvHashMap<MetricId, (prometheus::HistogramVec, Buckets)>>,
 
-    process_collector: ArcCollector,
+    metric_collectors: RwLock<Vec<ArcCollector>>,
 }
 
 impl MetricRegistry {
+    /// register registers a new Collector to be included in metrics collection.
+    /// It returns an error if the descriptors provided by the Collector are invalid or if they —
+    /// in combination with descriptors of already registered Collectors — do not fulfill the consistency
+    /// and uniqueness criteria described in the documentation of Desc.
+    ///
+    /// If the provided Collector is equal to a Collector already registered (which includes the
+    /// case of re-registering the same Collector), the AlreadyReg error returns.
+    pub fn register_collector(
+        &self,
+        collector: impl prometheus::core::Collector + 'static,
+    ) -> prometheus::Result<ArcCollector> {
+        let collector = ArcCollector::new(collector);
+        self.registry.register(Box::new(collector.clone()))?;
+        {
+            let mut metric_collectors = self.metric_collectors.write().unwrap();
+            metric_collectors.push(collector.clone());
+        }
+        Ok(collector)
+    }
+
     /// Tries to register an int gauge metric
     pub fn register_int_gauge(
         &self,
@@ -788,7 +808,9 @@ impl MetricRegistry {
 
     /// Gathers process related metrics
     pub fn gather_process_metrics(&self) -> ProcessMetrics {
-        ProcessMetrics::collect(&self.process_collector)
+        let collectors = self.metric_collectors.read().unwrap();
+        // the ProcessCollector will always be the first registered collector
+        ProcessMetrics::collect(&collectors[0])
     }
 
     /// returns the descriptors for registered metrics
@@ -926,13 +948,8 @@ impl fmt::Debug for MetricRegistry {
 
 impl Default for MetricRegistry {
     fn default() -> Self {
-        let registry = prometheus::Registry::new();
-        let process_collector = ArcCollector::process_collector();
-        registry
-            .register(Box::new(process_collector.clone()))
-            .unwrap();
-        Self {
-            registry,
+        let registry = Self {
+            registry: prometheus::Registry::new(),
             int_counters: RwLock::new(fnv::FnvHashMap::default()),
             int_counter_vecs: RwLock::new(fnv::FnvHashMap::default()),
 
@@ -944,8 +961,14 @@ impl Default for MetricRegistry {
             histogram_vecs: RwLock::new(fnv::FnvHashMap::default()),
             histograms: RwLock::new(fnv::FnvHashMap::default()),
 
-            process_collector,
-        }
+            metric_collectors: RwLock::new(Vec::new()),
+        };
+
+        registry
+            .register_collector(prometheus::process_collector::ProcessCollector::for_self())
+            .unwrap();
+
+        registry
     }
 }
 
@@ -2028,10 +2051,8 @@ impl Default for Metrics {
 pub struct ArcCollector(Arc<dyn prometheus::core::Collector>);
 
 impl ArcCollector {
-    fn process_collector() -> Self {
-        ArcCollector(Arc::new(
-            prometheus::process_collector::ProcessCollector::for_self(),
-        ))
+    fn new(collector: impl prometheus::core::Collector + 'static) -> Self {
+        ArcCollector(Arc::new(collector))
     }
 }
 
