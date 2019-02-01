@@ -463,8 +463,10 @@ fn metric_registry_gather() {
     let registry = &METRIC_REGISTRY;
 
     let int_counter_metric_id = MetricId::generate();
+    let counter_metric_id = MetricId::generate();
     let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
     let int_counter_vec_metric_id = MetricId::generate();
+    let counter_vec_metric_id = MetricId::generate();
 
     let gauge_metric_id = MetricId::generate();
     let int_gauge_metric_id = MetricId::generate();
@@ -479,6 +481,8 @@ fn metric_registry_gather() {
     let histogram_vec_with_const_labels_metric_id = MetricId::generate();
 
     let metric_ids = vec![
+        counter_metric_id,
+        counter_vec_metric_id,
         int_counter_metric_id,
         int_counter_vec_with_const_labels_metric_id,
         int_counter_vec_metric_id,
@@ -500,6 +504,15 @@ fn metric_registry_gather() {
         {
             let metric = registry
                 .register_int_counter(int_counter_metric_id, "IntCounter".to_string(), None)
+                .unwrap();
+
+            for _ in 0..5 {
+                metric.inc();
+            }
+        }
+        {
+            let metric = registry
+                .register_counter(counter_metric_id, "Counter".to_string(), None)
                 .unwrap();
 
             for _ in 0..5 {
@@ -531,6 +544,24 @@ fn metric_registry_gather() {
                 .register_int_counter_vec(
                     int_counter_vec_metric_id,
                     "IntCounterVec with no const labels".to_string(),
+                    &[LabelId::generate()],
+                    None,
+                )
+                .unwrap()
+                .local();
+
+            let counter = metric.with_label_values(&["FOO"]);
+
+            for _ in 0..5 {
+                counter.inc();
+                counter.flush();
+            }
+        }
+        {
+            let mut metric = registry
+                .register_int_counter_vec(
+                    counter_vec_metric_id,
+                    "CounterVec with no const labels".to_string(),
                     &[LabelId::generate()],
                     None,
                 )
@@ -744,8 +775,14 @@ fn metric_registry_gather() {
     };
     register_histograms();
 
+    // adding 1 because the ProcessCollector is automatically registered
+    assert_eq!(metric_ids.len() + 1, registry.collector_count());
+
     let metrics = registry.gather();
     info!("{:#?}", metrics);
+    assert_eq!(metrics.len(), registry.metric_family_count());
+    let descs = registry.descs();
+    assert_eq!(descs.len(), metrics.len());
 
     //    assert_eq!(metrics.metrics().len(), all_metrics.metrics.len());
 

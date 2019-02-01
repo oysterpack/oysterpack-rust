@@ -15,29 +15,17 @@
  */
 
 //! Provides metrics support for prometheus.
+//! - provides a global registry via [registry()](fn.registry.html)
 //!
-//! - [METRIC_REGISTRY](struct.METRIC_REGISTRY.html) provides a global [MetricRegistry](struct.MetricRegistry.html) that can be used
-//!   throughout the application
-//!   - it's a threadsafe singleton - protected by a Mutex
-//! - Instead of using arbitrary strings, numeric based identifiers are used (see below for rationale)
-//!   - [MetricId](struct.MetricId.html)
-//!   - [LabelId](struct.LabelId.html)
-//! - Metric descriptors can be retrieved for the registered metrics
-//!   - [MetricDesc](struct.MetricDesc.html)
-//!   - [MetricVecDesc](struct.MetricVecDesc.html)
-//!   - [HistogramDesc](struct.HistogramDesc.html)
-//!   - [HistogramVecDesc](struct.HistogramVecDesc.html)
+//! ## Recomendations
 //!
-//! ### Why use a number as a metric name and label names ?
-//! - because names change over time, which can break components that depend on metric names
-//! - to avoid name collision
+//! ### Use [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) for metric and label names
+//! - because names change over time, which can break components that depend on metric names and cause name collision
+//! - the prometheus metric `help` attribute can be used to provide a human friendly label and short description
 //!
-//! Assigning unique numerical identifiers is much more stable. Human friendly metric labels and any
-//! additional information can be mapped externally to the MetricId.
-//!
-//! ### Notes
-//! - the prometheus metric `help` attribute can be used to provide a human friendly label and
-//!   short description
+//! ### Use the Int version of the metrics where possible
+//! - because they are more efficient
+//! - IntCounter, IntCounterVec, IntGauge, IntGaugeVec
 
 use lazy_static::lazy_static;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
@@ -70,7 +58,7 @@ pub struct MetricRegistry {
 }
 
 impl MetricRegistry {
-    /// register registers a new Collector to be included in metrics collection.
+    /// Registers a new Collector to be included in metrics collection.
     /// It returns an error if the descriptors provided by the Collector are invalid or if they —
     /// in combination with descriptors of already registered Collectors — do not fulfill the consistency
     /// and uniqueness criteria described in the documentation of Desc.
@@ -88,6 +76,36 @@ impl MetricRegistry {
             metric_collectors.push(collector.clone());
         }
         Ok(collector)
+    }
+
+    /// Returns descriptors for registered metrics
+    pub fn descs(&self) -> Vec<prometheus::core::Desc> {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors
+            .iter()
+            .map(|collector| collector.desc())
+            .flatten()
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the number of registered metric families, equates to total number of registered metric descriptors
+    ///
+    /// ## Notes
+    /// Each metric family may have 1 or more metrics depending on label values
+    pub fn metric_family_count(&self) -> usize {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors
+            .iter()
+            .map(|collector| collector.desc())
+            .flatten()
+            .count()
+    }
+
+    /// Returns the number of registered collectors
+    pub fn collector_count(&self) -> usize {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors.len()
     }
 
     /// Tries to register an int gauge metric
@@ -236,6 +254,26 @@ impl MetricRegistry {
         Ok(metric)
     }
 
+    /// Tries to register an int counter metric
+    pub fn register_counter(
+        &self,
+        metric_id: MetricId,
+        help: String,
+        const_labels: Option<HashMap<LabelId, String>>,
+    ) -> prometheus::Result<prometheus::Counter> {
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let metric = prometheus::Counter::with_opts(opts)?;
+        self.register_collector(metric.clone())?;
+        Ok(metric)
+    }
+
     /// Tries to register a IntCounterVec metric
     ///
     /// ## Params
@@ -254,9 +292,6 @@ impl MetricRegistry {
     /// - if labels are blank
     /// - if any of the constant label names or values are blank
     /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
     pub fn register_int_counter_vec(
         &self,
         metric_id: MetricId,
@@ -275,6 +310,46 @@ impl MetricRegistry {
 
         let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
         let metric = prometheus::IntCounterVec::new(opts, &label_names)?;
+        self.register_collector(metric.clone())?;
+        Ok(metric)
+    }
+
+    /// Tries to register a CounterVec metric
+    ///
+    /// ## Params
+    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
+    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
+    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
+    /// - label_names - the labels used to define the metric's dimensions
+    ///   - labels will be trimmed and must not be blank
+    /// - **buckets** define the buckets into which observations are counted.
+    ///   - Each element in the slice is the upper inclusive bound of a bucket.
+    ///   - The values will be deduped and sorted in strictly increasing order.
+    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
+    ///
+    /// ## Errors
+    /// - if no labels are provided
+    /// - if labels are blank
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    pub fn register_counter_vec(
+        &self,
+        metric_id: MetricId,
+        help: String,
+        label_ids: &[LabelId],
+        const_labels: Option<HashMap<LabelId, String>>,
+    ) -> prometheus::Result<prometheus::CounterVec> {
+        let label_names = Self::check_labels(label_ids)?;
+        let help = Self::check_help(help)?;
+        let const_labels = Self::check_const_labels(const_labels)?;
+
+        let mut opts = prometheus::Opts::new(metric_id.name(), help);
+        if let Some(const_labels) = const_labels {
+            opts = opts.const_labels(const_labels);
+        }
+
+        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+        let metric = prometheus::CounterVec::new(opts, &label_names)?;
         self.register_collector(metric.clone())?;
         Ok(metric)
     }
@@ -1077,11 +1152,18 @@ impl fmt::Debug for HistogramVecDesc {
 
 /// Histogram buckets
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Buckets(pub Vec<f64>);
+pub struct Buckets(smallvec::SmallVec<[f64; 8]>);
 
 impl From<&[f64]> for Buckets {
     fn from(buckets: &[f64]) -> Self {
-        Buckets(Vec::from(buckets))
+        Buckets(smallvec::SmallVec::from_slice(buckets))
+    }
+}
+
+impl Buckets {
+    /// Returns the buckets
+    pub fn buckets(&self) -> &[f64] {
+        self.0.as_slice()
     }
 }
 
