@@ -472,45 +472,53 @@ mod tests {
             .unwrap();
         executor.run(task_handle);
         executor.run(async { info!("global_executor(): task #3") });
+        thread::yield_now();
 
-        let gathered_metrics =
-            metrics::registry().gather_metrics(&[ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID]);
-        info!("gathered_metrics: {:#?}", gathered_metrics);
-        if let metrics::Metric::IntCounterVec { desc, values } = gathered_metrics
-            .metric(ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID)
-            .unwrap()
-        {
-            assert_eq!(desc.id(), ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID);
-            let metric_value = values
+        let get_counter = || {
+            let gathered_metrics = metrics::registry().gather();
+            info!("gathered_metrics: {:#?}", gathered_metrics);
+            let metric_family = gathered_metrics
                 .iter()
-                .find(|metric_value| {
-                    metric_value
-                        .labels
+                .find(|metric_family| {
+                    metric_family.get_name()
+                        == ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID
+                            .name()
+                            .as_str()
+                })
+                .unwrap();
+            let metrics = metric_family.get_metric();
+            let metric = metric_family
+                .get_metric()
+                .iter()
+                .find(|metric| {
+                    metric
+                        .get_label()
                         .iter()
-                        .find(|(label_id, value)| {
-                            *label_id == ExecutorRegistry::EXECUTOR_ID_LABEL_ID
-                                && *value == EXECUTOR_ID.to_string()
+                        .find(|label_pair| {
+                            label_pair.get_value() == EXECUTOR_ID.to_string().as_str()
                         })
                         .is_some()
                 })
                 .unwrap();
+            metric.get_counter().clone()
+        };
 
-            for i in 0..5 {
-                if metric_value.value != 5 {
-                    info!(
-                        "yielding to give the spawned tasks a chance to run: ({})",
-                        i
-                    );
-                    thread::yield_now();
-                } else {
-                    break;
-                }
+        for i in 0..5 {
+            if get_counter().get_value() < 5.0 {
+                info!(
+                    "yielding to give the spawned tasks a chance to run: ({})",
+                    i
+                );
+                thread::yield_now();
+            } else {
+                break;
             }
-            assert_eq!(metric_value.value, 5);
-            assert_eq!(executor.spawned_task_count(), metric_value.value);
-        } else {
-            panic!("Metric was not found for Executors::SPAWNED_TASK_COUNTER_METRIC_ID");
         }
+        assert_eq!(get_counter().get_value() as u64, 5);
+        assert_eq!(
+            executor.spawned_task_count(),
+            get_counter().get_value() as u64
+        );
     }
 
     #[test]
