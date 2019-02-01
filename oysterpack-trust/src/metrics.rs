@@ -38,6 +38,7 @@ use std::{
     iter::Iterator,
     str::FromStr,
     sync::{Arc, RwLock},
+    time::Duration,
 };
 
 lazy_static! {
@@ -394,6 +395,34 @@ impl MetricRegistry {
         Ok(metric)
     }
 
+    /// Tries to register a Histogram metric
+    ///
+    /// ## Params
+    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
+    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
+    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
+    /// - **buckets** define the buckets into which observations are counted.
+    ///   - Each element in the slice is the upper inclusive bound of a bucket.
+    ///   - The values will be deduped and sorted in strictly increasing order.
+    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
+    ///
+    /// ## Errors
+    /// - if no labels are provided
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    ///
+    /// ## Notes
+    ///
+    pub fn register_histogram_timer(
+        &self,
+        metric_id: MetricId,
+        help: String,
+        buckets: TimerBuckets,
+        const_labels: Option<HashMap<LabelId, String>>,
+    ) -> prometheus::Result<prometheus::Histogram> {
+        self.register_histogram(metric_id, help, buckets.into(), const_labels)
+    }
+
     /// Tries to register a HistogramVec metric
     ///
     /// ## Params
@@ -438,6 +467,38 @@ impl MetricRegistry {
         let metric = prometheus::HistogramVec::new(opts, &label_names)?;
         self.register_collector(metric.clone())?;
         Ok(metric)
+    }
+
+    /// Tries to register a HistogramVec metric
+    ///
+    /// ## Params
+    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
+    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
+    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
+    /// - label_names - the labels used to define the metric's dimensions
+    ///   - labels will be trimmed and must not be blank
+    /// - **buckets** define the buckets into which observations are counted.
+    ///   - Each element in the slice is the upper inclusive bound of a bucket.
+    ///   - The values will be deduped and sorted in strictly increasing order.
+    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
+    ///
+    /// ## Errors
+    /// - if no labels are provided
+    /// - if labels are blank
+    /// - if any of the constant label names or values are blank
+    /// - if there are no buckets defined
+    ///
+    /// ## Notes
+    ///
+    pub fn register_histogram_vec_timer(
+        &self,
+        metric_id: MetricId,
+        help: String,
+        label_ids: &[LabelId],
+        buckets: TimerBuckets,
+        const_labels: Option<HashMap<LabelId, String>>,
+    ) -> prometheus::Result<prometheus::HistogramVec> {
+        self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
     fn check_help(help: String) -> Result<String, prometheus::Error> {
@@ -789,6 +850,39 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// - this comes in handy when reporting timings to prometheus, which uses `f64` as the number type
 pub fn as_float_secs(nanos: u64) -> f64 {
     (nanos as f64) / f64::from(NANOS_PER_SEC)
+}
+
+/// Used to specify histogram buckets that will be used as timer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimerBuckets(smallvec::SmallVec<[Duration; 10]>);
+
+impl TimerBuckets {
+    /// adds a new bucket
+    pub fn add_bucket(self, upper_boundary: Duration) -> TimerBuckets {
+        let mut this = self;
+        this.0.push(upper_boundary);
+        this
+    }
+
+    /// returns the buckets
+    pub fn buckets(&self) -> &[Duration] {
+        self.0.as_slice()
+    }
+}
+
+impl From<&[Duration]> for TimerBuckets {
+    fn from(buckets: &[Duration]) -> Self {
+        Self(smallvec::SmallVec::from_slice(buckets))
+    }
+}
+
+impl Into<Vec<f64>> for TimerBuckets {
+    fn into(self) -> Vec<f64> {
+        self.0
+            .into_iter()
+            .map(|duration| duration.as_float_secs())
+            .collect()
+    }
 }
 
 /// Arc wrapped metrics collector

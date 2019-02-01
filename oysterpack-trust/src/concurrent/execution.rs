@@ -16,7 +16,8 @@
 
 //! Exposes lower level primitives for dealing with asynchronous execution:
 //! - async executors
-//!
+//! - global executor registry
+//! - global executor
 
 use crate::metrics;
 use failure::Fail;
@@ -40,15 +41,27 @@ use std::{
 
 lazy_static! {
     /// Global Executor registry
-    static ref EXECUTORS: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
+    static ref EXECUTOR_REGISTRY: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
 
     /// Metric: Number of tasks that the Executor has spawned
     static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID,
+        SPAWNED_TASK_COUNTER_METRIC_ID,
         "Number of tasks that the Executor has spawned".to_string(),
-        &[ExecutorRegistry::EXECUTOR_ID_LABEL_ID],
+        &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
+}
+
+/// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
+pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1872376925834227814610238473431346961);
+/// The ExecutorId will be used as the label value: `L01D2DN1VBMW6XC7EQ971PBGW68`
+pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
+    metrics::LabelId(1872377054303353796724661249788899528);
+
+/// Gathers Executor related metrics
+pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
+    metrics::registry().gather_metrics_by_name(&[SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str()])
 }
 
 /// An executor can only be registered once, and once it is registered, it stays registered for the
@@ -58,7 +71,7 @@ pub fn register(
     id: ExecutorId,
     builder: &mut ThreadPoolBuilder,
 ) -> Result<Executor, ExecutorRegistryError> {
-    let mut executors = EXECUTORS.write().unwrap();
+    let mut executors = EXECUTOR_REGISTRY.write().unwrap();
     if executors.thread_pools.contains_key(&id) {
         return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
     }
@@ -69,13 +82,13 @@ pub fn register(
 
 /// Returns the registered executor IDs
 pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
-    let executors = EXECUTORS.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.thread_pools.keys().cloned().collect()
 }
 
 /// returns the Executor for the specified ID
 pub fn executor(id: ExecutorId) -> Option<Executor> {
-    let executors = EXECUTORS.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read().unwrap();
     match executors.thread_pools.get(&id) {
         Some(executor) => Some(executor.clone()),
         None => {
@@ -89,8 +102,14 @@ pub fn executor(id: ExecutorId) -> Option<Executor> {
 
 /// Returns the global executor, which is provided by default.
 pub fn global_executor() -> Executor {
-    let executors = EXECUTORS.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.global_executor.clone()
+}
+
+/// Returns the total number of tasks spawned across all registered Executor(s)
+pub fn spawned_task_count() -> u64 {
+    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    executors.spawned_task_count()
 }
 
 /// Executor registry
@@ -100,13 +119,6 @@ pub struct ExecutorRegistry {
 }
 
 impl ExecutorRegistry {
-    /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
-    pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
-        metrics::MetricId(1872376925834227814610238473431346961);
-    /// The ExecutorId will be used as the label value: `L01D2DN1VBMW6XC7EQ971PBGW68`
-    pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
-        metrics::LabelId(1872377054303353796724661249788899528);
-
     /// An executor can only be registered once, and once it is registered, it stays registered for the
     /// life of the app.
     /// - returns false is an executor with the same ID is already registered
@@ -149,6 +161,14 @@ impl ExecutorRegistry {
     /// Returns the global executor, which is provided by default.
     pub fn global_executor(&self) -> Executor {
         self.global_executor.clone()
+    }
+
+    /// Returns the total number of tasks spawned across all registered Executor(s)
+    pub fn spawned_task_count(&self) -> u64 {
+        self.thread_pools.values().fold(
+            self.global_executor.spawned_task_count(),
+            |sum, executor| sum + executor.spawned_task_count(),
+        )
     }
 }
 
@@ -345,7 +365,14 @@ pub enum ExecutorError {
     SpawnedFuturePanic,
 }
 
-/// ThreadPool config
+/// Executor builder, which is used to register the Executor with the global Executor registry
+///
+/// ## Example
+/// ``` rust
+/// # use oysterpack_trust::concurrent::execution::*;
+/// const EXECUTOR_ID: ExecutorId = ExecutorId(1872692872983539779132843447162269015);
+/// let mut executor = ExecutorBuilder::new(EXECUTOR_ID).register().unwrap();
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutorBuilder {
     id: ExecutorId,
@@ -421,7 +448,7 @@ impl ExecutorBuilder {
 
     /// Tries to build and register the Executor with the global ExecutorRegistry
     pub fn register(&self) -> Result<Executor, ExecutorRegistryError> {
-        let mut executors = EXECUTORS.write().unwrap();
+        let mut executors = EXECUTOR_REGISTRY.write().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
     }
@@ -480,10 +507,7 @@ mod tests {
             let metric_family = gathered_metrics
                 .iter()
                 .find(|metric_family| {
-                    metric_family.get_name()
-                        == ExecutorRegistry::SPAWNED_TASK_COUNTER_METRIC_ID
-                            .name()
-                            .as_str()
+                    metric_family.get_name() == SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str()
                 })
                 .unwrap();
             let metrics = metric_family.get_metric();
@@ -519,13 +543,26 @@ mod tests {
             executor.spawned_task_count(),
             get_counter().get_value() as u64
         );
+
+        let mfs = gather_metrics();
+        info!("Executor metrics: {:#?}", mfs);
+        let total_spawned_task_count: u64 = mfs
+            .iter()
+            .map(|mf| mf.get_metric())
+            .flatten()
+            .map(|metric| metric.get_counter().get_value() as u64)
+            .collect::<Vec<_>>()
+            .iter()
+            .sum();
+        // there may be a race condition when tests are un in parallel that are spawning tests
+        assert_eq!(total_spawned_task_count, spawned_task_count());
     }
 
     #[test]
     fn executor_spawn_await() {
         configure_logging();
 
-        let executors = EXECUTORS.read().unwrap();
+        let executors = EXECUTOR_REGISTRY.read().unwrap();
         let mut executor = executors.global_executor();
         let result = executor.spawn_await(
             async {
@@ -553,7 +590,7 @@ mod tests {
     fn executor_spawn_channel() {
         configure_logging();
 
-        let executors = EXECUTORS.read().unwrap();
+        let executors = EXECUTOR_REGISTRY.read().unwrap();
         let mut executor = executors.global_executor();
         let result_rx = executor.spawn_channel(
             async {
@@ -587,7 +624,7 @@ mod tests {
         let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
             .map(|i| {
                 let handle = thread::spawn(move || {
-                    let executors = EXECUTORS.read().unwrap();
+                    let executors = EXECUTOR_REGISTRY.read().unwrap();
                     let mut executor = executors.global_executor();
                     executor
                         .spawn(async move { info!("{:?} : task #{}", thread::current().id(), i) });
@@ -677,7 +714,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTORS.read().unwrap();
+            let executors = EXECUTOR_REGISTRY.read().unwrap();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -696,7 +733,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTORS.read().unwrap();
+            let executors = EXECUTOR_REGISTRY.read().unwrap();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -719,7 +756,7 @@ mod tests {
     fn spawned_task_panics_all_threads() {
         configure_logging();
 
-        let executors = EXECUTORS.read().unwrap();
+        let executors = EXECUTOR_REGISTRY.read().unwrap();
         let mut executor = executors.global_executor();
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];

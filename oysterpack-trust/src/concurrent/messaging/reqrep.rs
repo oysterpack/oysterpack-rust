@@ -42,30 +42,10 @@ use futures::{
     stream::StreamExt,
     task::{SpawnError, SpawnExt},
 };
-use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-
-lazy_static! {
-    static ref REQ_REP_MSG_PROCESSOR_TIMER: prometheus::HistogramVec = metrics::registry()
-        .register_histogram_vec(
-            REQ_REP_MSG_PROCESSOR_TIMER_METRIC_ID,
-            "request/reply message processor timer in seconds".to_string(),
-            &[REQ_REP_LABEL_ID],
-            vec![0.0, 0.1, 0.2, 0.3, 0.5, 0.8, 1.3, 2.1],
-            None
-        )
-        .unwrap();
-}
-
-/// ReqRep message processor timer MetricId: `M01D2GPHC510B0P415A6BFHS0YP`
-pub const REQ_REP_MSG_PROCESSOR_TIMER_METRIC_ID: metrics::MetricId =
-    metrics::MetricId(1872500631411639146232560523562222550);
-/// Histogram label used to store the ReqRepId ULID
-pub const REQ_REP_LABEL_ID: metrics::LabelId =
-    metrics::LabelId(1872501146252014427646493057098991464);
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
@@ -128,11 +108,15 @@ where
 
     /// Spawns the backend service message processor and returns the frontend ReqRep.
     /// - the backend service is spawned using the specified Executor
+    /// - buckets are used to define the timer's histogram buckets
+    ///   - each ReqRep service can have its own requirements
+    ///   - timings will be reported in fractional seconds per prometheus best practice
     pub fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
         processor: Service,
         executor: Executor,
+        metric_timer_buckets: metrics::TimerBuckets,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
     where
         Service: Processor<Req, Rep> + Send + 'static,
@@ -142,7 +126,18 @@ where
         let mut executor = executor;
         let mut processor = processor;
 
+        let timer = metrics::registry()
+            .register_histogram_timer(
+                metrics::MetricId(reqrep_id.0),
+                "request/reply message processor timer in seconds".to_string(),
+                metric_timer_buckets,
+                None,
+            )
+            .unwrap();
+
         let service = async move {
+            let clock = quanta::Clock::new();
+
             while let Some(mut msg) = await!(req_receiver.next()) {
                 debug!(
                     "Service request: ReqRepId({}) MessageId({})",
@@ -150,10 +145,13 @@ where
                     msg.message_id()
                 );
                 let req = msg.take_request().unwrap();
+                let start = clock.start();
                 let rep = processor.process(req);
+                let end = clock.end();
                 if let Err(err) = msg.reply(rep) {
                     warn!("{}", err);
                 }
+                timer.observe(metrics::as_float_secs(clock.delta(start, end)));
             }
         };
         executor.spawn(service)?;
@@ -270,7 +268,7 @@ mod tests {
         task::{Spawn, SpawnExt},
     };
     use oysterpack_log::*;
-    use std::thread;
+    use std::{thread, time::Duration};
 
     #[test]
     fn req_rep() {
@@ -321,7 +319,11 @@ mod tests {
         }
         // ReqRep processor //
 
-        let mut req_rep = ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone()).unwrap();
+        let timer_buckets = metrics::TimerBuckets::from(
+            vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
+        );
+        let mut req_rep =
+            ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone(), timer_buckets).unwrap();
         let task = async {
             let rep_receiver = await!(req_rep.send(1)).unwrap();
             info!("request MessageId: {}", rep_receiver.message_id());

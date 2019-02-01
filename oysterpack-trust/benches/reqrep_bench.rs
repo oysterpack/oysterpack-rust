@@ -44,7 +44,10 @@ Summary
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 #![allow(warnings)]
 
-use oysterpack_trust::concurrent::{execution::*, messaging::reqrep::*};
+use oysterpack_trust::{
+    concurrent::{execution::*, messaging::reqrep::*},
+    metrics,
+};
 
 use futures::{
     channel::oneshot,
@@ -72,7 +75,11 @@ fn reqrep_bench_single_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
     let mut executor = global_executor();
-    let req_rep = ReqRep::start_service(REQREP_ID, 1, EchoService, executor.clone()).unwrap();
+    let timer_buckets = metrics::TimerBuckets::from(
+        vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
+    );
+    let req_rep =
+        ReqRep::start_service(REQREP_ID, 1, EchoService, executor.clone(), timer_buckets).unwrap();
 
     let req_rep_1 = req_rep.clone();
     let start = Instant::now();
@@ -99,8 +106,17 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
     let mut executor = global_executor();
-    let req_rep =
-        ReqRep::start_service(REQREP_ID, num_cpus::get(), EchoService, executor.clone()).unwrap();
+    let timer_buckets = metrics::TimerBuckets::from(
+        vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
+    );
+    let req_rep = ReqRep::start_service(
+        REQREP_ID,
+        num_cpus::get(),
+        EchoService,
+        executor.clone(),
+        timer_buckets,
+    )
+    .unwrap();
 
     let mut handles = Vec::with_capacity(count);
     let start = Instant::now();
