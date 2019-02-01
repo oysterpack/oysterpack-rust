@@ -824,7 +824,7 @@ fn metric_registry_gather() {
 }
 
 #[test]
-fn gather_process_metrics() {
+fn registry_gather_process_metrics() {
     configure_logging();
 
     let metric_registry = MetricRegistry::default();
@@ -835,4 +835,51 @@ fn gather_process_metrics() {
     assert!(process_metrics.virtual_memory_bytes() > 0.0);
     assert!(process_metrics.resident_memory_bytes() > 0.0);
     assert!(process_metrics.start_time_seconds() > 0.0);
+}
+
+#[test]
+fn registry_gather_metrics() {
+    configure_logging();
+    let metric_registry = MetricRegistry::default();
+
+    let timer = metric_registry
+        .register_histogram_vec(
+            MetricId::generate(),
+            "ReqRep processor timer".to_string(),
+            &[LabelId::generate()],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(LabelId::generate(), "A".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["1"]).observe(0.2);
+
+    let timer = metric_registry
+        .register_histogram_vec(
+            MetricId::generate(),
+            "ReqRep processor timer".to_string(),
+            &[LabelId::generate()],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(LabelId::generate(), "B".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["1"]).observe(1.2);
+    timer.with_label_values(&["2"]).observe(2.2);
+
+    let descs = metric_registry.descs();
+    info!("descs: {:#?}", descs);
+    let mfs = metric_registry.gather();
+    info!("{:#?}", mfs);
+    for ref desc in descs {
+        let mfs = metric_registry.gather_metrics(&[desc.id]);
+        info!("{}: {:#?}", desc.fq_name, mfs);
+        assert_eq!(mfs.len(), 1);
+    }
 }

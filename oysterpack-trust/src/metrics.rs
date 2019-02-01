@@ -544,10 +544,77 @@ impl MetricRegistry {
         encoder.encode(&metric_families, writer)
     }
 
-    /// gather calls the Collect method of the registered Collectors and then gathers the collected
-    /// metrics into a lexicographically sorted slice of MetricFamily protobufs.
+    /// gathers metrics from all registered metric collectors
     pub fn gather(&self) -> Vec<prometheus::proto::MetricFamily> {
         self.registry.gather()
+    }
+
+    /// gather metrics for collectors for the specified desc ids
+    /// - Desc.id maps to a compound key composed of: `(Desc.fq_name, [Desc.const_label_values])`,
+    ///   i.e., it enables you gather metrics with specific constant label values
+    ///   - if metrics do not have constant labels, then the id maps to `Desc.fq_name`
+    pub fn gather_metrics(&self, desc_ids: &[u64]) -> Vec<prometheus::proto::MetricFamily> {
+        let collectors = self.metric_collectors.read().unwrap();
+        collectors
+            .iter()
+            .filter_map(|collector| {
+                match collector
+                    .desc()
+                    .iter()
+                    .find(|desc| desc_ids.iter().any(|id| *id == desc.id))
+                {
+                    Some(desc) => {
+                        if desc.const_label_pairs.is_empty() {
+                            Some((
+                                collector,
+                                desc.fq_name.clone(),
+                                Some(desc.const_label_pairs.clone()),
+                            ))
+                        } else {
+                            Some((collector, desc.fq_name.clone(), None))
+                        }
+                    }
+                    None => None,
+                }
+            })
+            .map(|(collector, name, label_pairs)| match label_pairs {
+                Some(label_pairs) => collector
+                    .collect()
+                    .into_iter()
+                    .filter_map(|metric_family| {
+                        if metric_family.get_name() == name {
+                            let mut metric_family = metric_family;
+                            let metrics = metric_family.mut_metric();
+                            let mut i = 0;
+                            'outer: while i < metrics.len() {
+                                let metric = &metrics[i];
+                                for label_pair in metric.get_label() {
+                                    let value = label_pair.get_value();
+                                    if label_pairs
+                                        .iter()
+                                        .find(|label_pair| value == label_pair.get_value())
+                                        .is_none()
+                                    {
+                                        metrics.remove(i);
+                                        break 'outer;
+                                    }
+                                }
+                                i += 1
+                            }
+                            Some(metric_family)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<prometheus::proto::MetricFamily>>(),
+                None => collector
+                    .collect()
+                    .into_iter()
+                    .filter(|metric_family| metric_family.get_name() == name)
+                    .collect::<Vec<prometheus::proto::MetricFamily>>(),
+            })
+            .flatten()
+            .collect()
     }
 
     /// Gathers process related metrics
@@ -577,6 +644,12 @@ impl Default for MetricRegistry {
 
         registry
     }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+struct DescId {
+    fq_name: String,
+    const_label_values: Option<Vec<String>>,
 }
 
 /// Metric Desc
