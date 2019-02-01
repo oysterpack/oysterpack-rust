@@ -15,9 +15,9 @@
  */
 
 //! Provides metrics support for prometheus.
-//! - provides a global registry via [registry()](fn.registry.html)
+//! - provides a global [MetricRegistry](struct.MetricRegistry.html) via [registry()](fn.registry.html)
 //!
-//! ## Recomendations
+//! ## Recommendations
 //!
 //! ### Use [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) for metric and label names
 //! - because names change over time, which can break components that depend on metric names and cause name collision
@@ -553,6 +553,7 @@ impl MetricRegistry {
     /// - Desc.id maps to a compound key composed of: `(Desc.fq_name, [Desc.const_label_values])`,
     ///   i.e., it enables you gather metrics with specific constant label values
     ///   - if metrics do not have constant labels, then the id maps to `Desc.fq_name`
+    /// - the returned MetricFamily will contain only the requested metrics
     pub fn gather_metrics(&self, desc_ids: &[u64]) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
         collectors
@@ -617,6 +618,31 @@ impl MetricRegistry {
             .collect()
     }
 
+    /// gather metrics for collectors for the specified metric fully qualified names
+    pub fn gather_metrics_by_name(
+        &self,
+        desc_names: &[&str],
+    ) -> Vec<prometheus::proto::MetricFamily> {
+        let collectors = self.metric_collectors.read().unwrap();
+        collectors
+            .iter()
+            .filter(|collector| {
+                collector
+                    .desc()
+                    .iter()
+                    .any(|desc| desc_names.iter().any(|name| *name == desc.fq_name.as_str()))
+            })
+            .map(|collector| {
+                collector
+                    .collect()
+                    .into_iter()
+                    .filter(|mf| desc_names.iter().any(|name| *name == mf.get_name()))
+                    .collect::<Vec<_>>()
+            })
+            .flatten()
+            .collect()
+    }
+
     /// Gathers process related metrics
     pub fn gather_process_metrics(&self) -> ProcessMetrics {
         let collectors = self.metric_collectors.read().unwrap();
@@ -643,600 +669,6 @@ impl Default for MetricRegistry {
             .unwrap();
 
         registry
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Hash)]
-struct DescId {
-    fq_name: String,
-    const_label_values: Option<Vec<String>>,
-}
-
-/// Metric Desc
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricDesc {
-    id: MetricId,
-    help: String,
-    const_labels: Option<Vec<(LabelId, String)>>,
-}
-
-impl MetricDesc {
-    /// returns the MetricId
-    pub fn id(&self) -> MetricId {
-        self.id
-    }
-
-    /// returns the metric help
-    pub fn help(&self) -> &str {
-        &self.help
-    }
-
-    /// returns the metric's constant labels
-    pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.const_labels.as_ref().map(|labels| labels.as_slice())
-    }
-
-    // TODO: the constructors are good candidates for macros
-
-    /// MetricDesc constructor for a Gauge
-    fn gauge_metric_desc(metric_id: MetricId, metric: &prometheus::Gauge) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
-    }
-
-    /// MetricDesc constructor for an IntGauge
-    fn int_gauge_metric_desc(metric_id: MetricId, metric: &prometheus::IntGauge) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
-    }
-
-    /// MetricDesc constructor for a Counter
-    fn counter_metric_desc(metric_id: MetricId, metric: &prometheus::Counter) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
-    }
-
-    /// MetricDesc constructor for an IntCounter
-    fn int_counter_metric_desc(metric_id: MetricId, metric: &prometheus::IntCounter) -> MetricDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        MetricDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-        }
-    }
-}
-
-impl From<&prometheus::Counter> for MetricDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(counter: &prometheus::Counter) -> Self {
-        let desc = counter.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricDesc::counter_metric_desc(metric_id, counter)
-    }
-}
-
-impl From<&prometheus::IntCounter> for MetricDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(counter: &prometheus::IntCounter) -> Self {
-        let desc = counter.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricDesc::int_counter_metric_desc(metric_id, counter)
-    }
-}
-
-impl From<&prometheus::Gauge> for MetricDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(gauge: &prometheus::Gauge) -> Self {
-        let desc = gauge.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricDesc::gauge_metric_desc(metric_id, gauge)
-    }
-}
-
-impl From<&prometheus::IntGauge> for MetricDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(gauge: &prometheus::IntGauge) -> Self {
-        let desc = gauge.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricDesc::int_gauge_metric_desc(metric_id, gauge)
-    }
-}
-
-/// Metric Desc
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricVecDesc {
-    desc: MetricDesc,
-    labels: Vec<LabelId>,
-}
-
-impl MetricVecDesc {
-    /// returns the MetricId
-    pub fn id(&self) -> MetricId {
-        self.desc.id()
-    }
-
-    /// returns the metric help
-    pub fn help(&self) -> &str {
-        self.desc.help()
-    }
-
-    /// returns the metric's constant labels
-    pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.desc.const_labels()
-    }
-
-    /// returns the base MetricDesc
-    pub fn desc(&self) -> &MetricDesc {
-        &self.desc
-    }
-
-    /// returns the metric's dimension labels
-    pub fn labels(&self) -> &[LabelId] {
-        self.labels.as_slice()
-    }
-
-    /// MetricDesc constructor for a GaugeVec
-    fn gauge_vec_metric_desc(metric_id: MetricId, metric: &prometheus::GaugeVec) -> MetricVecDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        let labels = desc
-            .variable_labels
-            .iter()
-            .map(|label| {
-                let label_id: LabelId = label.parse().unwrap();
-                label_id
-            })
-            .collect();
-        MetricVecDesc {
-            desc: MetricDesc {
-                id: metric_id,
-                help: desc.help.clone(),
-                const_labels,
-            },
-            labels,
-        }
-    }
-
-    /// MetricDesc constructor for an IntGaugeVec
-    fn int_gauge_vec_metric_desc(
-        metric_id: MetricId,
-        metric: &prometheus::IntGaugeVec,
-    ) -> MetricVecDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        let labels = desc
-            .variable_labels
-            .iter()
-            .map(|label| {
-                let label_id: LabelId = label.parse().unwrap();
-                label_id
-            })
-            .collect();
-        MetricVecDesc {
-            desc: MetricDesc {
-                id: metric_id,
-                help: desc.help.clone(),
-                const_labels,
-            },
-            labels,
-        }
-    }
-
-    /// MetricDesc constructor for a CounterVec
-    fn counter_vec_metric_desc(
-        metric_id: MetricId,
-        metric: &prometheus::CounterVec,
-    ) -> MetricVecDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        let labels = desc
-            .variable_labels
-            .iter()
-            .map(|label| {
-                let label_id: LabelId = label.parse().unwrap();
-                label_id
-            })
-            .collect();
-        MetricVecDesc {
-            desc: MetricDesc {
-                id: metric_id,
-                help: desc.help.clone(),
-                const_labels,
-            },
-            labels,
-        }
-    }
-
-    /// MetricDesc constructor for an IntCounterVec
-    fn int_counter_vec_metric_desc(
-        metric_id: MetricId,
-        metric: &prometheus::IntCounterVec,
-    ) -> MetricVecDesc {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        let labels = desc
-            .variable_labels
-            .iter()
-            .map(|label| {
-                let label_id: LabelId = label.parse().unwrap();
-                label_id
-            })
-            .collect();
-        MetricVecDesc {
-            desc: MetricDesc {
-                id: metric_id,
-                help: desc.help.clone(),
-                const_labels,
-            },
-            labels,
-        }
-    }
-}
-
-impl From<&prometheus::IntCounterVec> for MetricVecDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(counter: &prometheus::IntCounterVec) -> Self {
-        let desc = counter.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricVecDesc::int_counter_vec_metric_desc(metric_id, counter)
-    }
-}
-
-impl From<&prometheus::CounterVec> for MetricVecDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(counter: &prometheus::CounterVec) -> Self {
-        let desc = counter.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricVecDesc::counter_vec_metric_desc(metric_id, counter)
-    }
-}
-
-impl From<&prometheus::IntGaugeVec> for MetricVecDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(gauge: &prometheus::IntGaugeVec) -> Self {
-        let desc = gauge.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricVecDesc::int_gauge_vec_metric_desc(metric_id, gauge)
-    }
-}
-
-impl From<&prometheus::GaugeVec> for MetricVecDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from(gauge: &prometheus::GaugeVec) -> Self {
-        let desc = gauge.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        MetricVecDesc::gauge_vec_metric_desc(metric_id, gauge)
-    }
-}
-
-/// Histogram Desc
-#[derive(Clone, Serialize, Deserialize)]
-pub struct HistogramDesc {
-    id: MetricId,
-    help: String,
-    buckets: Buckets,
-    const_labels: Option<Vec<(LabelId, String)>>,
-}
-impl HistogramDesc {
-    /// returns the MetricId
-    pub const fn id(&self) -> MetricId {
-        self.id
-    }
-
-    /// returns the metric help
-    pub fn help(&self) -> &str {
-        &self.help
-    }
-
-    /// returns the metric's constant labels
-    pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.const_labels.as_ref().map(|labels| labels.as_slice())
-    }
-
-    /// returns the histogram's buckets
-    pub fn buckets(&self) -> &Buckets {
-        &self.buckets
-    }
-
-    /// constructor
-    fn new(metric_id: MetricId, metric: &prometheus::Histogram, buckets: Buckets) -> HistogramDesc {
-        let desc = metric.desc()[0];
-        //        let metric_id_ : MetricId = desc.fq_name.as_str().parse().unwrap();
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        HistogramDesc {
-            id: metric_id,
-            help: desc.help.clone(),
-            const_labels,
-            buckets,
-        }
-    }
-}
-
-impl From<(&prometheus::Histogram, Buckets)> for HistogramDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from((histogram, buckets): (&prometheus::Histogram, Buckets)) -> Self {
-        let desc = histogram.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        HistogramDesc::new(metric_id, histogram, buckets)
-    }
-}
-
-impl fmt::Debug for HistogramDesc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.const_labels.as_ref() {
-            Some(const_labels) => write!(
-                f,
-                "id = {}, help = {}, buckets = {:?}, const_labels = {:?}",
-                self.id, self.help, self.buckets, const_labels
-            ),
-            None => write!(
-                f,
-                "id = {}, help = {}, buckets = {:?}",
-                self.id, self.help, self.buckets
-            ),
-        }
-    }
-}
-
-/// HistogramVec Desc
-#[derive(Clone, Serialize, Deserialize)]
-pub struct HistogramVecDesc {
-    desc: HistogramDesc,
-    labels: Vec<LabelId>,
-}
-
-impl HistogramVecDesc {
-    /// returns the MetricId
-    pub fn id(&self) -> MetricId {
-        self.desc.id
-    }
-
-    /// returns the metric help
-    pub fn help(&self) -> &str {
-        self.desc.help()
-    }
-
-    /// returns the metric's constant labels
-    pub fn const_labels(&self) -> Option<&[(LabelId, String)]> {
-        self.desc.const_labels()
-    }
-
-    /// returns the histogram's buckets
-    pub fn buckets(&self) -> &Buckets {
-        self.desc.buckets()
-    }
-
-    /// returns the base HistogramDesc
-    pub fn desc(&self) -> &HistogramDesc {
-        &self.desc
-    }
-
-    /// returns the metric's dimension labels
-    pub fn labels(&self) -> &[LabelId] {
-        self.labels.as_slice()
-    }
-
-    /// constructor
-    fn new(metric_id: MetricId, metric: &prometheus::HistogramVec, buckets: Buckets) -> Self {
-        let desc = metric.desc()[0];
-        let const_labels = if desc.const_label_pairs.is_empty() {
-            None
-        } else {
-            Some(
-                desc.const_label_pairs
-                    .iter()
-                    .map(|label_pair| {
-                        let label_id: LabelId = label_pair.get_name().parse().unwrap();
-                        let label_value = label_pair.get_value().to_string();
-                        (label_id, label_value)
-                    })
-                    .collect(),
-            )
-        };
-        let labels = desc
-            .variable_labels
-            .iter()
-            .map(|label| {
-                let label_id: LabelId = label.parse().unwrap();
-                label_id
-            })
-            .collect();
-        HistogramVecDesc {
-            desc: HistogramDesc {
-                id: metric_id,
-                help: desc.help.clone(),
-                const_labels,
-                buckets,
-            },
-            labels,
-        }
-    }
-}
-
-impl From<(&prometheus::HistogramVec, Buckets)> for HistogramVecDesc {
-    /// ## Panics
-    /// If the metric name fails to parse as a MetricId
-    fn from((histogram, buckets): (&prometheus::HistogramVec, Buckets)) -> Self {
-        let desc = histogram.desc()[0];
-        let metric_id = desc.fq_name.as_str().parse::<MetricId>().unwrap();
-        HistogramVecDesc::new(metric_id, histogram, buckets)
-    }
-}
-
-impl fmt::Debug for HistogramVecDesc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.desc.const_labels() {
-            Some(const_labels) => write!(
-                f,
-                "id = {}, help = {}, buckets = {:?}, labels = {:?}, const_labels = {:?}",
-                self.desc.id, self.desc.help, self.desc.buckets, self.labels, const_labels
-            ),
-            None => write!(
-                f,
-                "id = {}, help = {}, buckets = {:?}, labels = {:?}",
-                self.desc.id, self.desc.help, self.desc.buckets, self.labels
-            ),
-        }
-    }
-}
-
-/// Histogram buckets
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Buckets(smallvec::SmallVec<[f64; 8]>);
-
-impl From<&[f64]> for Buckets {
-    fn from(buckets: &[f64]) -> Self {
-        Buckets(smallvec::SmallVec::from_slice(buckets))
-    }
-}
-
-impl Buckets {
-    /// Returns the buckets
-    pub fn buckets(&self) -> &[f64] {
-        self.0.as_slice()
     }
 }
 
@@ -1311,6 +743,36 @@ impl From<ULID> for MetricId {
 }
 
 /// Runs the function and returns how long it took in nanos.
+///
+/// ## Use Case
+/// Used to record timings which can then be reported on a Histogram metric
+///
+/// ### Example
+/// ```rust
+/// # use oysterpack_trust::metrics::*;
+///
+/// const METRIC_ID: MetricId = MetricId(1872045779718506837202123142606941790);
+///    let registry = MetricRegistry::default();
+///    let mut reqrep_timer_local = registry
+///        .register_histogram_vec(
+///            METRIC_ID,
+///            "ReqRep timer".to_string(),
+///            &[LabelId::generate()],
+///            vec![0.01, 0.025, 0.05, 0.1],
+///            None,
+///        )
+///        .unwrap();
+///
+/// let reqrep_timer =
+///        reqrep_timer_local.with_label_values(&["A"]);
+///    let clock = quanta::Clock::new();
+///    for _ in 0..10 {
+///        // time the work
+///        let delta = time(&clock, || std::thread::sleep(std::time::Duration::from_millis(1)));
+///        // report the time in seconds
+///        reqrep_timer.observe(as_float_secs(delta));
+///    }
+/// ```
 pub fn time<F>(clock: &quanta::Clock, f: F) -> u64
 where
     F: FnOnce(),
@@ -1327,29 +789,6 @@ const NANOS_PER_SEC: u32 = 1_000_000_000;
 /// - this comes in handy when reporting timings to prometheus, which uses `f64` as the number type
 pub fn as_float_secs(nanos: u64) -> f64 {
     (nanos as f64) / f64::from(NANOS_PER_SEC)
-}
-
-/// Type alias for a sample count
-pub type SampleCount = u64;
-
-/// Histogram bucket value
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BucketValue {
-    /// cumulative count for the number of data points that are `<=` the upper bound
-    pub cumulative_count: u64,
-    /// upper bound
-    pub upper_bound: f64,
-}
-
-/// Histogram value
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HistogramValue {
-    /// metric variable label pairs
-    pub labels: Vec<(LabelId, String)>,
-    /// total number of data points that have been collected
-    pub sample_count: SampleCount,
-    /// values
-    pub values: Vec<BucketValue>,
 }
 
 /// Arc wrapped metrics collector

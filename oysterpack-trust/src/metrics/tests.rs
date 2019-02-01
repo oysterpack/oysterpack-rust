@@ -249,17 +249,17 @@ fn metric_registry_histogram_vec() {
 
     info!("{:#?}", registry);
 
-    let reqrep_timer = reqrep_timer_local
-        .with_label_values(&[ULID::generate().to_string().as_str()])
-        .local();
+    let reqrep_timer =
+        reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
     let clock = quanta::Clock::new();
     for _ in 0..10 {
         let ulid_u128: u128 = ULID::generate().into();
-        let sleep_ms = (ulid_u128 % 100) as u32;
+        let sleep_ms = (ulid_u128 % 100) as u64;
         info!("sleeping for {}", sleep_ms);
-        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
+        let delta = time(&clock, || {
+            std::thread::sleep(std::time::Duration::from_millis(sleep_ms))
+        });
         reqrep_timer.observe(as_float_secs(delta));
-        reqrep_timer.flush();
     }
 }
 
@@ -857,6 +857,74 @@ fn registry_gather_metrics() {
         .unwrap();
     timer.with_label_values(&["1"]).observe(0.2);
 
+    let metric_id = MetricId::generate();
+    let label_id = LabelId::generate();
+    let var_label_id = LabelId::generate();
+    let timer = metric_registry
+        .register_histogram_vec(
+            metric_id,
+            "ReqRep processor timer".to_string(),
+            &[var_label_id],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(label_id, "B".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["1"]).observe(1.2);
+    timer.with_label_values(&["2"]).observe(2.2);
+
+    let timer = metric_registry
+        .register_histogram_vec(
+            metric_id,
+            "ReqRep processor timer".to_string(),
+            &[var_label_id],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(label_id, "C".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["3"]).observe(1.2);
+    timer.with_label_values(&["4"]).observe(2.2);
+
+    let descs = metric_registry.descs();
+    info!("descs: {:#?}", descs);
+    let mfs = metric_registry.gather();
+    info!("{:#?}", mfs);
+    for ref desc in descs.iter() {
+        let mfs = metric_registry.gather_metrics(&[desc.id]);
+        info!("{}: {:#?}", desc.fq_name, mfs);
+        assert_eq!(mfs.len(), 1);
+    }
+
+    let desc = descs
+        .iter()
+        .find(|desc| desc.fq_name == metric_id.name())
+        .unwrap();
+    assert_eq!(
+        mfs.iter()
+            .find(|mf| mf.get_name() == desc.fq_name.as_str())
+            .unwrap()
+            .get_metric()
+            .len(),
+        4
+    );
+    let mfs = metric_registry.gather_metrics(&[desc.id]);
+    for mf in mfs {
+        assert_eq!(mf.get_metric().len(), 2);
+    }
+}
+
+#[test]
+fn registry_gather_metrics_by_name() {
+    configure_logging();
+    let metric_registry = MetricRegistry::default();
+
     let timer = metric_registry
         .register_histogram_vec(
             MetricId::generate(),
@@ -865,7 +933,25 @@ fn registry_gather_metrics() {
             vec![0.0, 1.0, 5.0],
             Some({
                 let mut labels = HashMap::new();
-                labels.insert(LabelId::generate(), "B".to_string());
+                labels.insert(LabelId::generate(), "A".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["1"]).observe(0.2);
+
+    let metric_id = MetricId::generate();
+    let label_id = LabelId::generate();
+    let var_label_id = LabelId::generate();
+    let timer = metric_registry
+        .register_histogram_vec(
+            metric_id,
+            "ReqRep processor timer".to_string(),
+            &[var_label_id],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(label_id, "B".to_string());
                 labels
             }),
         )
@@ -873,13 +959,47 @@ fn registry_gather_metrics() {
     timer.with_label_values(&["1"]).observe(1.2);
     timer.with_label_values(&["2"]).observe(2.2);
 
+    let timer = metric_registry
+        .register_histogram_vec(
+            metric_id,
+            "ReqRep processor timer".to_string(),
+            &[var_label_id],
+            vec![0.0, 1.0, 5.0],
+            Some({
+                let mut labels = HashMap::new();
+                labels.insert(label_id, "C".to_string());
+                labels
+            }),
+        )
+        .unwrap();
+    timer.with_label_values(&["3"]).observe(1.2);
+    timer.with_label_values(&["4"]).observe(2.2);
+
     let descs = metric_registry.descs();
     info!("descs: {:#?}", descs);
     let mfs = metric_registry.gather();
     info!("{:#?}", mfs);
-    for ref desc in descs {
-        let mfs = metric_registry.gather_metrics(&[desc.id]);
+    for ref desc in descs.iter() {
+        let mfs = metric_registry.gather_metrics_by_name(&[desc.fq_name.as_str()]);
         info!("{}: {:#?}", desc.fq_name, mfs);
-        assert_eq!(mfs.len(), 1);
+    }
+
+    let desc = descs
+        .iter()
+        .find(|desc| desc.fq_name == metric_id.name())
+        .unwrap();
+    // there should be 2 metric families, each with 2 metrics
+    assert_eq!(
+        mfs.iter()
+            .filter(|mf| mf.get_name() == desc.fq_name.as_str())
+            .map(|mfs| mfs.get_metric())
+            .flatten()
+            .count(),
+        4
+    );
+    let mfs = metric_registry.gather_metrics_by_name(&[metric_id.name().as_str()]);
+    assert_eq!(mfs.len(), 2);
+    for mf in mfs {
+        assert_eq!(mf.get_metric().len(), 2);
     }
 }
