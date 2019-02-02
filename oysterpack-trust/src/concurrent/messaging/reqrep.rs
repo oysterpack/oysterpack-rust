@@ -45,7 +45,11 @@ use futures::{
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Mutex};
+
+lazy_static::lazy_static! {
+    static ref REQ_REP_TIMERS: Mutex<fnv::FnvHashMap<ReqRepId, prometheus::Histogram>> = Mutex::new(fnv::FnvHashMap::default());
+}
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
@@ -111,6 +115,10 @@ where
     /// - buckets are used to define the timer's histogram buckets
     ///   - each ReqRep service can have its own requirements
     ///   - timings will be reported in fractional seconds per prometheus best practice
+    ///   - if multiple instances of the same service, i.e., using the same ReqRepId, are started,
+    ///     then the first set of timer buckets will be used - because the histogram timer metric
+    ///     is registered when the first service is started and then referenced by additional service
+    ///     instances
     pub fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
@@ -121,19 +129,29 @@ where
     where
         Service: Processor<Req, Rep> + Send + 'static,
     {
+        let reqrep_timer = move || {
+            let mut timers = REQ_REP_TIMERS.lock().unwrap();
+            timers
+                .entry(reqrep_id)
+                .or_insert_with(|| {
+                    metrics::registry()
+                        .register_histogram_timer(
+                            metrics::MetricId(reqrep_id.0),
+                            "request/reply message processor timer in seconds".to_string(),
+                            metric_timer_buckets,
+                            None,
+                        )
+                        .unwrap()
+                })
+                .clone()
+        };
+
         let (reqrep, req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
         let mut req_receiver = req_receiver;
         let mut executor = executor;
         let mut processor = processor;
 
-        let timer = metrics::registry()
-            .register_histogram_timer(
-                metrics::MetricId(reqrep_id.0),
-                "request/reply message processor timer in seconds".to_string(),
-                metric_timer_buckets,
-                None,
-            )
-            .unwrap();
+        let timer = reqrep_timer();
 
         let service = async move {
             let clock = quanta::Clock::new();

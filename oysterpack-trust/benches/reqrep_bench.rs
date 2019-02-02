@@ -67,22 +67,41 @@ impl Processor<(), ()> for EchoService {
     fn process(&mut self, req: ()) -> () {}
 }
 
+fn timer_buckets() -> metrics::TimerBuckets {
+    metrics::TimerBuckets::from(
+        vec![
+            Duration::from_nanos(10),
+            Duration::from_nanos(25),
+            Duration::from_nanos(50),
+            Duration::from_nanos(75),
+            Duration::from_nanos(100),
+            Duration::from_nanos(125),
+            Duration::from_nanos(150),
+            Duration::from_nanos(200),
+            Duration::from_nanos(250),
+        ]
+        .as_slice(),
+    )
+}
+
 /// This is benchmarking how fast messages can flow in a request/reply workflow.
 /// - the request message is imply echoed back, and the message type is ()
 ///
 /// avg response time ~11 microseconds
 fn reqrep_bench_single_threaded(count: usize) -> Duration {
-    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-
     let mut executor = global_executor();
-    let timer_buckets = metrics::TimerBuckets::from(
-        vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
-    );
-    let req_rep =
-        ReqRep::start_service(REQREP_ID, 1, EchoService, executor.clone(), timer_buckets).unwrap();
+    let req_rep = ReqRep::start_service(
+        ReqRepId::generate(),
+        1,
+        EchoService,
+        executor.clone(),
+        timer_buckets(),
+    )
+    .unwrap();
 
     let req_rep_1 = req_rep.clone();
-    let start = Instant::now();
+    let clock = quanta::Clock::new();
+    let start = clock.start();
     executor.run(
         async move {
             let mut req_rep = req_rep_1;
@@ -92,8 +111,8 @@ fn reqrep_bench_single_threaded(count: usize) -> Duration {
             }
         },
     );
-    let end = Instant::now();
-    end.duration_since(start)
+    let end = clock.end();
+    Duration::from_nanos(clock.delta(start, end))
 }
 
 /// This is benchmarking message throughput in a request/reply workflow running parallel tasks
@@ -103,23 +122,19 @@ fn reqrep_bench_single_threaded(count: usize) -> Duration {
 ///
 /// avg response time ~1.8 microseconds
 fn reqrep_bench_multi_threaded(count: usize) -> Duration {
-    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-
     let mut executor = global_executor();
-    let timer_buckets = metrics::TimerBuckets::from(
-        vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
-    );
     let req_rep = ReqRep::start_service(
-        REQREP_ID,
+        ReqRepId::generate(),
         num_cpus::get(),
         EchoService,
         executor.clone(),
-        timer_buckets,
+        timer_buckets(),
     )
     .unwrap();
 
     let mut handles = Vec::with_capacity(count);
-    let start = Instant::now();
+    let clock = quanta::Clock::new();
+    let start = clock.start();
     for i in 1..=count {
         let req_rep_1 = req_rep.clone();
         let task = async move {
@@ -137,8 +152,8 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
             }
         },
     );
-    let end = Instant::now();
-    end.duration_since(start)
+    let end = clock.end();
+    Duration::from_nanos(clock.delta(start, end))
 }
 
 // avg response time ~11 nanos
@@ -146,7 +161,8 @@ fn reqrep_function_single_threaded_baseline(count: usize) -> Duration {
     let mut executor = global_executor();
     let f = |msg| Result::<_, ()>::Ok(msg);
 
-    let start = Instant::now();
+    let clock = quanta::Clock::new();
+    let start = clock.start();
     executor.run(
         async move {
             for _ in 0..count {
@@ -154,20 +170,21 @@ fn reqrep_function_single_threaded_baseline(count: usize) -> Duration {
             }
         },
     );
-    let end = Instant::now();
-    end.duration_since(start)
+    let end = clock.end();
+    Duration::from_nanos(clock.delta(start, end))
 }
 
 // avg response time ~11 nanos
 fn reqrep_function_single_threaded_sync_baseline(count: usize) -> Duration {
     let f = |msg| Result::<_, ()>::Ok(msg);
 
-    let start = Instant::now();
+    let clock = quanta::Clock::new();
+    let start = clock.start();
     for _ in 0..count {
         f(());
     }
-    let end = Instant::now();
-    end.duration_since(start)
+    let end = clock.end();
+    Duration::from_nanos(clock.delta(start, end))
 }
 
 /// ~750 nanos - which means there was a lot of overhead added as compared to the single threaded
@@ -178,7 +195,8 @@ fn reqrep_function_multi_threaded_baseline(count: usize) -> Duration {
 
     let f = |msg| Result::<_, ()>::Ok(msg);
     let mut handles = Vec::with_capacity(count);
-    let start = Instant::now();
+    let clock = quanta::Clock::new();
+    let start = clock.start();
     for i in 1..=count {
         let task = async move {
             await!(async { f(()) }).unwrap();
@@ -193,8 +211,8 @@ fn reqrep_function_multi_threaded_baseline(count: usize) -> Duration {
             }
         },
     );
-    let end = Instant::now();
-    end.duration_since(start)
+    let end = clock.end();
+    Duration::from_nanos(clock.delta(start, end))
 }
 
 fn log_config() -> oysterpack_log::LogConfig {
@@ -244,4 +262,6 @@ fn main() {
         "*** count = {}, duration = {:?}, ns/req = {}",
         count, duration, nanos_per_req
     );
+
+    log!(target: "reqrep_bench metrics", Level::Info, "{:#?}", metrics::registry().gather());
 }
