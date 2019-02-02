@@ -84,10 +84,42 @@ impl MetricRegistry {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .map(|collector| collector.desc())
-            .flatten()
+            .flat_map(|collector| collector.desc())
             .cloned()
             .collect()
+    }
+
+    /// Returns descriptors for registered metrics that match the specified filter
+    pub fn filter_descs<F>(&self, mut filter: F) -> Vec<prometheus::core::Desc>
+    where
+        F: FnMut(&prometheus::core::Desc) -> bool,
+    {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors
+            .iter()
+            .flat_map(|collector| collector.desc())
+            .filter(|desc| filter(desc))
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the list of registered collectors that match against the specified filter
+    pub fn filter_collectors<F>(&self, mut filter: F) -> Vec<ArcCollector>
+    where
+        F: FnMut(&ArcCollector) -> bool,
+    {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors
+            .iter()
+            .filter(|collector| filter(collector))
+            .cloned()
+            .collect()
+    }
+
+    /// Returns the list of registered collectors
+    pub fn collectors<F>(&self) -> Vec<ArcCollector> {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors.iter().cloned().collect()
     }
 
     /// Returns the number of registered metric families, equates to total number of registered metric descriptors
@@ -98,8 +130,7 @@ impl MetricRegistry {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .map(|collector| collector.desc())
-            .flatten()
+            .flat_map(|collector| collector.desc())
             .count()
     }
 
@@ -639,7 +670,7 @@ impl MetricRegistry {
                     None => None,
                 }
             })
-            .map(|(collector, name, label_pairs)| match label_pairs {
+            .flat_map(|(collector, name, label_pairs)| match label_pairs {
                 Some(label_pairs) => collector
                     .collect()
                     .into_iter()
@@ -675,7 +706,6 @@ impl MetricRegistry {
                     .filter(|metric_family| metric_family.get_name() == name)
                     .collect::<Vec<prometheus::proto::MetricFamily>>(),
             })
-            .flatten()
             .collect()
     }
 
@@ -693,14 +723,13 @@ impl MetricRegistry {
                     .iter()
                     .any(|desc| desc_names.iter().any(|name| *name == desc.fq_name.as_str()))
             })
-            .map(|collector| {
+            .flat_map(|collector| {
                 collector
                     .collect()
                     .into_iter()
                     .filter(|mf| desc_names.iter().any(|name| *name == mf.get_name()))
                     .collect::<Vec<_>>()
             })
-            .flatten()
             .collect()
     }
 
@@ -887,7 +916,7 @@ impl Into<Vec<f64>> for TimerBuckets {
 
 /// Arc wrapped metrics collector
 #[derive(Clone)]
-pub struct ArcCollector(Arc<dyn prometheus::core::Collector>);
+pub struct ArcCollector(Arc<dyn prometheus::core::Collector + 'static>);
 
 impl ArcCollector {
     fn new(collector: impl prometheus::core::Collector + 'static) -> Self {

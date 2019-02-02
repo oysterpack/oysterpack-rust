@@ -548,8 +548,7 @@ mod tests {
         info!("Executor metrics: {:#?}", mfs);
         let total_spawned_task_count: u64 = mfs
             .iter()
-            .map(|mf| mf.get_metric())
-            .flatten()
+            .flat_map(|mf| mf.get_metric())
             .map(|metric| metric.get_counter().get_value() as u64)
             .collect::<Vec<_>>()
             .iter()

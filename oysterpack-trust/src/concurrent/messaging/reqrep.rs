@@ -30,6 +30,8 @@
 //! The beauty of this design is that the client and service are decoupled. Clients and services can
 //! be distributed over the network or be running on the same machine. This also makes it easy to mock
 //! services for testing purposes.
+//! - the trade off is the messaging overhead over the channels, which should be acceptable for distributed
+//!   microservice architecures
 
 use crate::concurrent::{
     execution::Executor,
@@ -45,11 +47,31 @@ use futures::{
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Mutex};
+use std::{
+    fmt::{self, Debug},
+    sync::{RwLock},
+    time::Duration
+};
 
 lazy_static::lazy_static! {
-    static ref REQ_REP_TIMERS: Mutex<fnv::FnvHashMap<ReqRepId, prometheus::Histogram>> = Mutex::new(fnv::FnvHashMap::default());
+    static ref REQ_REP_METRICS: RwLock<fnv::FnvHashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(fnv::FnvHashMap::default());
+
+    static ref REQ_REP_SERVICE_INSTANCE_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
+        SERVICE_INSTANCE_COUNT_METRIC_ID,
+        "ReqRep service instance count".to_string(),
+        &[REQREPID_LABEL_ID],
+        None,
+    ).unwrap();
 }
+
+/// ReqRep service instance count MetricId
+/// - metric type is IntGaugeVec
+pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1872765971344832352273831154704953923);
+
+/// The ReqRepId ULID will be used as the label value
+pub const REQREPID_LABEL_ID: metrics::LabelId =
+    metrics::LabelId(1872766211119679891800112881745469011);
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
@@ -129,19 +151,26 @@ where
     where
         Service: Processor<Req, Rep> + Send + 'static,
     {
-        let reqrep_timer = move || {
-            let mut timers = REQ_REP_TIMERS.lock().unwrap();
-            timers
+        let reqrep_service_metrics = move || {
+            let mut reqrep_metrics = REQ_REP_METRICS.write().unwrap();
+            reqrep_metrics
                 .entry(reqrep_id)
                 .or_insert_with(|| {
-                    metrics::registry()
+                    let timer = metrics::registry()
                         .register_histogram_timer(
                             metrics::MetricId(reqrep_id.0),
-                            "request/reply message processor timer in seconds".to_string(),
+                            "ReqRep message processor timer in seconds".to_string(),
                             metric_timer_buckets,
                             None,
                         )
-                        .unwrap()
+                        .unwrap();
+                    let service_count = REQ_REP_SERVICE_INSTANCE_COUNT
+                        .with_label_values(&[reqrep_id.to_string().as_str()]);
+
+                    ReqRepServiceMetrics {
+                        timer,
+                        service_count,
+                    }
                 })
                 .clone()
         };
@@ -151,14 +180,18 @@ where
         let mut executor = executor;
         let mut processor = processor;
 
-        let timer = reqrep_timer();
+        let reqrep_service_metrics = reqrep_service_metrics();
 
         let service = async move {
+            reqrep_service_metrics.service_count.inc();
             let clock = quanta::Clock::new();
+            let mut request_count: u64 = 0;
 
             while let Some(mut msg) = await!(req_receiver.next()) {
+                request_count += 1;
                 debug!(
-                    "Service request: ReqRepId({}) MessageId({})",
+                    "Received request #{} ReqRepId({}) MessageId({})",
+                    request_count,
                     msg.reqrep_id(),
                     msg.message_id()
                 );
@@ -169,11 +202,33 @@ where
                 if let Err(err) = msg.reply(rep) {
                     warn!("{}", err);
                 }
-                timer.observe(metrics::as_float_secs(clock.delta(start, end)));
+                let delta_nanos = clock.delta(start, end);
+                reqrep_service_metrics
+                    .timer
+                    .observe(metrics::as_float_secs(delta_nanos));
+                debug!(
+                    "Sent reply #{} : {:?}",
+                    request_count,
+                    Duration::from_nanos(delta_nanos)
+                );
             }
+            reqrep_service_metrics.service_count.dec();
         };
         executor.spawn(service)?;
         Ok(reqrep)
+    }
+}
+
+/// ReqRep service metrics
+#[derive(Clone)]
+pub struct ReqRepServiceMetrics {
+    timer: prometheus::Histogram,
+    service_count: prometheus::IntGauge,
+}
+
+impl fmt::Debug for ReqRepServiceMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ReqRepServiceMetrics")
     }
 }
 
@@ -350,6 +405,7 @@ mod tests {
         let n = executor.run(task);
         info!("n = {}", n);
         assert_eq!(n, 2);
+        info!("{:#?}", metrics::registry().gather());
     }
 
     #[test]

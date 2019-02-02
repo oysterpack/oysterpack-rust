@@ -940,40 +940,81 @@ fn registry_gather_metrics_by_name() {
         .unwrap();
     timer.with_label_values(&["1"]).observe(0.2);
 
-    let metric_id = MetricId::generate();
-    let label_id = LabelId::generate();
-    let var_label_id = LabelId::generate();
-    let timer = metric_registry
-        .register_histogram_vec(
-            metric_id,
-            "ReqRep processor timer".to_string(),
-            &[var_label_id],
-            vec![0.0, 1.0, 5.0],
-            Some({
-                let mut labels = HashMap::new();
-                labels.insert(label_id, "B".to_string());
-                labels
-            }),
-        )
-        .unwrap();
-    timer.with_label_values(&["1"]).observe(1.2);
-    timer.with_label_values(&["2"]).observe(2.2);
+    // register 2 HistogramVec metrics with the same MetricId but different constant label values
+    let histogram_vec_metric_id = {
+        let metric_id = MetricId::generate();
+        let label_id = LabelId::generate();
+        let var_label_id = LabelId::generate();
+        let timer = metric_registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep processor timer".to_string(),
+                &[var_label_id],
+                vec![0.0, 1.0, 5.0],
+                Some({
+                    let mut labels = HashMap::new();
+                    labels.insert(label_id, "B".to_string());
+                    labels
+                }),
+            )
+            .unwrap();
+        timer.with_label_values(&["1"]).observe(1.2);
+        timer.with_label_values(&["2"]).observe(2.2);
 
-    let timer = metric_registry
-        .register_histogram_vec(
-            metric_id,
-            "ReqRep processor timer".to_string(),
-            &[var_label_id],
-            vec![0.0, 1.0, 5.0],
-            Some({
-                let mut labels = HashMap::new();
-                labels.insert(label_id, "C".to_string());
-                labels
-            }),
-        )
-        .unwrap();
-    timer.with_label_values(&["3"]).observe(1.2);
-    timer.with_label_values(&["4"]).observe(2.2);
+        let timer = metric_registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep processor timer".to_string(),
+                &[var_label_id],
+                vec![0.0, 1.0, 5.0],
+                Some({
+                    let mut labels = HashMap::new();
+                    labels.insert(label_id, "C".to_string());
+                    labels
+                }),
+            )
+            .unwrap();
+        timer.with_label_values(&["3"]).observe(1.2);
+        timer.with_label_values(&["4"]).observe(2.2);
+
+        metric_id
+    };
+
+    // register 2 Histogram metrics with the same MetricId but different constant label values
+    let histogram_metric_id = {
+        let metric_id = MetricId::generate();
+        let label_id = LabelId::generate();
+        let timer = metric_registry
+            .register_histogram(
+                metric_id,
+                "ReqRep processor timer".to_string(),
+                vec![0.0, 1.0, 5.0],
+                Some({
+                    let mut labels = HashMap::new();
+                    labels.insert(label_id, "D".to_string());
+                    labels
+                }),
+            )
+            .unwrap();
+        timer.observe(11.21);
+        timer.observe(12.21);
+
+        let timer = metric_registry
+            .register_histogram(
+                metric_id,
+                "ReqRep processor timer".to_string(),
+                vec![0.0, 1.0, 5.0],
+                Some({
+                    let mut labels = HashMap::new();
+                    labels.insert(label_id, "E".to_string());
+                    labels
+                }),
+            )
+            .unwrap();
+        timer.observe(11.2);
+        timer.observe(12.2);
+        metric_id
+    };
 
     let descs = metric_registry.descs();
     info!("descs: {:#?}", descs);
@@ -986,20 +1027,35 @@ fn registry_gather_metrics_by_name() {
 
     let desc = descs
         .iter()
-        .find(|desc| desc.fq_name == metric_id.name())
+        .find(|desc| desc.fq_name == histogram_vec_metric_id.name())
         .unwrap();
     // there should be 2 metric families, each with 2 metrics
     assert_eq!(
         mfs.iter()
             .filter(|mf| mf.get_name() == desc.fq_name.as_str())
-            .map(|mfs| mfs.get_metric())
-            .flatten()
+            .flat_map(|mfs| mfs.get_metric())
             .count(),
         4
     );
-    let mfs = metric_registry.gather_metrics_by_name(&[metric_id.name().as_str()]);
+    let mfs = metric_registry.gather_metrics_by_name(&[histogram_vec_metric_id.name().as_str()]);
     assert_eq!(mfs.len(), 2);
     for mf in mfs {
         assert_eq!(mf.get_metric().len(), 2);
     }
+
+    let collectors = metric_registry.filter_collectors(|collector| {
+        collector
+            .desc()
+            .iter()
+            .any(move |desc| desc.fq_name == histogram_vec_metric_id.name())
+    });
+    assert_eq!(collectors.len(), 2);
+
+    let collectors = metric_registry.filter_collectors(|collector| {
+        collector
+            .desc()
+            .iter()
+            .any(move |desc| desc.fq_name == histogram_metric_id.name())
+    });
+    assert_eq!(collectors.len(), 2);
 }
