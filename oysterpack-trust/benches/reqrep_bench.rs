@@ -51,7 +51,7 @@ use oysterpack_trust::{
 
 use futures::{
     channel::oneshot,
-    future::RemoteHandle,
+    future::{join_all, RemoteHandle},
     stream::StreamExt,
     task::{Spawn, SpawnExt},
 };
@@ -147,9 +147,7 @@ fn reqrep_bench_multi_threaded(count: usize) -> Duration {
     }
     executor.run(
         async move {
-            for handle in handles {
-                let _ = await!(handle);
-            }
+            await!(join_all(handles));
         },
     );
     let end = clock.end();

@@ -43,7 +43,7 @@ criterion_main!(benches);
 fn metrics_local_counter_bench(c: &mut Criterion) {
     /// Local counter is designed to be non-blocking
     #[derive(Debug, Clone)]
-    pub struct LocalCounter {
+    struct LocalCounter {
         sender: futures::channel::mpsc::Sender<CounterMessage>,
         executor: Executor,
     }
@@ -89,11 +89,42 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
                 },
             )
         }
+
+        /// increment the counter
+        pub fn flush(&mut self) -> Result<(), futures::task::SpawnError> {
+            let mut sender = self.sender.clone();
+            let (tx, rx) = futures::channel::oneshot::channel();
+            self.executor.spawn(
+                async move {
+                    if let Err(err) = await!(sender.send(CounterMessage::Flush(tx))) {
+                        warn!("Failed to send Flush message: {}", err);
+                    }
+                },
+            )?;
+            self.executor.run(
+                async {
+                    await!(rx).unwrap();
+                },
+            );
+            Ok(())
+        }
+
+        /// increment the counter
+        pub fn close(&mut self) -> Result<(), futures::task::SpawnError> {
+            let mut sender = self.sender.clone();
+            self.executor.spawn(
+                async move {
+                    if let Err(err) = await!(sender.send(CounterMessage::Close)) {
+                        warn!("Failed to send Close message: {}", err);
+                    }
+                },
+            )
+        }
     }
 
     /// Counter message
     #[derive(Debug)]
-    pub enum CounterMessage {
+    enum CounterMessage {
         /// increment the counter
         Inc,
         /// flush the local counter to the registered counter
@@ -118,9 +149,13 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
         b.iter(|| counter.inc())
     });
 
+    let mut async_local_counter_2 = async_local_counter.clone();
     c.bench_function("metrics_local_counter_bench - async", move |b| {
-        b.iter(|| async_local_counter.inc())
+        b.iter(|| async_local_counter_2.inc())
     });
+
+    async_local_counter.flush().unwrap();
+    async_local_counter.close().unwrap();
 }
 
 fn prometheus_histogram_vec_observe_bench(c: &mut Criterion) {
