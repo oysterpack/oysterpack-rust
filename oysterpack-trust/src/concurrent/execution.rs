@@ -31,13 +31,7 @@ use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt, io,
-    iter::ExactSizeIterator,
-    num::NonZeroUsize,
-    panic::{catch_unwind, AssertUnwindSafe},
-    sync::RwLock,
-};
+use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize, sync::RwLock};
 
 lazy_static! {
     /// Global Executor registry
@@ -249,11 +243,7 @@ impl Executor {
     /// ## Panics
     /// If the task panics.
     pub fn run<F: Future>(&mut self, f: F) -> F::Output {
-        let result = { catch_unwind(AssertUnwindSafe(|| self.thread_pool.run(f))) };
-        match result {
-            Ok(res) => res,
-            Err(err) => panic!(err),
-        }
+        self.thread_pool.run(f)
     }
 
     /// Spawns the future and awaits until it is done, returning it's result. This enables a future
@@ -391,17 +381,15 @@ impl ExecutorBuilder {
     }
 
     /// Sets the thread stack size
-    pub fn set_stack_size(self, size: NonZeroUsize) -> Self {
-        let mut this = self;
-        this.stack_size = Some(size);
-        this
+    pub fn set_stack_size(mut self, size: NonZeroUsize) -> Self {
+        self.stack_size = Some(size);
+        self
     }
 
     /// Sets the thread pool size
-    pub fn set_pool_size(self, size: NonZeroUsize) -> Self {
-        let mut this = self;
-        this.pool_size = Some(size);
-        this
+    pub fn set_pool_size(mut self, size: NonZeroUsize) -> Self {
+        self.pool_size = Some(size);
+        self
     }
 
     /// Returns the ExecutorId
@@ -461,7 +449,7 @@ mod tests {
     use crate::configure_logging;
     use crate::metrics;
     use futures::{future::FutureExt, task::SpawnExt};
-    use std::{iter::Iterator, thread};
+    use std::{iter::Iterator, panic::*, thread};
 
     #[test]
     fn global_executor() {

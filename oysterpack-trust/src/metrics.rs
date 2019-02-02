@@ -577,8 +577,7 @@ impl MetricRegistry {
 
     fn check_buckets(buckets: Vec<f64>) -> Result<Vec<f64>, prometheus::Error> {
         fn sort_dedupe(buckets: Vec<f64>) -> Vec<f64> {
-            fn dedupe(buckets: Vec<f64>) -> Vec<f64> {
-                let mut buckets = buckets;
+            fn dedupe(mut buckets: Vec<f64>) -> Vec<f64> {
                 if buckets.len() > 1 {
                     let mut i = 1;
                     let mut found_dups = false;
@@ -600,8 +599,7 @@ impl MetricRegistry {
                 buckets
             }
 
-            fn sort(buckets: Vec<f64>) -> Vec<f64> {
-                let mut buckets = buckets;
+            fn sort(mut buckets: Vec<f64>) -> Vec<f64> {
                 buckets.sort_unstable_by(|a, b| {
                     use std::cmp::Ordering;
                     if a < b {
@@ -674,9 +672,8 @@ impl MetricRegistry {
                 Some(label_pairs) => collector
                     .collect()
                     .into_iter()
-                    .filter_map(|metric_family| {
+                    .filter_map(|mut metric_family| {
                         if metric_family.get_name() == name {
-                            let mut metric_family = metric_family;
                             let metrics = metric_family.mut_metric();
                             let mut i = 0;
                             'outer: while i < metrics.len() {
@@ -887,10 +884,9 @@ pub struct TimerBuckets(smallvec::SmallVec<[Duration; 10]>);
 
 impl TimerBuckets {
     /// adds a new bucket
-    pub fn add_bucket(self, upper_boundary: Duration) -> TimerBuckets {
-        let mut this = self;
-        this.0.push(upper_boundary);
-        this
+    pub fn add_bucket(mut self, upper_boundary: Duration) -> TimerBuckets {
+        self.0.push(upper_boundary);
+        self
     }
 
     /// returns the buckets

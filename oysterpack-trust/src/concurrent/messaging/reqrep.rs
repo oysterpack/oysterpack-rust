@@ -31,7 +31,7 @@
 //! be distributed over the network or be running on the same machine. This also makes it easy to mock
 //! services for testing purposes.
 //! - the trade off is the messaging overhead over the channels, which should be acceptable for distributed
-//!   microservice architecures
+//!   microservice architectures
 
 use crate::concurrent::{
     execution::Executor,
@@ -49,8 +49,8 @@ use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Debug},
-    sync::{RwLock},
-    time::Duration
+    sync::RwLock,
+    time::Duration,
 };
 
 lazy_static::lazy_static! {
@@ -64,12 +64,12 @@ lazy_static::lazy_static! {
     ).unwrap();
 }
 
-/// ReqRep service instance count MetricId
+/// ReqRep service instance count MetricId: `M01D2Q7VG1HFFXG6JT6HD11ZCJ3`
 /// - metric type is IntGaugeVec
 pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1872765971344832352273831154704953923);
 
-/// The ReqRepId ULID will be used as the label value
+/// The ReqRepId ULID will be used as the label value: `L01D2Q81HQJJVPQZSQE7BHH67JK`
 pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
 
@@ -115,6 +115,7 @@ where
     /// ## Notes
     /// - the backend service channel is returned, which needs to be wired up to a backend service
     ///   implementation
+    ///   - see [start_service()](struct.ReqRep.html#method.start_service)
     pub fn new(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
@@ -141,11 +142,19 @@ where
     ///     then the first set of timer buckets will be used - because the histogram timer metric
     ///     is registered when the first service is started and then referenced by additional service
     ///     instances
+    ///
+    /// ## Service Metrics
+    /// - Processor timer (Histogram)
+    ///   - [ReqRepId](struct.ReqRepId.html) is used to construct the MetricId
+    /// - Service instance count (IntGauge)
+    ///   - [SERVICE_INSTANCE_COUNT_METRIC_ID]() defines the MetricId
+    ///   - [REQREPID_LABEL_ID]() contains the ReqRepId ULID
+    ///   - when the backend service exits, the count is decremented
     pub fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
-        processor: Service,
-        executor: Executor,
+        mut processor: Service,
+        mut executor: Executor,
         metric_timer_buckets: metrics::TimerBuckets,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
     where
@@ -175,11 +184,7 @@ where
                 .clone()
         };
 
-        let (reqrep, req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
-        let mut req_receiver = req_receiver;
-        let mut executor = executor;
-        let mut processor = processor;
-
+        let (reqrep, mut req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
         let reqrep_service_metrics = reqrep_service_metrics();
 
         let service = async move {
@@ -313,9 +318,8 @@ where
     }
 
     /// Closes the receiver channel
-    pub fn close(self) {
-        let mut this = self;
-        this.receiver.close()
+    pub fn close(mut self) {
+        self.receiver.close()
     }
 }
 
@@ -348,9 +352,8 @@ mod tests {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let mut executor = global_executor();
-        let (mut req_rep, req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
+        let (mut req_rep, mut req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
-            let mut req_receiver = req_receiver;
             while let Some(mut msg) = await!(req_receiver.next()) {
                 assert_eq!(msg.reqrep_id(), REQREP_ID);
                 info!(
