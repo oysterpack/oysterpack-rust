@@ -206,7 +206,7 @@ fn aio_context_std_hashmap_storage_bench(c: &mut Criterion) {
     let mut socket = nng::Socket::new(nng::Protocol::Rep0).unwrap();
     socket.set_nonblocking(true);
     let context = new_aio_context(&socket).unwrap();
-    let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+    let aio = nng::Aio::with_callback(move |aio| info!("invoked")).unwrap();
 
     let context_id = ContextId::new(&context);
     let aio_context = AioContext::from((aio, context));
@@ -228,7 +228,7 @@ fn aio_context_fnv_hashmap_storage_bench(c: &mut Criterion) {
 
     {
         let context = new_aio_context(&socket).unwrap();
-        let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+        let aio = nng::Aio::with_callback(move |aio| info!("invoked")).unwrap();
         let context_id = ContextId::new(&context);
         let aio_context = AioContext::from((aio, context));
         let mut aio_contexts = fnv::FnvHashMap::<ContextId, AioContext>::with_capacity_and_hasher(
@@ -251,7 +251,7 @@ fn aio_context_fnv_hashmap_storage_bench(c: &mut Criterion) {
         );
         for _ in 0..capacity {
             let context = new_aio_context(&socket).unwrap();
-            let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+            let aio = nng::Aio::with_callback(move |aio| info!("invoked")).unwrap();
             let context_id = ContextId::new(&context);
             let aio_context = AioContext::from((aio, context));
             aio_contexts.insert(context_id, aio_context);
@@ -279,7 +279,7 @@ fn aio_context_fnv_hashmap_storage_bench(c: &mut Criterion) {
 }
 
 fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
-    type AioContext = (nng::aio::Aio, nng::aio::Context);
+    type AioContext = (nng::Aio, nng::Context);
 
     type ContextId = i32;
 
@@ -335,7 +335,7 @@ fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
     let mut context_ids = Vec::new();
     for i in 0..AioContexts::CACHE_SIZE {
         let context = new_aio_context(&socket).unwrap();
-        let aio = nng::aio::Aio::with_callback(move |aio| info!("invoked")).unwrap();
+        let aio = nng::Aio::with_callback(move |aio| info!("invoked")).unwrap();
         context_ids.push(context.id());
         aio_contexts.push((context.id(), (aio, context)))
     }
@@ -357,12 +357,12 @@ fn aio_context_smallvec_storage_bench(c: &mut Criterion) {
 }
 
 struct AioContext {
-    _aio: aio::Aio,
-    context: aio::Context,
+    _aio: Aio,
+    context: Context,
 }
 
-impl From<(aio::Aio, aio::Context)> for AioContext {
-    fn from((aio, context): (aio::Aio, aio::Context)) -> Self {
+impl From<(Aio, Context)> for AioContext {
+    fn from((aio, context): (Aio, Context)) -> Self {
         AioContext { _aio: aio, context }
     }
 }
@@ -377,7 +377,7 @@ impl fmt::Debug for AioContext {
 struct ContextId(Instant, i32);
 
 impl ContextId {
-    fn new(context: &aio::Context) -> ContextId {
+    fn new(context: &Context) -> ContextId {
         ContextId(Instant::now(), context.id())
     }
 }

@@ -23,7 +23,7 @@ use errors::{
     AioSendError, AsyncReplyChannelDisconnected,
 };
 use log::*;
-use nng::{aio, options::Options};
+use nng::options::Options;
 use oysterpack_errors::{op_error, Error};
 use std::{
     fmt,
@@ -51,7 +51,7 @@ pub trait ReplyHandler: Send + Sync + RefUnwindSafe + 'static {
 ///     - if there are no tickets, then an AioContextAtMaxCapacity error is returned
 ///   - when the callback is done, it will return the ticket back to the channel via a `try_send(())`
 pub struct AsyncClient {
-    dialer: nng::dialer::Dialer,
+    dialer: nng::Dialer,
     socket: nng::Socket,
     aio_context_ticket_rx: crossbeam::channel::Receiver<()>,
     aio_context_ticket_tx: crossbeam::channel::Sender<()>,
@@ -84,7 +84,7 @@ impl AsyncClient {
                 let aio_context_chan = self.aio_context_registry_chan.clone();
                 let context_key = ContextId::new(&context);
                 let aio_context_ticket_tx = self.aio_context_ticket_tx.clone();
-                let aio = nng::aio::Aio::with_callback(move |aio| {
+                let aio = nng::Aio::with_callback(move |aio| {
                     let close = || {
                         debug!("closing context({}) ... ", context_key);
                         if let Err(err) = aio_context_ticket_tx.try_send(()) {
@@ -103,7 +103,7 @@ impl AsyncClient {
                                 AioState::Send => {
                                     // sending the request was successful
                                     // now lets wait for the reply
-                                    aio.recv(&callback_context).unwrap();
+                                    callback_context.recv(&aio).unwrap();
                                     *ctx_state = AioState::Recv;
                                 }
                                 AioState::Recv => {
@@ -132,7 +132,7 @@ impl AsyncClient {
                     let mut ctx_state = aio_state.lock().unwrap();
                     *ctx_state = AioState::Send;
                 }
-                aio.send(&context, req)
+                context.send(&aio, req)
                     .map_err(|(_msg, err)| op_error!(AioSendError::from(err)))?;
                 // register the aio context
                 self.aio_context_registry_chan
@@ -327,12 +327,12 @@ impl Builder {
 }
 
 struct AioContext {
-    _aio: aio::Aio,
-    context: aio::Context,
+    _aio: nng::Aio,
+    context: nng::Context,
 }
 
-impl From<(aio::Aio, aio::Context)> for AioContext {
-    fn from((aio, context): (aio::Aio, aio::Context)) -> Self {
+impl From<(nng::Aio, nng::Context)> for AioContext {
+    fn from((aio, context): (nng::Aio, nng::Context)) -> Self {
         Self { _aio: aio, context }
     }
 }
@@ -353,7 +353,7 @@ enum AioContextMessage {
 struct ContextId(Instant, i32);
 
 impl ContextId {
-    fn new(context: &aio::Context) -> Self {
+    fn new(context: &nng::Context) -> Self {
         Self(Instant::now(), context.id())
     }
 }
@@ -413,7 +413,7 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer) -> Self {
+        pub fn new(dialer: &nng::Dialer) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
             Self { url }
         }
@@ -454,7 +454,7 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer, capacity: usize) -> Self {
+        pub fn new(dialer: &nng::Dialer, capacity: usize) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
             Self { url, capacity }
         }
@@ -494,7 +494,7 @@ pub mod errors {
         pub const ERROR_LEVEL: oysterpack_errors::Level = oysterpack_errors::Level::Alert;
 
         /// constructor
-        pub fn new(dialer: &nng::dialer::Dialer) -> Self {
+        pub fn new(dialer: &nng::Dialer) -> Self {
             let url = dialer.get_opt::<nng::options::Url>().unwrap();
             Self { url }
         }

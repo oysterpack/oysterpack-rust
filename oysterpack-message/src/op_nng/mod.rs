@@ -65,18 +65,18 @@ where
 }
 
 /// Creates a new aio context
-pub fn new_aio_context(socket: &nng::Socket) -> Result<nng::aio::Context, Error> {
-    nng::aio::Context::new(&socket)
+pub fn new_aio_context(socket: &nng::Socket) -> Result<nng::Context, Error> {
+    nng::Context::new(&socket)
         .map_err(|err| op_error!(errors::AioContextCreateError::from(err)))
 }
 
 /// Sends the message asynchronously and maps the nng error over to an OysterPack Error
 pub fn send_request_async(
-    aio: &nng::aio::Aio,
-    ctx: &nng::aio::Context,
+    aio: &nng::Aio,
+    ctx: &nng::Context,
     msg: nng::Message,
 ) -> Result<(), Error> {
-    aio.send(ctx, msg)
+    ctx.send(aio, msg)
         .map_err(|(_msg, err)| op_error!(errors::AioSendError::from(err)))
 }
 

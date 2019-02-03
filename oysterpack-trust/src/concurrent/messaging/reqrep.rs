@@ -90,6 +90,11 @@ where
     Req: Debug + Send + 'static,
     Rep: Debug + Send + 'static,
 {
+    /// Returns the ReqRepId
+    pub fn reqrep_id(&self) -> ReqRepId {
+        self.reqrep_id
+    }
+
     /// Send the request
     /// - each request message is assigned a MessageId, which is returned within the ReplyReceiver
     /// - the request is sent asynchronously

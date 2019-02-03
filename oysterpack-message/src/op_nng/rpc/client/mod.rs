@@ -19,7 +19,7 @@
 use crate::op_nng::{errors::SocketCreateError, SocketSettings};
 use nng::{
     self,
-    dialer::{Dialer, DialerOptions},
+    Dialer, DialerOptions,
     options::Options,
     Socket,
 };

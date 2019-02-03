@@ -67,7 +67,7 @@ fn log_config() -> oysterpack_log::LogConfig {
 
 fn send_sleep_request(url: &str, sleep_ms: u32) -> Result<Duration, nng::Error> {
     let mut socket = Socket::new(nng::Protocol::Req0)?;
-    let dialer = nng::dialer::DialerOptions::new(&socket, url)?;
+    let dialer = nng::DialerOptions::new(&socket, url)?;
     let dialer = match dialer.start(true) {
         Ok(dialer) => dialer,
         Err((_, err)) => panic!(err),
@@ -93,7 +93,7 @@ fn send_sleep_request_with_recv_timeout(
 ) -> Result<Duration, nng::Error> {
     let mut s = Socket::new(nng::Protocol::Req0)?;
     s.set_opt::<nng::options::RecvTimeout>(Some(timeout))?;
-    let dialer = nng::dialer::DialerOptions::new(&s, url)?;
+    let dialer = nng::DialerOptions::new(&s, url)?;
     let dialer = match dialer.start(true) {
         Ok(dialer) => dialer,
         Err((_, err)) => panic!(err),
@@ -115,7 +115,7 @@ fn send_sleep_request_with_recv_timeout(
 fn send_panic_request(url: &str, msg: &str) -> Result<Duration, nng::Error> {
     let mut s = Socket::new(nng::Protocol::Req0)?;
     s.set_opt::<nng::options::RecvTimeout>(Some(Duration::from_millis(10)))?;
-    let dialer = nng::dialer::DialerOptions::new(&s, url)?;
+    let dialer = nng::DialerOptions::new(&s, url)?;
     let dialer = match dialer.start(true) {
         Ok(dialer) => dialer,
         Err((_, err)) => panic!(err),

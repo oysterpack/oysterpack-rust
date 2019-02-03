@@ -29,7 +29,7 @@ pub struct SyncClient {
     // thread 'op_nng::rpc::client::tests::sync_client' panicked at 'Unexpected error code while closing dialer (12)', ... /nng-0.3.0/src/dialer.rs:104:3
     //
     // i.e., the dialer must be closed before the socket is closed
-    dialer: nng::dialer::Dialer,
+    dialer: nng::Dialer,
     socket: nng::Socket,
 }
 

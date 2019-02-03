@@ -347,7 +347,7 @@ pub enum ExecutorError {
         is_executor_shutdown
     )]
     SpawnError {
-        /// whether spawning failed to the executor being shut down
+        /// whether spawning failed because the executor is shut down
         is_executor_shutdown: bool,
     },
     /// The spawned Future panicked while running.

@@ -26,7 +26,7 @@ use crate::{
 };
 
 use log::*;
-use nng::{self, listener::Listener, options::Options, Socket};
+use nng::{self, Listener, options::Options, Socket};
 use oysterpack_errors::{op_error, Error};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -88,7 +88,7 @@ impl Server {
             socket: &nng::Socket,
             message_processor_factory: &Factory,
             aio_context_count: usize,
-        ) -> Result<Vec<(nng::aio::Aio, nng::aio::Context)>, Error>
+        ) -> Result<Vec<(nng::Aio, nng::Context)>, Error>
         where
             Factory: MessageProcessorFactory<Processor, nng::Message, nng::Message>,
             Processor: MessageProcessor<nng::Message, nng::Message>,
@@ -100,8 +100,8 @@ impl Server {
             3. the errors are reported via an nng client - pub/sub
             */
             fn handle_aio_event<T>(
-                aio: &nng::aio::Aio,
-                ctx: &nng::aio::Context,
+                aio: &nng::Aio,
+                ctx: &nng::Context,
                 state: &mut AioState,
                 message_processor: &mut T,
             ) where
@@ -112,19 +112,19 @@ impl Server {
                         Ok(_) => match aio.get_msg() {
                             Some(req) => {
                                 let rep = message_processor.process(req);
-                                match aio.send(&ctx, rep) {
+                                match ctx.send(&aio, rep) {
                                     Ok(_) => AioState::Send,
                                     Err((_rep, err)) => {
                                         error!("failed to send reply: {}", err);
                                         aio.cancel();
-                                        aio.recv(&ctx).expect("aio.recv() failed");
+                                        ctx.recv(&aio).expect("aio.recv() failed");
                                         AioState::Recv
                                     }
                                 }
                             }
                             None => {
                                 debug!("No message was found ... initiating aio.recv()");
-                                aio.recv(&ctx).expect("aio.recv() failed");
+                                ctx.recv(&aio).expect("aio.recv() failed");
                                 AioState::Recv
                             }
                         },
@@ -141,7 +141,7 @@ impl Server {
                         if let Err(err) = aio.result().unwrap() {
                             error!("aio send error: {}", err)
                         }
-                        aio.recv(ctx).unwrap();
+                        ctx.recv(aio).unwrap();
                         AioState::Recv
                     }
                 };
@@ -149,14 +149,14 @@ impl Server {
                 *state = new_state;
             }
 
-            let aio_contexts: Vec<(nng::aio::Aio, nng::aio::Context)> = (0..aio_context_count)
+            let aio_contexts: Vec<(nng::Aio, nng::Context)> = (0..aio_context_count)
                 .map(|_| {
                     let mut state = AioState::Recv;
                     let mut message_processor = message_processor_factory.new();
 
-                    let ctx: nng::aio::Context = new_aio_context(socket)?;
+                    let ctx: nng::Context = new_aio_context(socket)?;
                     let callback_context = ctx.clone();
-                    let aio = nng::aio::Aio::with_callback(move |aio| {
+                    let aio = nng::Aio::with_callback(move |aio| {
                         handle_aio_event(aio, &callback_context, &mut state, &mut message_processor)
                     })
                     .map_err(|err| op_error!(errors::AioCreateError::from(err)))?;
@@ -177,9 +177,9 @@ impl Server {
             }
         }
 
-        fn start_aio_contexts(aio_contexts: &[(nng::aio::Aio, nng::aio::Context)]) {
+        fn start_aio_contexts(aio_contexts: &[(nng::Aio, nng::Context)]) {
             for (a, c) in aio_contexts {
-                a.recv(c)
+                c.recv(a)
                     .map_err(|err| op_error!(errors::AioReceiveError::from(err)))
                     .unwrap();
             }
@@ -393,7 +393,7 @@ impl ListenerSettings {
     /// The returned handle controls the life of the listener. If it is dropped, the listener is shut
     /// down and no more messages will be received on it.
     pub fn start_listener(self, socket: &Socket) -> Result<Listener, Error> {
-        let options = nng::listener::ListenerOptions::new(socket, self.url())
+        let options = nng::ListenerOptions::new(socket, self.url())
             .map_err(|err| op_error!(errors::ListenerCreateError::from(err)))?;
 
         if let Some(option) = self.recv_max_size.as_ref() {
