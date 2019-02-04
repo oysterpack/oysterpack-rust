@@ -26,7 +26,8 @@ use std::{num::NonZeroUsize, sync::Mutex};
 
 /// Spawns a server background task
 /// - the server runs as a Future
-/// - returns a channel that can be used to stop the server
+/// - returns a ServerHandle that can be used to stop the server
+///   - if all instances of the ServerHandle get dropped, then the server will be stopped
 pub fn spawn(
     url: String,
     parallelism: NonZeroUsize,
@@ -110,7 +111,7 @@ pub fn spawn(
                             );
                             match await!(start_rx) {
                                 Ok(_) => {
-                                    debug!("worker #{} is listening ...", i);
+                                    debug!("worker #{} is starting ...", i);
                                     let mut state = AioState::Recv;
 
                                     let recv = |state: AioState| {
@@ -171,6 +172,7 @@ pub fn spawn(
 
                                     // start listening
                                     recv(state);
+                                    debug!("worker #{} is listening ...", i);
                                     while let Some(_) = await!(aio_rx.next()) {
                                         state = match state {
                                             AioState::Recv => {
@@ -203,11 +205,12 @@ pub fn spawn(
                                                     None => no_io_operation_running(state)
                                                 }
                                             },
-                                            AioState::Closed => {
-                                                debug!("worker #{} task is exiting because Aio Context is closed.", i);
-                                                break;
-                                            }
+                                            // this state will never be matched against, but we must fulfill the match contract
+                                            AioState::Closed => break
                                         };
+                                        if state == AioState::Closed {
+                                            break;
+                                        }
                                     }
                                     debug!("worker #{} task is done", i);
                                 }
@@ -246,7 +249,6 @@ pub fn spawn(
             }
             debug!("Server({}) is shutting down ...", reqrep_id);
             listener.close();
-            // TODO: stop and wait for workers to exit
             socket.close();
             debug!("Server({}) is shut down", reqrep_id);
         }).map_err(|err| SpawnError::ExecutorSpawnError {
@@ -272,7 +274,6 @@ pub fn spawn(
     Ok(server_handle)
 }
 
-// TODO: need a way to wait for the server to shutdown cleanly
 /// Server handle
 #[derive(Debug, Clone)]
 pub struct ServerHandle {
@@ -413,8 +414,8 @@ pub enum SpawnError {
     ListenerStartFailure(nng::Error),
 }
 
-/// Aio state for socket context. 0OMDIgOKlS2c
-#[derive(Debug, Copy, Clone)]
+/// Aio state for socket context
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 enum AioState {
     /// aio receive operation is in progress
     Recv,
