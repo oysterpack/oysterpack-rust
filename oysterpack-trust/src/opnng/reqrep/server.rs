@@ -17,41 +17,12 @@
 //! This module provides support for building scalable, high performing messaging based server built
 //! on proven [nng](https://nanomsg.github.io/nng/)  technology.
 
-use crate::concurrent::execution::{global_executor, Executor};
+use crate::concurrent::execution::Executor;
 use crate::concurrent::messaging::reqrep::{ReqRep, ReqRepId};
 use failure::Fail;
-use futures::{stream::StreamExt, task::SpawnExt};
+use futures::{sink::SinkExt, stream::StreamExt, task::SpawnExt};
 use oysterpack_log::*;
 use std::{num::NonZeroUsize, sync::Mutex};
-
-// TODO: need a way to wait for the server to shutdown cleanly
-/// Server handle
-#[derive(Debug)]
-pub struct ServerHandle {
-    reqrep_id: ReqRepId,
-    handle: futures::future::RemoteHandle<()>,
-    shutdown_channel: Option<futures::channel::oneshot::Sender<()>>,
-}
-
-impl ServerHandle {
-    /// signals the server to shutdown
-    pub fn trigger_stop(&mut self) {
-        if let Some(c) = self.shutdown_channel.take() {
-            // the result can be ignored because if the channel is disconnected then it means the
-            // server has stopped
-            let _ = c.send(());
-        }
-    }
-
-    /// Block the current thread until the server has shutdown
-    ///
-    /// ## Notes
-    /// If the stop is not triggered before invoking this method, then the server can not be
-    pub fn await_shutdown(self) {
-        let mut executor = global_executor();
-        let _ = executor.spawn_await(async { await!(self.handle) });
-    }
-}
 
 /// Spawns a server background task
 /// - the server runs as a Future
@@ -61,8 +32,8 @@ pub fn spawn(
     parallelism: NonZeroUsize,
     service: ReqRep<nng::Message, nng::Message>,
     mut executor: Executor,
-) -> Result<futures::channel::oneshot::Sender<()>, SpawnError> {
-    let (shutdown_tx, shutdown_rx) = futures::channel::oneshot::channel();
+) -> Result<futures::channel::mpsc::Sender<ServerCommand>, SpawnError> {
+    let (server_command_tx, mut server_command_rx) = futures::channel::mpsc::channel(1);
     let reqrep_id = service.reqrep_id();
 
     let create_socket = || {
@@ -265,7 +236,14 @@ pub fn spawn(
                 }
             }
             debug!("Server({}) is running ...", reqrep_id);
-            let _ = await!(shutdown_rx);
+            while let Some(cmd) = await!(server_command_rx.next()) {
+                match cmd {
+                    ServerCommand::Ping(reply_chan) => {
+                        let _ = reply_chan.send(());
+                    },
+                    ServerCommand::Stop => break
+                }
+            }
             debug!("Server({}) is shutting down ...", reqrep_id);
             listener.close();
             socket.close();
@@ -281,7 +259,54 @@ pub fn spawn(
     let listener = start_listener(listener_options)?;
     start_workers(worker_start_chans, socket, listener, executor)?;
 
-    Ok(shutdown_tx)
+    Ok(server_command_tx)
+}
+
+// TODO: need a way to wait for the server to shutdown cleanly
+/// Server handle
+#[derive(Debug)]
+pub struct ServerHandle {
+    url: String,
+    reqrep_id: ReqRepId,
+    parallelism: NonZeroUsize,
+    handle: Option<futures::future::RemoteHandle<()>>,
+    server_command_channel: Option<futures::channel::mpsc::Sender<ServerCommand>>,
+    executor: Executor,
+}
+
+impl ServerHandle {
+    /// returns true if the server has been signalled to stop
+    pub fn stop_triggered(&self) -> bool {
+        self.server_command_channel.is_none()
+    }
+
+    /// signals the server to shutdown
+    pub async fn trigger_stop(&mut self) {
+        if let Some(mut c) = self.server_command_channel.take() {
+            // the result can be ignored because if the channel is disconnected then it means the
+            // server has stopped
+            let _ = await!(c.send(ServerCommand::Stop));
+        }
+    }
+
+    /// Block the current thread until the server has shutdown
+    ///
+    /// ## Notes
+    /// If the stop is not triggered before invoking this method, then the server can not be
+    pub fn await_shutdown(mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = self.executor.spawn_await(async { await!(handle) });
+        }
+    }
+}
+
+/// Server commands
+#[derive(Debug)]
+pub enum ServerCommand {
+    /// Ping the server to check if it is still alive
+    Ping(futures::channel::oneshot::Sender<()>),
+    /// Signals the server to shutdown
+    Stop,
 }
 
 /// Errors that could happen while trying to spawn a server
@@ -363,10 +388,24 @@ mod tests {
 
         let url = format!("inproc://{}", ULID::generate());
         let parallelism = NonZeroUsize::new(num_cpus::get()).unwrap();
-        let shutdown_channel =
+        let server_command_channel =
             super::spawn(url.clone(), parallelism, service, global_executor().clone()).unwrap();
 
-        thread::sleep_ms(200);
+        let mut executor = global_executor();
+
+        let mut server_command_chan = server_command_channel.clone();
+        executor.spawn_await(
+            async move {
+                let (tx, rx) = futures::channel::oneshot::channel();
+                if await!(server_command_chan.send(ServerCommand::Ping(tx))).is_ok() {
+                    info!("Sent Ping");
+                    let _ = await!(rx);
+                    info!("Received Ping reply");
+                } else {
+                    error!("Failed to send Ping");
+                }
+            },
+        );
 
         let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
         s.dial(url.as_str()).unwrap();
@@ -378,7 +417,12 @@ mod tests {
             info!("[{}] Received response", i);
         }
 
-        shutdown_channel.send(()).unwrap();
+        let mut server_command_chan = server_command_channel.clone();
+        executor.spawn_await(
+            async move {
+                let _ = await!(server_command_chan.send(ServerCommand::Stop));
+            },
+        );
         thread::sleep_ms(200);
     }
 
