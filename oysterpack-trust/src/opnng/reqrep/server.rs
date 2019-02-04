@@ -44,6 +44,9 @@ impl ServerHandle {
     }
 
     /// Block the current thread until the server has shutdown
+    ///
+    /// ## Notes
+    /// If the stop is not triggered before invoking this method, then the server can not be
     pub fn await_shutdown(self) {
         let mut executor = global_executor();
         let _ = executor.spawn_await(async { await!(self.handle) });
@@ -62,21 +65,34 @@ pub fn spawn(
     let (shutdown_tx, shutdown_rx) = futures::channel::oneshot::channel();
     let reqrep_id = service.reqrep_id();
 
-    let socket = || {
+    let create_socket = || {
         let mut socket =
             nng::Socket::new(nng::Protocol::Rep0).map_err(SpawnError::SocketCreateFailure)?;
         socket.set_nonblocking(true);
         Ok(socket)
     };
 
-    let listener_options = |socket: &nng::Socket| {
+    let create_listener_options = |socket: &nng::Socket| {
         let listener_options = nng::ListenerOptions::new(socket, url.as_str())
             .map_err(SpawnError::ListenerOptionsCreateFailure)?;
         Ok(listener_options)
     };
 
+    let start_listener = |listener_options: nng::ListenerOptions| {
+        listener_options
+            .start(true)
+            .map_err(|(_, err)| SpawnError::ListenerStartFailure(err))
+    };
+
     // spawns the worker tasks
+    // - each Aio Context is serviced by its own private event loop running as a future
     // - the worker tasks will wait to be signalled via the returned channels to start listening on the Socket
+    // - the worker's job is to integrate nng with the backend ReqRep service - it simply relays nng
+    //   request messages to the ReqRep service, and then sends back the reply message returned from
+    //   the ReqRep service
+    //
+    // Socket ---> Aio callback ---> worker --- nng::Message --> ReqRep service
+    // Socket <----nng::message----- worker <-- nng::Message --- ReqRep service
     let mut create_workers =
         |socket: &nng::Socket| -> Result<Vec<futures::channel::oneshot::Sender<()>>, SpawnError> {
             let mut worker_start_chans = Vec::with_capacity(parallelism.get());
@@ -162,7 +178,7 @@ pub fn spawn(
                                         recv(state)
                                     };
 
-                                    let aio_error = |state, err: nng::Error| {
+                                    let handle_aio_error = |state, err: nng::Error| {
                                         match err.kind() {
                                             nng::ErrorKind::Closed => {
                                                 AioState::Closed
@@ -205,14 +221,14 @@ pub fn spawn(
                                                             None => no_msg_available(state)
                                                         }
                                                     },
-                                                    Some(Err(err)) => aio_error(state, err),
+                                                    Some(Err(err)) => handle_aio_error(state, err),
                                                     None => no_io_operation_running(state)
                                                 }
                                             }
                                             AioState::Send => {
                                                 match aio.result() {
                                                     Some(Ok(_)) => recv(state),
-                                                    Some(Err(err)) => aio_error(state, err),
+                                                    Some(Err(err)) => handle_aio_error(state, err),
                                                     None => no_io_operation_running(state)
                                                 }
                                             },
@@ -237,28 +253,33 @@ pub fn spawn(
             Ok(worker_start_chans)
         };
 
-    let socket = socket()?;
-    let listener_options = listener_options(&socket)?;
-    let worker_start_chans = create_workers(&socket)?;
-    let listener = listener_options
-        .start(true)
-        .map_err(|(_, err)| SpawnError::ListenerStartFailure(err))?;
-    executor.spawn(async move{
-        for c in worker_start_chans {
-            if c.send(()).is_err() {
-                // TODO: trigger alert - this should never happen
-                error!("Unable to send worker start signal because the channel has been disconnected");
+    let start_workers = |worker_start_chans: Vec<futures::channel::oneshot::Sender<()>>,
+                         socket: nng::Socket,
+                         listener: nng::Listener,
+                         mut executor: Executor| {
+        executor.spawn(async move{
+            for c in worker_start_chans {
+                if c.send(()).is_err() {
+                    // TODO: trigger alert - this should never happen
+                    error!("Unable to send worker start signal because the channel has been disconnected");
+                }
             }
-        }
-        debug!("Server({}) is running ...", reqrep_id);
-        let _ = await!(shutdown_rx);
-        debug!("Server({}) is shutting down ...", reqrep_id);
-        listener.close();
-        socket.close();
-        debug!("Server({}) is shut down", reqrep_id);
-    }).map_err(|err| SpawnError::ExecutorSpawnError {
-        is_executor_shutdown: err.is_shutdown()
-    })?;
+            debug!("Server({}) is running ...", reqrep_id);
+            let _ = await!(shutdown_rx);
+            debug!("Server({}) is shutting down ...", reqrep_id);
+            listener.close();
+            socket.close();
+            debug!("Server({}) is shut down", reqrep_id);
+        }).map_err(|err| SpawnError::ExecutorSpawnError {
+            is_executor_shutdown: err.is_shutdown()
+        })
+    };
+
+    let socket = create_socket()?;
+    let listener_options = create_listener_options(&socket)?;
+    let worker_start_chans = create_workers(&socket)?;
+    let listener = start_listener(listener_options)?;
+    start_workers(worker_start_chans, socket, listener, executor)?;
 
     Ok(shutdown_tx)
 }
