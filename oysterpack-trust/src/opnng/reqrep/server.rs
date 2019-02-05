@@ -37,10 +37,24 @@ pub fn spawn(
     let (server_command_tx, mut server_command_rx) = futures::channel::mpsc::channel(1);
     let reqrep_id = service.reqrep_id();
 
+    fn pipe_event_display(event: nng::PipeEvent) -> &'static str {
+        match event {
+            nng::PipeEvent::AddPre => "PipeEvent::AddPre",
+            nng::PipeEvent::AddPost => "PipeEvent::AddPost",
+            nng::PipeEvent::RemovePost => "PipeEvent::RemovePost",
+            nng::PipeEvent::Unknown(_) => "nng::PipeEvent::Unknown"
+        }
+    }
+
     let create_socket = || {
         let mut socket =
             nng::Socket::new(nng::Protocol::Rep0).map_err(SpawnError::SocketCreateFailure)?;
         socket.set_nonblocking(true);
+        socket.pipe_notify(|pipe, event| {
+            // TODO: IntGauge metric to keep track of number of active connections
+            // TODO: IntCounter metric to count total number of connections that have been made since the server has started
+            debug!("{:?} {}", pipe, pipe_event_display(event));
+        }).map_err(SpawnError::SocketCreateFailure)?;
         Ok(socket)
     };
 
@@ -439,6 +453,7 @@ mod tests {
     };
     use oysterpack_uid::*;
     use std::{thread, time::Duration};
+    use oysterpack_uid::ULID;
 
     struct EchoService;
     impl Processor<nng::Message, nng::Message> for EchoService {
@@ -470,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn nng_server_poc() {
+    fn nng_server_single_client() {
         configure_logging();
 
         // GIVEN: the server is running
@@ -533,13 +548,76 @@ mod tests {
         drop(server_handle);
 
         // THEN: the server is stopped
-        // give the server to shutdown
+        // give the server time to shutdown
         thread::sleep_ms(200);
         // AND: clients are not able to connect to the server
         let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
         let result = s.dial(url.as_str());
         assert!(result.is_err());
         info!("failed to connect to the server: {:?}", result);
+    }
+
+    #[test]
+    fn nng_server_multi_client() {
+        configure_logging();
+
+        // GIVEN: the server is running
+        let url = format!("inproc://{}", ULID::generate());
+        let mut server_handle = super::spawn(
+            url.clone(),
+            NonZeroUsize::new(num_cpus::get()).unwrap(),
+            start_service(),
+            global_executor().clone(),
+        )
+            .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        let mut client_task_handles = Vec::new();
+
+        // The clients need their own dedicated Executor, i.e., thread pool because the client tasks
+        // will block the threads. If they were to share the server executor then the clients will
+        // consume all the threads in the pool and block waiting for a reply. The server cannot reply
+        // because there wouldn't be any free threads available in the pool.
+        const CLIENT_COUNT: usize = 100;
+        let mut executor = ExecutorBuilder::new(ExecutorId::generate())
+            .set_pool_size(NonZeroUsize::new(CLIENT_COUNT).unwrap())
+            .register()
+            .unwrap();
+        for _ in 0..CLIENT_COUNT {
+            let url = url.clone();
+            // GIVEN: a client that connects to the server
+            let handle = executor.spawn_with_handle(async move {
+                let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
+                s.dial(url.as_str()).unwrap();
+
+                let client_id = ULID::generate();
+                for i in 1..=10 {
+                    // WHEN: the client submits requests
+                    s.send(nng::Message::new().unwrap()).unwrap();
+                    info!("[{}::{}] Sent request", client_id, i);
+                    // THEN: the client successfully receives a response
+                    let _ = s.recv().unwrap();
+                    info!("[{}::{}] Received response", client_id, i);
+                }
+                client_id
+            }).unwrap();
+            client_task_handles.push(handle);
+        }
+
+        assert_eq!(client_task_handles.len(), 100);
+        let mut executor = global_executor();
+        for handle in client_task_handles {
+            info!("waiting for client to be done ...");
+            let client_id = executor.spawn_await(handle).unwrap();
+            info!("client is done: {}",client_id);
+        }
+
+        info!("all clients are done");
+
+        // WHEN: the server is signalled to stop
+        assert!(server_handle.stop_async().unwrap());
+        // THEN: the server shuts down
+        server_handle.await_shutdown();
     }
 
 }
