@@ -275,6 +275,10 @@ pub fn spawn(
 }
 
 /// Server handle
+///
+/// There are 2 ways to stop the server:
+/// 1. Explicitly signal the server to stop via [stop_async()](#method.stop_async)
+/// 2. When all instances of the ServerHandle are dropped
 #[derive(Debug, Clone)]
 pub struct ServerHandle {
     url: String,
@@ -359,7 +363,7 @@ impl ServerHandle {
     /// Block the current thread until the server has shutdown
     ///
     /// ## Notes
-    /// If the stop is not triggered before invoking this method, then the server can not be
+    /// The server must be signaled to stop in order to shutdown.
     pub fn await_shutdown(mut self) -> Result<(), ServerHandleError> {
         if let Some(handle) = self.handle.take() {
             return self
@@ -436,39 +440,48 @@ mod tests {
     use oysterpack_uid::*;
     use std::{thread, time::Duration};
 
+    struct EchoService;
+    impl Processor<nng::Message, nng::Message> for EchoService {
+        fn process(&mut self, req: nng::Message) -> nng::Message {
+            req
+        }
+    }
+
+    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+
+    fn start_service() -> ReqRep<nng::Message, nng::Message> {
+        let timer_buckets = metrics::TimerBuckets::from(
+            vec![
+                Duration::from_nanos(50),
+                Duration::from_nanos(100),
+                Duration::from_nanos(150),
+                Duration::from_nanos(200),
+            ]
+            .as_slice(),
+        );
+        ReqRep::start_service(
+            REQREP_ID,
+            1,
+            EchoService,
+            global_executor().clone(),
+            timer_buckets,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn nng_server_poc() {
         configure_logging();
 
         // GIVEN: the server is running
-        const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let mut executor = global_executor();
-
-        struct Service;
-        impl Processor<nng::Message, nng::Message> for Service {
-            fn process(&mut self, req: nng::Message) -> nng::Message {
-                req
-            }
-        }
-
-        let service = {
-            let timer_buckets = metrics::TimerBuckets::from(
-                vec![
-                    Duration::from_nanos(50),
-                    Duration::from_nanos(100),
-                    Duration::from_nanos(150),
-                    Duration::from_nanos(200),
-                ]
-                .as_slice(),
-            );
-            ReqRep::start_service(REQREP_ID, 1, Service, executor.clone(), timer_buckets).unwrap()
-        };
-
         let url = format!("inproc://{}", ULID::generate());
-        let parallelism = NonZeroUsize::new(num_cpus::get()).unwrap();
-        let mut server_handle =
-            super::spawn(url.clone(), parallelism, service, global_executor().clone()).unwrap();
-
+        let mut server_handle = super::spawn(
+            url.clone(),
+            NonZeroUsize::new(num_cpus::get()).unwrap(),
+            start_service(),
+            global_executor().clone(),
+        )
+        .unwrap();
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: a client that connects to the server
@@ -488,6 +501,45 @@ mod tests {
         assert!(server_handle.stop_async().unwrap());
         // THEN: the server shuts down
         server_handle.await_shutdown();
+
+        let mut executor = global_executor();
+        // GIVEN: the server is not running
+        // WHEN: the client submits requests
+        let handle = executor.spawn_with_handle(async move {
+            s.send(nng::Message::new().unwrap()).unwrap();
+            let _ = s.recv().unwrap();
+            s.send(nng::Message::new().unwrap()).unwrap();
+            info!("Sent request while server was shutdown ...");
+            let reply = s.recv().unwrap();
+            info!("... Received response after server was restarted");
+            reply
+        }).unwrap();
+
+        // WHEN: the server is restarted
+        let mut server_handle = super::spawn(
+            url.clone(),
+            NonZeroUsize::new(num_cpus::get()).unwrap(),
+            start_service(),
+            global_executor().clone(),
+        )
+            .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // THEN: the client will be able to connect and be serviced
+        let reply = executor.spawn_await(handle).unwrap();
+        info!("Reply was received: {:?}", reply);
+
+        // WHEN: the server handle is dropped
+        drop(server_handle);
+
+        // THEN: the server is stopped
+        // give the server to shutdown
+        thread::sleep_ms(200);
+        // AND: clients are not able to connect to the server
+        let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
+        let result = s.dial(url.as_str());
+        assert!(result.is_err());
+        info!("failed to connect to the server: {:?}", result);
     }
 
 }
