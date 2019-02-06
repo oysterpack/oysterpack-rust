@@ -19,16 +19,140 @@
 
 use crate::concurrent::execution::Executor;
 use crate::concurrent::messaging::reqrep::{ReqRep, ReqRepId};
+use crate::metrics;
 use failure::Fail;
 use futures::{future::FutureExt, prelude::*, sink::SinkExt, stream::StreamExt, task::SpawnExt};
+use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
+use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     num::{NonZeroU16, NonZeroUsize},
     sync::Mutex,
+    sync::{Arc, RwLock},
     time::Duration,
 };
+
+lazy_static! {
+
+    /// Global Executor registry
+    static ref SERVER_HANDLES: RwLock<fnv::FnvHashMap<ULID, Arc<ServerHandle>>> = RwLock::new(fnv::FnvHashMap::default());
+
+    /// the metric is incremented on nng::PipeEvent::AddPost and decremented on nng::PipeEvent::RemovePost
+    static ref ACTIVE_CONN_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
+        ACTIVE_CONN_COUNT_METRIC_ID,
+        "Active number of socket connections".to_string(),
+        &[REQREP_LABEL_ID],
+        None
+    ).unwrap();
+
+    /// the metric is incremented on nng::PipeEvent::AddPost
+    static ref TOT_CONN_COUNT: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        TOT_CONN_COUNT_METRIC_ID,
+        "Total number of socket connections since the server was started".to_string(),
+        &[REQREP_LABEL_ID],
+        None
+    ).unwrap();
+
+    /// the metric is incremented on nng::PipeEvent::PrePost
+    /// - this should normally match the number of nng::PipeEvent::PrePost events. When it's greater
+    ///   then it means connections are being closed before being added to the socket.
+    static ref TOT_CONN_INITIATE_COUNT: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        TOT_CONN_INITIATE_COUNT_METRIC_ID,
+        "Total number of connections that have been initiated, but before being added to the socket, since the server was started.".to_string(),
+        &[REQREP_LABEL_ID],
+        None
+    ).unwrap();
+
+}
+
+/// IntGaugeVec MetricId which is used to track the total number of active socket connections by ReqRepId
+pub const ACTIVE_CONN_COUNT_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873168046490600819041194830632263157);
+/// IntCounterVec MetricId which is used to track the total number of socket connections by ReqRepId
+pub const TOT_CONN_COUNT_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873172323751845180087130844627387786);
+/// IntCounterVec MetricId which is used to track the total number of connection that have been initiated by ReqRepId
+pub const TOT_CONN_INITIATE_COUNT_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873172273925609759145190455058277250);
+
+/// Metric LabelId which is used to store a ReqRepId
+/// - this is used by the following metrics:
+///   - IntGaugeVec(ACTIVE_CONN_COUNT_METRIC_ID)
+///   - IntCounterVec(TOT_CONN_COUNT_METRIC_ID)
+pub const REQREP_LABEL_ID: metrics::LabelId =
+    metrics::LabelId(1873168278096570673538811977244540631);
+
+/// Server metrics
+#[derive(Clone)]
+pub struct ServerMetrics {
+    active_conn_count: prometheus::IntGauge,
+    tot_conn_count: prometheus::IntCounter,
+    tot_conn_initiate_count: prometheus::IntCounter,
+}
+
+impl ServerMetrics {
+    fn new(reqrep_id: ReqRepId) -> Self {
+        let reqrep_id_label = reqrep_id.to_string();
+        Self {
+            active_conn_count: ACTIVE_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
+            tot_conn_count: TOT_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
+            tot_conn_initiate_count: TOT_CONN_INITIATE_COUNT
+                .with_label_values(&[reqrep_id_label.as_str()]),
+        }
+    }
+
+    /// Active number of socket connections
+    pub fn active_conn_count(&self) -> usize {
+        self.active_conn_count.get() as usize
+    }
+
+    /// Total number of socket connections since the server was started
+    pub fn tot_conn_count(&self) -> usize {
+        self.tot_conn_count.get() as usize
+    }
+
+    /// Total number of connections that have been initiated, but before being added to the socket, since the server was started.
+    pub fn tot_conn_initiate_count(&self) -> usize {
+        self.tot_conn_initiate_count.get() as usize
+    }
+}
+
+impl fmt::Debug for ServerMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"ServerMetrics(active_conn_count = {}, tot_conn_count = {}, tot_conn_initiate_count = {})",
+               self.active_conn_count.get(),
+               self.tot_conn_count.get(),
+               self.tot_conn_initiate_count.get()
+        )
+    }
+}
+
+/// Returns the ServerHandle - only if the server is still alive
+pub fn server_handle(id: ULID) -> Option<Arc<ServerHandle>> {
+    let server_handle = {
+        let server_handles = SERVER_HANDLES.read().unwrap();
+        server_handles.get(&id).cloned()
+    };
+
+    // check if the server is still alive
+    if let Some(server_handle) = server_handle {
+        if let Ok(true) = server_handle.ping() {
+            Some(server_handle)
+        } else {
+            // unregister the Serverhandle because pinging the server failed
+            {
+                let mut server_handles = SERVER_HANDLES.write().unwrap();
+                server_handles.remove(&id);
+            }
+            None
+        }
+    } else {
+        None
+    }
+}
 
 /// Spawns a server background task
 /// - the server runs as a Future
@@ -41,10 +165,14 @@ pub fn spawn(
     mut executor: Executor,
 ) -> Result<ServerHandle, SpawnError> {
     let (server_command_tx, mut server_command_rx) = futures::channel::mpsc::channel(1);
+
     let reqrep_id = service.reqrep_id();
     let url = listener_config.url.clone();
     let parallelism = listener_config.parallelism();
+    let server_metrics = ServerMetrics::new(reqrep_id);
+    let server_handle_id = ULID::generate();
 
+    // TODO: replace with Debug format once https://gitlab.com/neachdainn/nng-rs/issues/23 is released
     fn pipe_event_display(event: nng::PipeEvent) -> &'static str {
         match event {
             nng::PipeEvent::AddPre => "PipeEvent::AddPre",
@@ -55,13 +183,21 @@ pub fn spawn(
     }
 
     let create_socket = || {
+        let server_metrics = server_metrics.clone();
         let mut socket =
             nng::Socket::new(nng::Protocol::Rep0).map_err(SpawnError::SocketCreateFailure)?;
         socket.set_nonblocking(true);
         socket
-            .pipe_notify(|pipe, event| {
-                // TODO: IntGauge metric to keep track of number of active connections
-                // TODO: IntCounter metric to count total number of connections that have been made since the server has started
+            .pipe_notify(move |pipe, event| {
+                match event {
+                    nng::PipeEvent::AddPost => {
+                        server_metrics.active_conn_count.inc();
+                        server_metrics.tot_conn_count.inc();
+                    }
+                    nng::PipeEvent::RemovePost => server_metrics.active_conn_count.dec(),
+                    nng::PipeEvent::AddPre => server_metrics.tot_conn_initiate_count.inc(),
+                    _ => (),
+                }
                 debug!("{:?} {}", pipe, pipe_event_display(event));
             })
             .map_err(SpawnError::SocketCreateFailure)?;
@@ -271,6 +407,8 @@ pub fn spawn(
             listener.close();
             socket.close();
             debug!("Server({}) is shut down", reqrep_id);
+            let mut server_handles = SERVER_HANDLES.write().unwrap();
+            server_handles.remove(&server_handle_id);
         }).map_err(|err| SpawnError::ExecutorSpawnError {
             is_executor_shutdown: err.is_shutdown()
         })
@@ -282,13 +420,18 @@ pub fn spawn(
     let handle = start_workers(worker_start_chans, socket, listener, executor.clone())?;
 
     let server_handle = ServerHandle {
+        id: server_handle_id,
         url,
         reqrep_id,
         parallelism: NonZeroUsize::new(parallelism).unwrap(),
         handle: Some(handle.shared()),
         server_command_channel: Some(server_command_tx),
         executor,
+        metrics: server_metrics,
     };
+
+    let mut server_handles = SERVER_HANDLES.write().unwrap();
+    server_handles.insert(server_handle.id(), Arc::new(server_handle.clone()));
 
     Ok(server_handle)
 }
@@ -300,15 +443,22 @@ pub fn spawn(
 /// 2. When all instances of the ServerHandle are dropped
 #[derive(Debug, Clone)]
 pub struct ServerHandle {
+    id: ULID,
     url: String,
     reqrep_id: ReqRepId,
     parallelism: NonZeroUsize,
     handle: Option<future::Shared<future::RemoteHandle<()>>>,
     server_command_channel: Option<futures::channel::mpsc::Sender<ServerCommand>>,
     executor: Executor,
+    metrics: ServerMetrics,
 }
 
 impl ServerHandle {
+    /// Returns the ServerHandle ULID
+    pub fn id(&self) -> ULID {
+        self.id
+    }
+
     /// Returns the URI that the server is listening on
     pub fn url(&self) -> &str {
         &self.url
@@ -331,7 +481,17 @@ impl ServerHandle {
         self.server_command_channel.is_none()
     }
 
+    /// Returns ServerMetrics
+    pub fn metrics(&self) -> &ServerMetrics {
+        &self.metrics
+    }
+
     /// pings the server to check if it is still alive
+    ///
+    /// ## ServerHandleError
+    /// - Internally, the Ping message is sent via an async channel, i.e., Futures based. This requires
+    ///   an Executor to spawn the task to send the Ping message. If the Executor fails to spawn the
+    ///   task, then a ServerHandleError will be returned. Normally, this should never happen ...
     pub fn ping(&self) -> Result<bool, ServerHandleError> {
         match self.server_command_channel {
             Some(ref server_command_channel) => {
@@ -756,7 +916,7 @@ impl ListenerConfig {
     /// The returned handle controls the life of the listener. If it is dropped, the listener is shut
     /// down and no more messages will be received on it.
     pub fn start_listener(
-        self,
+        &self,
         socket: &nng::Socket,
     ) -> Result<nng::Listener, ListenerConfigError> {
         let options = nng::ListenerOptions::new(socket, self.url())
@@ -958,10 +1118,18 @@ mod tests {
             info!("[{}] Received response", i);
         }
 
+        // THEN: the server handle is registered
+        let server_handle_ref = super::server_handle(server_handle.id()).unwrap();
+        assert!(server_handle_ref.ping().unwrap());
+
         // WHEN: the server is signalled to stop
         assert!(server_handle.stop_async().unwrap());
         // THEN: the server shuts down
         server_handle.await_shutdown();
+
+        // AND: the server handle becomes invalid
+        assert!(!server_handle_ref.ping().unwrap());
+        assert!(super::server_handle(server_handle_ref.id()).is_none());
 
         let mut executor = global_executor();
         // GIVEN: the server is not running
@@ -997,14 +1165,11 @@ mod tests {
         // WHEN: the server handle is dropped
         drop(server_handle);
 
-        // THEN: the server is stopped
-        // give the server time to shutdown
-        thread::sleep_ms(200);
-        // AND: clients are not able to connect to the server
+        // THEN: the server continues running because a ServerHandle reference is registered
+        // AND: clients are still able to connect to the server
         let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
         let result = s.dial(url.as_str());
-        assert!(result.is_err());
-        info!("failed to connect to the server: {:?}", result);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1058,15 +1223,21 @@ mod tests {
             client_task_handles.push(handle);
         }
 
+        info!("server metrics: {:?}", server_handle.metrics());
+
         assert_eq!(client_task_handles.len(), 100);
         let mut executor = global_executor();
         for handle in client_task_handles {
             info!("waiting for client to be done ...");
             let client_id = executor.spawn_await(handle).unwrap();
-            info!("client is done: {}", client_id);
+            info!(
+                "client is done: {} : {:?}",
+                client_id,
+                server_handle.metrics()
+            );
         }
 
-        info!("all clients are done");
+        info!("all clients are done: {:#?}", server_handle.metrics());
 
         // WHEN: the server is signalled to stop
         assert!(server_handle.stop_async().unwrap());
