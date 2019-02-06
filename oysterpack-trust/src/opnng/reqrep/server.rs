@@ -85,79 +85,11 @@ pub const TOT_CONN_INITIATE_COUNT_METRIC_ID: metrics::MetricId =
 pub const REQREP_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1873168278096570673538811977244540631);
 
-/// Server metrics
-#[derive(Clone)]
-pub struct ServerMetrics {
-    active_conn_count: prometheus::IntGauge,
-    tot_conn_count: prometheus::IntCounter,
-    tot_conn_initiate_count: prometheus::IntCounter,
-}
-
-impl ServerMetrics {
-    fn new(reqrep_id: ReqRepId) -> Self {
-        let reqrep_id_label = reqrep_id.to_string();
-        Self {
-            active_conn_count: ACTIVE_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
-            tot_conn_count: TOT_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
-            tot_conn_initiate_count: TOT_CONN_INITIATE_COUNT
-                .with_label_values(&[reqrep_id_label.as_str()]),
-        }
-    }
-
-    /// Active number of socket connections
-    pub fn active_conn_count(&self) -> usize {
-        self.active_conn_count.get() as usize
-    }
-
-    /// Total number of socket connections since the server was started
-    pub fn tot_conn_count(&self) -> usize {
-        self.tot_conn_count.get() as usize
-    }
-
-    /// Total number of connections that have been initiated, but before being added to the socket, since the server was started.
-    pub fn tot_conn_initiate_count(&self) -> usize {
-        self.tot_conn_initiate_count.get() as usize
-    }
-}
-
-impl fmt::Debug for ServerMetrics {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"ServerMetrics(active_conn_count = {}, tot_conn_count = {}, tot_conn_initiate_count = {})",
-               self.active_conn_count.get(),
-               self.tot_conn_count.get(),
-               self.tot_conn_initiate_count.get()
-        )
-    }
-}
-
-/// Returns the ServerHandle - only if the server is still alive
-pub fn server_handle(id: ULID) -> Option<Arc<ServerHandle>> {
-    let server_handle = {
-        let server_handles = SERVER_HANDLES.read().unwrap();
-        server_handles.get(&id).cloned()
-    };
-
-    // check if the server is still alive
-    if let Some(server_handle) = server_handle {
-        if let Ok(true) = server_handle.ping() {
-            Some(server_handle)
-        } else {
-            // unregister the Serverhandle because pinging the server failed
-            {
-                let mut server_handles = SERVER_HANDLES.write().unwrap();
-                server_handles.remove(&id);
-            }
-            None
-        }
-    } else {
-        None
-    }
-}
-
 /// Spawns a server background task
 /// - the server runs as a Future
 /// - returns a ServerHandle that can be used to stop the server
-///   - if all instances of the ServerHandle get dropped, then the server will be stopped
+///   - the ServerHandle is registered globally
+///   - when the server is stopped, the ServerHandle will be automatically unregistered
 pub fn spawn(
     socket_config: SocketConfig,
     listener_config: ListenerConfig,
@@ -552,6 +484,50 @@ impl ServerHandle {
         }
         Ok(())
     }
+
+    /// Returns the ServerHandle - only if the server is still alive
+    /// - ServerHandle(s) are globally registered when the server is spawned
+    pub fn get(id: ULID) -> Option<Arc<ServerHandle>> {
+        let server_handle = {
+            let server_handles = SERVER_HANDLES.read().unwrap();
+            server_handles.get(&id).cloned()
+        };
+
+        // check if the server is still alive
+        if let Some(server_handle) = server_handle {
+            if let Ok(true) = server_handle.ping() {
+                Some(server_handle)
+            } else {
+                // unregister the Serverhandle because pinging the server failed
+                {
+                    let mut server_handles = SERVER_HANDLES.write().unwrap();
+                    server_handles.remove(&id);
+                }
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns the list of registered ServerHandle ULIDs along with the server's ReqRepId
+    pub fn ids() -> Vec<(ULID, ReqRepId)> {
+        let server_handles = SERVER_HANDLES.read().unwrap();
+        server_handles
+            .values()
+            .map(|server_handle| (server_handle.id, server_handle.reqrep_id))
+            .collect()
+    }
+
+    /// Returns ServerHandle(s) that are registered for the specified ReqRepId
+    pub fn get_by_reqrep_id(reqrep_id: ReqRepId) -> Vec<Arc<ServerHandle>> {
+        let server_handles = SERVER_HANDLES.read().unwrap();
+        server_handles
+            .values()
+            .filter(|server_handle| server_handle.reqrep_id == reqrep_id)
+            .cloned()
+            .collect()
+    }
 }
 
 /// ServerHandle error
@@ -609,6 +585,51 @@ enum AioState {
     Send,
     /// Closed
     Closed,
+}
+
+/// Server metrics
+#[derive(Clone)]
+pub struct ServerMetrics {
+    active_conn_count: prometheus::IntGauge,
+    tot_conn_count: prometheus::IntCounter,
+    tot_conn_initiate_count: prometheus::IntCounter,
+}
+
+impl ServerMetrics {
+    fn new(reqrep_id: ReqRepId) -> Self {
+        let reqrep_id_label = reqrep_id.to_string();
+        Self {
+            active_conn_count: ACTIVE_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
+            tot_conn_count: TOT_CONN_COUNT.with_label_values(&[reqrep_id_label.as_str()]),
+            tot_conn_initiate_count: TOT_CONN_INITIATE_COUNT
+                .with_label_values(&[reqrep_id_label.as_str()]),
+        }
+    }
+
+    /// Active number of socket connections
+    pub fn active_conn_count(&self) -> usize {
+        self.active_conn_count.get() as usize
+    }
+
+    /// Total number of socket connections since the server was started
+    pub fn tot_conn_count(&self) -> usize {
+        self.tot_conn_count.get() as usize
+    }
+
+    /// Total number of connections that have been initiated, but before being added to the socket, since the server was started.
+    pub fn tot_conn_initiate_count(&self) -> usize {
+        self.tot_conn_initiate_count.get() as usize
+    }
+}
+
+impl fmt::Debug for ServerMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"ServerMetrics(active_conn_count = {}, tot_conn_count = {}, tot_conn_initiate_count = {})",
+               self.active_conn_count.get(),
+               self.tot_conn_count.get(),
+               self.tot_conn_initiate_count.get()
+        )
+    }
 }
 
 /// Socket settings
@@ -1119,8 +1140,18 @@ mod tests {
         }
 
         // THEN: the server handle is registered
-        let server_handle_ref = super::server_handle(server_handle.id()).unwrap();
+        let server_handle_ref = ServerHandle::get(server_handle.id()).unwrap();
         assert!(server_handle_ref.ping().unwrap());
+        assert!(ServerHandle::ids()
+            .iter()
+            .find(|(id, reqrep_id)| *id == server_handle_ref.id()
+                && *reqrep_id == server_handle_ref.reqrep_id())
+            .is_some());
+        let server_handles = ServerHandle::get_by_reqrep_id(REQREP_ID);
+        assert!(server_handles
+            .iter()
+            .find(|server_handle| server_handle.reqrep_id() == REQREP_ID && server_handle.id() == server_handle_ref.id())
+            .is_some());
 
         // WHEN: the server is signalled to stop
         assert!(server_handle.stop_async().unwrap());
@@ -1129,7 +1160,17 @@ mod tests {
 
         // AND: the server handle becomes invalid
         assert!(!server_handle_ref.ping().unwrap());
-        assert!(super::server_handle(server_handle_ref.id()).is_none());
+        assert!(ServerHandle::get(server_handle_ref.id()).is_none());
+        assert!(ServerHandle::ids()
+            .iter()
+            .find(|(id, reqrep_id)| *id == server_handle_ref.id()
+                && *reqrep_id == server_handle_ref.reqrep_id())
+            .is_none());
+        let server_handles = ServerHandle::get_by_reqrep_id(REQREP_ID);
+        assert!(server_handles
+            .iter()
+            .find(|server_handle| server_handle.reqrep_id() == REQREP_ID && server_handle.id() == server_handle_ref.id())
+            .is_none());
 
         let mut executor = global_executor();
         // GIVEN: the server is not running
