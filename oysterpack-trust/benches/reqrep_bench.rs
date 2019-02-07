@@ -52,11 +52,13 @@ use oysterpack_trust::{
 use futures::{
     channel::oneshot,
     future::{join_all, RemoteHandle},
+    future::{Future, FutureExt},
     stream::StreamExt,
     task::{Spawn, SpawnExt},
 };
 use oysterpack_log::*;
 use std::{
+    pin::Pin,
     thread,
     time::{Duration, Instant},
 };
@@ -64,7 +66,9 @@ use std::{
 struct EchoService;
 
 impl Processor<(), ()> for EchoService {
-    fn process(&mut self, req: ()) -> () {}
+    fn process(&mut self, req: ()) -> Pin<Box<Future<Output = ()> + Send>> {
+        futures::future::ready(()).boxed()
+    }
 }
 
 fn timer_buckets() -> metrics::TimerBuckets {

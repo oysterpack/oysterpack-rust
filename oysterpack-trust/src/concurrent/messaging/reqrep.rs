@@ -40,6 +40,7 @@ use crate::concurrent::{
 use crate::metrics;
 use futures::{
     channel,
+    future::{Future, FutureExt},
     sink::SinkExt,
     stream::StreamExt,
     task::{SpawnError, SpawnExt},
@@ -49,6 +50,7 @@ use oysterpack_uid::macros::ulid;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Debug},
+    pin::Pin,
     sync::RwLock,
     time::Duration,
 };
@@ -207,7 +209,7 @@ where
                 );
                 let req = msg.take_request().unwrap();
                 let start = clock.start();
-                let rep = processor.process(req);
+                let rep = await!(processor.process(req));
                 let end = clock.end();
                 if let Err(err) = msg.reply(rep) {
                     warn!("{}", err);
@@ -335,7 +337,7 @@ where
     Rep: Debug + Send + 'static,
 {
     /// request / reply processing
-    fn process(&mut self, req: Req) -> Rep;
+    fn process(&mut self, req: Req) -> Pin<Box<dyn Future<Output = Rep> + Send + 'static>>;
 }
 
 #[allow(warnings)]
@@ -394,8 +396,8 @@ mod tests {
         struct Inc;
 
         impl Processor<usize, usize> for Inc {
-            fn process(&mut self, req: usize) -> usize {
-                req + 1
+            fn process(&mut self, req: usize) -> Pin<Box<Future<Output = usize> + Send>> {
+                async move { req + 1 }.boxed()
             }
         }
         // ReqRep processor //

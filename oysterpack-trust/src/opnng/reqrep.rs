@@ -16,4 +16,5 @@
 
 //! Provides support for the request/reply messaging protocol.
 
+pub mod client;
 pub mod server;
