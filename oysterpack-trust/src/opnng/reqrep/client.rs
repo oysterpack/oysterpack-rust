@@ -16,56 +16,287 @@
 
 //! Provides an ReqRep nng client
 
-use crate::concurrent::messaging::reqrep;
+use crate::concurrent::{execution::Executor, messaging::reqrep};
 use crate::opnng::{self, config::SocketConfigError};
 use failure::Fail;
-use futures::future::Future;
+use futures::{
+    channel::{mpsc, oneshot},
+    future::FutureExt,
+    sink::SinkExt,
+    stream::StreamExt,
+    task::SpawnExt,
+};
+use lazy_static::lazy_static;
 use nng::options::Options;
+use oysterpack_log::*;
+use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, time::Duration};
+use std::{
+    num::NonZeroUsize,
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
+};
 
-/// nng client
-pub struct NngClient {
+lazy_static! {
+     /// Global Executor registry
+    static ref CLIENTS: RwLock<fnv::FnvHashMap<ULID, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
+}
+
+#[derive(Clone)]
+struct NngClientContext {
+    id: ULID,
     socket: nng::Socket,
     dialer: nng::Dialer,
+    aio_context_pool_borrow: crossbeam::Receiver<mpsc::Sender<Request>>,
+    aio_context_pool_return: crossbeam::Sender<mpsc::Sender<Request>>,
+}
+
+/// nng client
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct NngClient {
+    id: ULID,
 }
 
 impl NngClient {
     /// constructor
+    ///
+    /// ## Notes
+    /// The Executor is used to spawn tasks for handling the nng request / reply processing.
+    /// The parallelism defined by the DialerConfig corresponds to the number of Aio callbacks that
+    /// will be registered
     pub fn new(
         socket_config: Option<SocketConfig>,
         dialer_config: DialerConfig,
+        mut executor: Executor,
     ) -> Result<Self, NngClientError> {
-        let socket = SocketConfig::create_socket(socket_config)
-            .map_err(NngClientError::SockectCreateFailure)?;
-        let dialer = dialer_config
-            .start_dialer(&socket)
-            .map_err(NngClientError::DialerStartError)?;
-        Ok(Self { socket, dialer })
+        let id = ULID::generate();
+        let parallelism = dialer_config.parallelism();
+
+        let create_context = || {
+            let socket = SocketConfig::create_socket(socket_config)
+                .map_err(NngClientError::SocketCreateFailure)?;
+            let dialer = dialer_config
+                .start_dialer(&socket)
+                .map_err(NngClientError::DialerStartError)?;
+            let (tx, rx) = crossbeam::channel::bounded::<mpsc::Sender<Request>>(parallelism);
+            Ok(NngClientContext {
+                id,
+                socket,
+                dialer,
+                aio_context_pool_borrow: rx,
+                aio_context_pool_return: tx,
+            })
+        };
+
+        let mut start_workers = move |ctx: &NngClientContext| {
+            for i in 0..parallelism {
+                // used to notify the workers when an Aio event has occurred, i.e., the Aio callback has been invoked
+                let (aio_tx, mut aio_rx) = futures::channel::mpsc::unbounded::<()>();
+                // wrap aio_tx within a Mutex in order to make it unwind safe and usable within  Aio callback
+                let aio_tx = Mutex::new(aio_tx);
+                let context = nng::Context::new(&ctx.socket)
+                    .map_err(NngClientError::NngContextCreateFailed)?;
+                let callback_ctx = context.clone();
+                let aio = nng::Aio::with_callback(move |_aio| {
+                    match aio_tx.lock() {
+                        Ok(aio_tx) => {
+                            if let Err(err) = aio_tx.unbounded_send(()) {
+                                // means the channel has been disconnected because the worker Future task has completed
+                                // the server is either being stopped, or the worker has crashed
+                                // TODO: we need a way to know if the server is being shutdown
+                                warn!("Failed to nofify worker of Aio event. This means the worker is not running. The Aio Context will be closed: {}", err);
+                                // TODO: will cloning the Context work ? Context::close() cannot be invoked from the callback because it consumes the Context
+                                //       and rust won't allow it because the Context is being referenced by the FnMut closure
+                                callback_ctx.clone().close();
+                                // TODO: send an alert - if the worker crashed, i.e., panicked, then it may need to be restarted
+                            }
+                        }
+                        Err(err) => {
+                            // This should never happen
+                            error!("Failed to obtain lock on Aio sender channel. The Aio Context will be closed: {}", err);
+                            // TODO: will this work ? Calling close directly is not permitted by the compiler because Context.close consumes the
+                            //       object, but the compiler thinks the FnMut closure will be called again
+                            callback_ctx.clone().close();
+                            // TODO: trigger an alarm because this should never happen
+                        }
+                    };
+                }).map_err(NngClientError::NngAioCreateFailed)?;
+
+                let (req_tx, mut req_rx) = futures::channel::mpsc::channel::<Request>(1);
+                let aio_context_pool_return = ctx.aio_context_pool_return.clone();
+                if aio_context_pool_return.send(req_tx.clone()).is_err() {
+                    return Err(NngClientError::AioContextPoolChannelClosed);
+                }
+                executor.spawn(async move {
+                    debug!("[{}] NngClient Aio Context task is running: {}", i, id);
+                    while let Some(mut req) = await!(req_rx.next()) {
+                        if let Some(msg) = req.msg.take() {
+                            // send the request
+                            match context.send(&aio, msg) {
+                                Ok(_) => {
+                                    if await!(aio_rx.next()).is_none() {
+                                        debug!("[{}] NngClient Aio callback channel is closed: {}", i, id);
+                                        break
+                                    }
+                                    match aio.result().unwrap() {
+                                        Ok(_) => {
+                                            // TODO: set a timeout - see Aio::set_timeout()
+                                            // receive the reply
+                                            match context.recv(&aio) {
+                                                Ok(_) => {
+                                                    if await!(aio_rx.next()).is_none() {
+                                                        debug!("[{}] NngClient Aio callback channel is closed: {}", i, id);
+                                                        break
+                                                    }
+                                                    match aio.result().unwrap() {
+                                                        Ok(_) => {
+                                                            match aio.get_msg() {
+                                                                Some(reply) => {
+                                                                    let _ = req.reply_chan.send(Ok(reply));
+                                                                },
+                                                                None => {
+                                                                    let _ = req.reply_chan.send(Err(RequestError::NoReplyMessage));
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(err) => {
+                                                            let _ = req.reply_chan.send(Err(RequestError::RecvFailed(err)));
+                                                        }
+                                                    }
+                                                },
+                                                Err(err) => {
+                                                    let _ = req.reply_chan.send(Err(RequestError::RecvFailed(err)));
+                                                }
+                                            }
+                                        },
+                                        Err(err) => {
+                                            let _ = req.reply_chan.send(Err(RequestError::SendFailed(err)));
+                                        }
+                                    }
+                                },
+                                Err((_msg, err)) =>  {
+                                    let _ = req.reply_chan.send(Err(RequestError::SendFailed(err)));
+                                }
+                            }
+                        } else {
+                            let _ = req.reply_chan.send(Err(RequestError::InvalidRequest("BUG: Request was received with no nng::Message".to_string())));
+                        }
+                        if let Err(err) = aio_context_pool_return.send(req_tx.clone()) {
+                            error!("Failed to return request sender back to the pool: {}", err)
+                        }
+                        debug!("[{}] NngClient Aio Context task is done: {}", i, id);
+                    }
+                }).map_err(|err| NngClientError::AioContextTaskSpawnError(err.is_shutdown()))?;
+            }
+
+            Ok(())
+        };
+
+        let ctx = create_context()?;
+        start_workers(&ctx)?;
+
+        let mut clients = CLIENTS.write().unwrap();
+        clients.insert(ctx.id, Arc::new(ctx));
+
+        Ok(Self { id })
     }
 }
 
-impl reqrep::Processor<nng::Message, nng::Message> for NngClient {
-    fn process(&mut self, req: nng::Message) -> reqrep::FutureReply<nng::Message> {
-        unimplemented!()
-    }
-}
+impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for NngClient {
+    fn process(
+        &mut self,
+        req: nng::Message,
+    ) -> reqrep::FutureReply<Result<nng::Message, RequestError>> {
+        let id = self.id;
 
-impl fmt::Debug for NngClient {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "NngClient")
+        async move {
+            let (tx, rx) = oneshot::channel();
+            let request = Request {
+                msg: Some(req),
+                reply_chan: tx,
+            };
+
+            let client = {
+                let clients = CLIENTS.read().unwrap();
+                clients
+                    .get(&id)
+                    .ok_or(RequestError::ClientNotRegistered)?
+                    .clone()
+            };
+
+            match client.aio_context_pool_borrow.recv() {
+                Ok(ref mut sender) => match await!(sender.send(request)) {
+                    Ok(_) => match await!(rx) {
+                        Ok(result) => result,
+                        Err(_) => Err(RequestError::ReplyChannelClosed),
+                    },
+                    Err(err) => Err(RequestError::AioContextChannelDisconnected(err)),
+                },
+                Err(err) => Err(RequestError::NngAioContentPoolChannelDisconnected(err)),
+            }
+        }
+            .boxed()
     }
 }
 
 /// NngClient related errors
 #[derive(Debug, Fail)]
 pub enum NngClientError {
-    /// Failed to create DialerOptions
-    #[fail(display = "Failed to create DialerOptions: {}", _0)]
-    SockectCreateFailure(SocketConfigError),
+    /// Failed to create Socket
+    #[fail(display = "Failed to create Socket: {}", _0)]
+    SocketCreateFailure(SocketConfigError),
     /// Failed to start Dialer
     #[fail(display = "Failed to start Dialer: {}", _0)]
     DialerStartError(DialerConfigError),
+    /// Failed to create nng::Context
+    #[fail(display = "Failed to create nng::Context: {}", _0)]
+    NngContextCreateFailed(nng::Error),
+    /// Failed to create nng::Aio
+    #[fail(display = "Failed to create nng::Aio: {}", _0)]
+    NngAioCreateFailed(nng::Error),
+    /// The Aio Context pool channel is closed
+    #[fail(display = "The Aio Context pool channel is closed")]
+    AioContextPoolChannelClosed,
+    /// Failed to spawn Aio Context request handler task
+    #[fail(
+        display = "Failed to spawn Aio Context request handler task: executor is shutdown = {}",
+        _0
+    )]
+    AioContextTaskSpawnError(bool),
+}
+
+/// Request related errors
+#[derive(Debug, Fail)]
+pub enum RequestError {
+    ///
+    #[fail(display = "Client is not registered")]
+    ClientNotRegistered,
+    ///
+    #[fail(display = "The nng Aio Context pool channel is disconnected: {}", _0)]
+    NngAioContentPoolChannelDisconnected(crossbeam::channel::RecvError),
+    ///
+    #[fail(display = "The nng Aio Context channel is disconnected: {}", _0)]
+    AioContextChannelDisconnected(futures::channel::mpsc::SendError),
+    ///
+    #[fail(display = "Reply channel closed")]
+    ReplyChannelClosed,
+    /// Failed to send the request
+    #[fail(display = "Failed to send request: {}", _0)]
+    SendFailed(nng::Error),
+    /// Failed to receive the reply
+    #[fail(display = "Failed to receive reply: {}", _0)]
+    RecvFailed(nng::Error),
+    /// Empty message
+    #[fail(display = "Invalid request: {}", _0)]
+    InvalidRequest(String),
+    /// No reply message
+    #[fail(display = "BUG: No reply message was found - this should never happen")]
+    NoReplyMessage,
+}
+
+struct Request {
+    msg: Option<nng::Message>,
+    reply_chan: oneshot::Sender<Result<nng::Message, RequestError>>,
 }
 
 /// Socket Settings

@@ -195,6 +195,7 @@ where
         let reqrep_service_metrics = reqrep_service_metrics();
 
         let service = async move {
+            processor.init();
             reqrep_service_metrics.service_count.inc();
             let clock = quanta::Clock::new();
             let mut request_count: u64 = 0;
@@ -225,6 +226,7 @@ where
                 );
             }
             reqrep_service_metrics.service_count.dec();
+            processor.destroy();
         };
         executor.spawn(service)?;
         Ok(reqrep)
@@ -331,6 +333,7 @@ where
 }
 
 /// Request/reply message processor
+/// - the `init()` and `destroy()` are lifecycle hooks, which by default are noop
 pub trait Processor<Req, Rep>
 where
     Req: Debug + Send + 'static,
@@ -338,6 +341,12 @@ where
 {
     /// request / reply processing
     fn process(&mut self, req: Req) -> FutureReply<Rep>;
+
+    /// Invoked before any messages have been sent
+    fn init(&mut self) {}
+
+    /// Invoked when the message processor service is being shutdown
+    fn destroy(&mut self) {}
 }
 
 /// Pinned Boxed Future type alias
