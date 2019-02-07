@@ -40,7 +40,7 @@ use crate::concurrent::{
 use crate::metrics;
 use futures::{
     channel,
-    future::{Future, FutureExt},
+    future::Future,
     sink::SinkExt,
     stream::StreamExt,
     task::{SpawnError, SpawnExt},
@@ -337,17 +337,22 @@ where
     Rep: Debug + Send + 'static,
 {
     /// request / reply processing
-    fn process(&mut self, req: Req) -> Pin<Box<dyn Future<Output = Rep> + Send + 'static>>;
+    fn process(&mut self, req: Req) -> FutureReply<Rep>;
 }
+
+/// Pinned Boxed Future type alias
+pub type FutureReply<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::concurrent::execution::global_executor;
+    use crate::concurrent::messaging::reqrep;
     use crate::configure_logging;
     use futures::{
         channel::oneshot,
+        future::FutureExt,
         stream::StreamExt,
         task::{Spawn, SpawnExt},
     };
@@ -396,7 +401,7 @@ mod tests {
         struct Inc;
 
         impl Processor<usize, usize> for Inc {
-            fn process(&mut self, req: usize) -> Pin<Box<Future<Output = usize> + Send>> {
+            fn process(&mut self, req: usize) -> reqrep::FutureReply<usize> {
                 async move { req + 1 }.boxed()
             }
         }

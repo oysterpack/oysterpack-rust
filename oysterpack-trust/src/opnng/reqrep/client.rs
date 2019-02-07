@@ -22,7 +22,7 @@ use failure::Fail;
 use futures::future::Future;
 use nng::options::Options;
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, pin::Pin, time::Duration};
+use std::{fmt, num::NonZeroUsize, time::Duration};
 
 /// nng client
 pub struct NngClient {
@@ -46,7 +46,7 @@ impl NngClient {
 }
 
 impl reqrep::Processor<nng::Message, nng::Message> for NngClient {
-    fn process(&mut self, req: nng::Message) -> Pin<Box<Future<Output = nng::Message> + Send>> {
+    fn process(&mut self, req: nng::Message) -> reqrep::FutureReply<nng::Message> {
         unimplemented!()
     }
 }

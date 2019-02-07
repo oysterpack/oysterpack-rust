@@ -22,13 +22,7 @@ use crate::concurrent::messaging::reqrep::{ReqRep, ReqRepId};
 use crate::metrics;
 use crate::opnng::config::{SocketConfig, SocketConfigError};
 use failure::Fail;
-use futures::{
-    future::{Future, FutureExt},
-    prelude::*,
-    sink::SinkExt,
-    stream::StreamExt,
-    task::SpawnExt,
-};
+use futures::{future::FutureExt, prelude::*, sink::SinkExt, stream::StreamExt, task::SpawnExt};
 use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
@@ -37,7 +31,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     num::NonZeroUsize,
-    pin::Pin,
     sync::Mutex,
     sync::{Arc, RwLock},
 };
@@ -815,7 +808,10 @@ pub enum ListenerConfigError {
 mod tests {
     use super::*;
     use crate::{
-        concurrent::{execution::*, messaging::reqrep::*},
+        concurrent::{
+            execution::*,
+            messaging::reqrep::{self, *},
+        },
         configure_logging, metrics,
     };
     use oysterpack_uid::ULID;
@@ -824,7 +820,7 @@ mod tests {
 
     struct EchoService;
     impl Processor<nng::Message, nng::Message> for EchoService {
-        fn process(&mut self, req: nng::Message) -> Pin<Box<Future<Output = nng::Message> + Send>> {
+        fn process(&mut self, req: nng::Message) -> reqrep::FutureReply<nng::Message> {
             async move { req }.boxed()
         }
     }

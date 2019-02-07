@@ -45,7 +45,10 @@ Summary
 #![allow(warnings)]
 
 use oysterpack_trust::{
-    concurrent::{execution::*, messaging::reqrep::*},
+    concurrent::{
+        execution::*,
+        messaging::reqrep::{self, *},
+    },
     metrics,
 };
 
@@ -66,7 +69,7 @@ use std::{
 struct EchoService;
 
 impl Processor<(), ()> for EchoService {
-    fn process(&mut self, req: ()) -> Pin<Box<Future<Output = ()> + Send>> {
+    fn process(&mut self, req: ()) -> reqrep::FutureReply<()> {
         futures::future::ready(()).boxed()
     }
 }
