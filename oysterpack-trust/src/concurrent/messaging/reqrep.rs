@@ -30,8 +30,6 @@
 //! The beauty of this design is that the client and service are decoupled. Clients and services can
 //! be distributed over the network or be running on the same machine. This also makes it easy to mock
 //! services for testing purposes.
-//! - the trade off is the messaging overhead over the channels, which should be acceptable for distributed
-//!   microservice architectures
 
 use crate::concurrent::{
     execution::Executor,

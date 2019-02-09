@@ -21,7 +21,6 @@
 //! - [global executor](fn.global_executor.html)
 //!
 //! ## Metrics
-//! - Executor related metrics can be collected via [gather_metrics](fn.gather_metrics.html)
 //! - number of spawned tasks per Executor
 //! - number of completed tasks per Executor
 //! - number of threads started
