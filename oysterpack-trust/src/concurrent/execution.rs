@@ -44,18 +44,44 @@ lazy_static! {
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
+
+    /// Metric: Executor thread pool sizes
+    static ref THREAD_POOL_SIZE_GAUGE: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
+        THREADS_POOL_SIZE_GAUGE_METRIC_ID,
+        "Thread pool size".to_string(),
+        &[EXECUTOR_ID_LABEL_ID],
+        None
+    ).unwrap();
+
+    /// Metric: Total number of Executor threads that have been started
+    static ref THREADS_STARTED_TOTAL_COUNTER: prometheus::IntCounter = metrics::registry().register_int_counter(
+        THREADS_STARTED_TOTAL_COUNTER_METRIC_ID,
+        "Total number of threads that have been started across all Executors".to_string(),
+        None
+    ).unwrap();
+
 }
 
 /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
 pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1872376925834227814610238473431346961);
+/// MetricId for total number of Executor threads that have been started: `01D3950A0931ESKR66XG7KMD7Z`
+pub const THREADS_STARTED_TOTAL_COUNTER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873492525732701726868218222598567167);
+/// MetricId for total number of Executor threads that have been started: `01D395423XG3514YP762RYTDJ1`
+pub const THREADS_POOL_SIZE_GAUGE_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873492674426234963241985324245399105);
 /// The ExecutorId will be used as the label value: `L01D2DN1VBMW6XC7EQ971PBGW68`
 pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872377054303353796724661249788899528);
 
 /// Gathers Executor related metrics
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    metrics::registry().gather_metrics_by_name(&[SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str()])
+    metrics::registry().gather_metrics_by_name(&[
+        SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str(),
+        THREADS_STARTED_TOTAL_COUNTER_METRIC_ID.name().as_str(),
+        THREADS_POOL_SIZE_GAUGE_METRIC_ID.name().as_str(),
+    ])
 }
 
 /// An executor can only be registered once, and once it is registered, it stays registered for the
@@ -104,6 +130,18 @@ pub fn global_executor() -> Executor {
 pub fn spawned_task_count() -> u64 {
     let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.spawned_task_count()
+}
+
+/// Returns the total number of threads that have been started across all Executors
+/// - this is not the active count
+pub fn total_threads_started() -> u64 {
+    THREADS_STARTED_TOTAL_COUNTER.get() as u64
+}
+
+/// Returns the current thread pool sizes for the currently registered Executors
+pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, u64)> {
+    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    executors.executor_thread_pool_sizes()
 }
 
 /// Executor registry
@@ -163,6 +201,14 @@ impl ExecutorRegistry {
             self.global_executor.spawned_task_count(),
             |sum, executor| sum + executor.spawned_task_count(),
         )
+    }
+
+    /// Returns the current thread pool sizes for the currently registered Executors
+    pub fn executor_thread_pool_sizes(&self) -> Vec<(ExecutorId, u64)> {
+        self.thread_pools
+            .iter()
+            .map(|(executor_id, executor)| (*executor_id, executor.thread_pool_size()))
+            .collect()
     }
 }
 
@@ -309,6 +355,13 @@ impl Executor {
     pub fn spawned_task_count(&self) -> u64 {
         self.spawned_task_counter.get() as u64
     }
+
+    /// returns the current thread pool size
+    pub fn thread_pool_size(&self) -> u64 {
+        let executor_thread_gauge =
+            THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
+        executor_thread_gauge.get() as u64
+    }
 }
 
 impl Spawn for Executor {
@@ -408,17 +461,24 @@ impl ExecutorBuilder {
     }
 
     fn builder(&self) -> ThreadPoolBuilder {
+        let threads_started_counter = THREADS_STARTED_TOTAL_COUNTER.clone();
+        let executor_thread_gauge_after_start =
+            THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
+        let executor_thread_gauge_before_stop = executor_thread_gauge_after_start.clone();
         let mut builder = ThreadPool::builder();
         builder
             .name_prefix(format!("{}-", self.id))
-            .after_start(|thread_index| {
+            .after_start(move |thread_index| {
+                threads_started_counter.inc();
+                executor_thread_gauge_after_start.inc();
                 debug!(
                     "Executer thread has started: {}-{}",
                     Executor::GLOBAL_EXECUTOR_ID,
                     thread_index
                 )
             })
-            .before_stop(|thread_index| {
+            .before_stop(move |thread_index| {
+                executor_thread_gauge_before_stop.dec();
                 debug!(
                     "Executer thread is stopping: {}-{}",
                     Executor::GLOBAL_EXECUTOR_ID,
@@ -455,16 +515,21 @@ mod tests {
     fn global_executor() {
         configure_logging();
 
+        // GIVEN: Tasks are spawned
         let EXECUTOR_ID = ExecutorId::generate();
         let mut executor = ExecutorBuilder::new(EXECUTOR_ID).register().unwrap();
+        // GIVEN: sub tasks are spawned on the parent task executor
         let mut task_executor = executor.clone();
+        // GIVEN: TASK #1 is spawned
         executor.spawn(
             async move {
                 info!("global_executor(): task #1");
                 let mut task_executor_2 = task_executor.clone();
+                // GIVEN: SUB TASK #1.1 is spawned
                 task_executor.spawn(
                     async move {
                         info!("global_executor(): task #1.1");
+                        // GIVEN: SUB TASK #1.1.1 is spawned
                         await!(task_executor_2
                             .spawn_with_handle(
                                 async move { info!("global_executor(): task #1.1.1") }
@@ -474,21 +539,28 @@ mod tests {
                 );
             },
         );
+
+        // GIVEN: TASK #2 is spawned on the same executor as TASK #1
         let mut task_executor = executor.clone();
         let task_handle = executor
             .spawn_with_handle(
                 async move {
                     info!("global_executor(): task #2");
+                    // GIVEN: TASK #2.1 is spawned on the same executor as TASK #1
                     await!(task_executor
                         .spawn_with_handle(async { info!("global_executor(): task #2.1") })
                         .unwrap());
                 },
             )
             .unwrap();
+
+        // THEN: wait for TASK #2 to complete
         executor.run(task_handle);
+        // THEN: wait for TASK #3 to complete
         executor.run(async { info!("global_executor(): task #3") });
         thread::yield_now();
 
+        // returns the spawned task count for the above Executor
         let get_counter = || {
             let gathered_metrics = metrics::registry().gather();
             info!("gathered_metrics: {:#?}", gathered_metrics);
@@ -515,6 +587,7 @@ mod tests {
             metric.get_counter().clone()
         };
 
+        // THEN: wait until the tasks have completed
         for i in 0..5 {
             if get_counter().get_value() < 5.0 {
                 info!(
@@ -526,23 +599,28 @@ mod tests {
                 break;
             }
         }
+
+        // THEN: the spawned task count should match
         assert_eq!(get_counter().get_value() as u64, 5);
         assert_eq!(
             executor.spawned_task_count(),
             get_counter().get_value() as u64
         );
 
+        // WHEN: the total spawned task count is gathered directly from metrics
         let mfs = gather_metrics();
         info!("Executor metrics: {:#?}", mfs);
         let total_spawned_task_count: u64 = mfs
             .iter()
+            .filter(|mf| mf.get_name() == SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str())
             .flat_map(|mf| mf.get_metric())
             .map(|metric| metric.get_counter().get_value() as u64)
             .collect::<Vec<_>>()
             .iter()
             .sum();
-        // there may be a race condition when tests are un in parallel that are spawning tests
-        assert_eq!(total_spawned_task_count, spawned_task_count());
+        // THEN: it should match the count from `spawned_task_count()`
+        // there may be a race condition when tests are run in parallel that are spawning tasks
+        assert!(total_spawned_task_count <= spawned_task_count());
     }
 
     #[test]
