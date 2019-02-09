@@ -112,7 +112,7 @@ impl NngClient {
     /// ## Notes
     /// The Executor is used to spawn tasks for handling the nng request / reply processing.
     /// The parallelism defined by the DialerConfig corresponds to the number of Aio callbacks that
-    /// will be registered
+    /// will be registered, which corresponds to the number of Aio Context handler tasks spawned.
     pub fn new(
         socket_config: Option<SocketConfig>,
         dialer_config: DialerConfig,
@@ -307,6 +307,13 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                 .unwrap()
                 .close();
             debug!("NngClient({}): nng::Socket is closed", self.id);
+
+            // drain the aio_context_pool_borrow channel and close the Aio Context handler channels
+            // - this is required in order for the AIO Context handler tasks to exit
+            while let Ok(mut sender) = self.aio_context_pool_borrow.try_recv() {
+                sender.close_channel();
+                debug!("NngClient({}): Aio Context channel is closed", self.id);
+            }
         }
         debug!("NngClient({}) is destroyed", self.id);
     }
@@ -746,7 +753,7 @@ mod tests {
         .unwrap()
     }
 
-    fn start_client(url: &str) -> Client {
+    fn start_client(url: &str) -> (Client, ExecutorId) {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![
                 Duration::from_nanos(50),
@@ -757,17 +764,18 @@ mod tests {
             .as_slice(),
         );
 
-        super::register_client(
+        let client_executor_id = ExecutorId::generate();
+        let client = super::register_client(
             ReqRepServiceConfig::new(REQREP_ID, 1, global_executor().clone(), timer_buckets),
             None,
             DialerConfig::new(url),
             {
-                let client_executor_id = ExecutorId::generate();
                 let mut threadpool_builder = ThreadPoolBuilder::new();
                 execution::register(client_executor_id, &mut threadpool_builder).unwrap()
             },
         )
-        .unwrap()
+        .unwrap();
+        (client, client_executor_id)
     }
 
     #[test]
@@ -789,25 +797,9 @@ mod tests {
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let mut client = start_client(&url);
+        let (mut client, client_executor_id) = start_client(&url);
         // THEN: the client ReqRepId should match
         assert_eq!(client.id(), REQREP_ID);
-
-        let reply: nng::Message = executor
-            .spawn_await(
-                async move {
-                    // WHEN: the client is looked up by ReqRepId
-                    let mut client = super::client(REQREP_ID).unwrap();
-                    // WHEN: a request is sent
-                    let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
-                        await!(client.send(nng::Message::new().unwrap())).unwrap();
-                    // THEN: a reply is received
-                    await!(reply_receiver.recv()).unwrap().unwrap()
-                },
-            )
-            .unwrap();
-        info!("+++ reply = {:?}", reply);
-
         // WHEN: the client is dropped
         drop(client);
         const REQUEST_COUNT: usize = 100;
@@ -837,7 +829,12 @@ mod tests {
 
         // WHEN: the last client reference is dropped
         drop(client);
-        // THEN: the backend client service should stop
+        thread::yield_now();
+        let executor = execution::executor(client_executor_id).unwrap();
+        while executor.active_task_count() != 0 {
+            info!("waiting for NngClient Aio Context handler tasks to exit: executor.active_task_count() = {}", executor.active_task_count());
+            thread::yield_now();
+        }
     }
 
     #[test]
@@ -861,7 +858,7 @@ mod tests {
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let mut client = start_client(&url);
+        let (mut client, client_executor_id) = start_client(&url);
 
         const TASK_COUNT: usize = 10;
         const REQUEST_COUNT: usize = 100;

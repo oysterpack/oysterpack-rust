@@ -19,15 +19,17 @@
 /*
 Test Results
 ====================================================================================================
-*** count = 100000, duration = 78ns, ns/req = 0
-[INFO][2019-01-30T23:22:02.556Z][reqrep_function_single_threaded_baseline][reqrep_bench:207]
-*** count = 100000, duration = 823.307µs, ns/req = 8
-[INFO][2019-01-30T23:22:03.631Z][reqrep_bench_single_threaded][reqrep_bench:214]
-*** count = 100000, duration = 1.074568774s, ns/req = 10745
-[INFO][2019-01-30T23:22:03.700Z][reqrep_function_multi_threaded_baseline][reqrep_bench:221]
-*** count = 100000, duration = 69.123933ms, ns/req = 691
-[INFO][2019-01-30T23:22:03.883Z][reqrep_bench_multi_threaded][reqrep_bench:228]
-*** count = 100000, duration = 176.641612ms, ns/req = 1766
+[INFO][2019-02-09T15:22:44.425Z][reqrep_function_single_threaded_sync_baseline][reqrep_bench:238]
+*** count = 100000, duration = 151ns, ns/req = 0
+[INFO][2019-02-09T15:22:44.427Z][reqrep_function_single_threaded_baseline][reqrep_bench:245]
+*** count = 100000, duration = 1.459436ms, ns/req = 14
+[INFO][2019-02-09T15:22:45.580Z][reqrep_bench_single_threaded][reqrep_bench:252]
+*** count = 100000, duration = 1.152367149s, ns/req = 11523
+[INFO][2019-02-09T15:22:45.659Z][reqrep_function_multi_threaded_baseline][reqrep_bench:259]
+*** count = 100000, duration = 78.94042ms, ns/req = 789
+[INFO][2019-02-09T15:22:45.853Z][reqrep_bench_multi_threaded][reqrep_bench:266]
+*** count = 100000, duration = 186.815473ms, ns/req = 1868
+[INFO][2019-02-09T15:22:45.853Z][reqrep_bench metrics][reqrep_bench:271]
 ====================================================================================================
 Analysis
 - the async overhead is ~7650x as compared to calling the function directly

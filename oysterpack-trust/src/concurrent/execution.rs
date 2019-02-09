@@ -24,7 +24,7 @@ use failure::Fail;
 use futures::{
     channel,
     executor::{ThreadPool, ThreadPoolBuilder},
-    future::{Future, FutureObj},
+    future::{Future, FutureExt, FutureObj},
     task::{Spawn, SpawnError, SpawnExt},
 };
 use lazy_static::lazy_static;
@@ -41,6 +41,14 @@ lazy_static! {
     static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         SPAWNED_TASK_COUNTER_METRIC_ID,
         "Number of tasks that the Executor has spawned".to_string(),
+        &[EXECUTOR_ID_LABEL_ID],
+        None
+    ).unwrap();
+
+    /// Metric: Number of tasks that the Executor has completed
+    static ref COMPLETED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        COMPLETED_TASK_COUNTER_METRIC_ID,
+        "Number of tasks that the Executor has completed".to_string(),
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -65,6 +73,9 @@ lazy_static! {
 /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
 pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1872376925834227814610238473431346961);
+/// MetricId for spawned task counter: `01D39C05YGY6NY3RD18TJ6975H`
+pub const COMPLETED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1873501394267260593175681052637961393);
 /// MetricId for total number of Executor threads that have been started: `01D3950A0931ESKR66XG7KMD7Z`
 pub const THREADS_STARTED_TOTAL_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1873492525732701726868218222598567167);
@@ -79,6 +90,7 @@ pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
     metrics::registry().gather_metrics_by_name(&[
         SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str(),
+        COMPLETED_TASK_COUNTER_METRIC_ID.name().as_str(),
         THREADS_STARTED_TOTAL_COUNTER_METRIC_ID.name().as_str(),
         THREADS_POOL_SIZE_GAUGE_METRIC_ID.name().as_str(),
     ])
@@ -249,6 +261,7 @@ pub struct Executor {
     id: ExecutorId,
     thread_pool: ThreadPool,
     spawned_task_counter: prometheus::IntCounter,
+    completed_task_counter: prometheus::IntCounter,
 }
 
 impl fmt::Debug for Executor {
@@ -263,13 +276,15 @@ impl Executor {
 
     /// constructor
     fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorRegistryError> {
+        let label_name = id.to_string();
+        let labels = [label_name.as_str()];
         Ok(Self {
             id,
             thread_pool: builder
                 .create()
                 .map_err(ExecutorRegistryError::ThreadPoolCreateFailed)?,
-            spawned_task_counter: SPAWNED_TASK_COUNTER
-                .with_label_values(&[id.to_string().as_str()]),
+            spawned_task_counter: SPAWNED_TASK_COUNTER.with_label_values(&labels),
+            completed_task_counter: COMPLETED_TASK_COUNTER.with_label_values(&labels),
         })
     }
 
@@ -351,9 +366,19 @@ impl Executor {
         Ok(receiver)
     }
 
-    /// returns the number of tasks that have been spawned by this Executor
+    /// returns the number of tasks that the Executor has spawned
     pub fn spawned_task_count(&self) -> u64 {
         self.spawned_task_counter.get() as u64
+    }
+
+    /// retuns the number of tasks that the Executor has completed
+    pub fn completed_task_count(&self) -> u64 {
+        self.completed_task_counter.get() as u64
+    }
+
+    /// returns the number of active tasks, i.e., the difference between spawned and completed
+    pub fn active_task_count(&self) -> u64 {
+        self.spawned_task_count() - self.completed_task_count()
     }
 
     /// returns the current thread pool size
@@ -366,7 +391,17 @@ impl Executor {
 
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-        self.thread_pool.spawn_obj(future)?;
+        let completed_task_counter = self.completed_task_counter.clone();
+        //        let future = future.map( move |result| {
+        //            completed_task_counter.inc();
+        //            result
+        //        }).boxed();
+        let future = async move {
+            await!(future);
+            completed_task_counter.inc();
+        }
+            .boxed();
+        self.thread_pool.spawn_obj(FutureObj::new(future))?;
         self.spawned_task_counter.inc();
         Ok(())
     }
@@ -621,6 +656,15 @@ mod tests {
         // THEN: it should match the count from `spawned_task_count()`
         // there may be a race condition when tests are run in parallel that are spawning tasks
         assert!(total_spawned_task_count <= spawned_task_count());
+
+        // THEN: all tasks should be completed
+        while executor.active_task_count() != 0 {
+            info!(
+                "waiting for tasks to complete: executor.active_task_count() = {}",
+                executor.active_task_count()
+            );
+            thread::yield_now();
+        }
     }
 
     #[test]
