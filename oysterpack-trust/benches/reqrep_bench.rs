@@ -48,7 +48,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-criterion_group!(benches, reqrep_bench_bench,);
+criterion_group!(benches, reqrep_bench,);
 
 criterion_main!(benches);
 
@@ -69,8 +69,8 @@ lazy_static! {
 }
 
 /// measures how long a request/reply message flow takes
-fn reqrep_bench_bench(c: &mut Criterion) {
-    c.bench_function("reqrep_bench_bench", move |b| {
+fn reqrep_bench(c: &mut Criterion) {
+    c.bench_function("reqrep_bench", move |b| {
         let mut executor = global_executor();
         b.iter(|| {
             executor.run(

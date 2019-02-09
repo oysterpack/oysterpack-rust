@@ -52,5 +52,9 @@ name = "reqrep_bench"
 harness = false
 
 [[bench]]
+name = "nng_reqrep_bench"
+harness = false
+
+[[bench]]
 name = "metrics_bench"
 harness = false
