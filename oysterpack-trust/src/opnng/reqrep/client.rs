@@ -16,7 +16,10 @@
 
 //! Provides an ReqRep nng client
 
-use crate::concurrent::{execution::Executor, messaging::reqrep};
+use crate::concurrent::{
+    execution::Executor,
+    messaging::reqrep::{self, ReqRep, ReqRepId},
+};
 use crate::opnng::{self, config::SocketConfigError};
 use failure::Fail;
 use futures::{
@@ -38,23 +41,69 @@ use std::{
 };
 
 lazy_static! {
-     /// Global Executor registry
-    static ref CLIENTS: RwLock<fnv::FnvHashMap<ULID, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
+     /// Global Client contexts
+    static ref CLIENT_CONTEXTS: RwLock<fnv::FnvHashMap<ULID, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
+
+    /// Global ReqRep nng client registry
+    static ref CLIENTS: RwLock<fnv::FnvHashMap<ReqRepId, Client>> = RwLock::new(fnv::FnvHashMap::default());
 }
 
+/// Client type alias
+pub type Client = ReqRep<nng::Message, Result<nng::Message, RequestError>>;
+
+/// If a client with the same ReqRepId is currently registered, then it will be returned.
+/// Otherwise, a new client instance is started and registered.
+pub fn register_client(
+    reqrep_service_config: reqrep::ReqRepServiceConfig,
+    socket_config: Option<SocketConfig>,
+    dialer_config: DialerConfig,
+    executor: Executor,
+) -> Result<Client, NngClientError> {
+    let mut clients = CLIENTS.write().unwrap();
+    let reqrep = match clients.get(&reqrep_service_config.reqrep_id()) {
+        Some(reqrep) => reqrep.clone(),
+        None => {
+            let nng_client = NngClient::new(socket_config, dialer_config, executor)?;
+            let reqrep = reqrep_service_config
+                .start_service(nng_client)
+                .map_err(|err| NngClientError::ReqRepServiceStartFailed(err.is_shutdown()))?;
+            let _ = clients.insert(reqrep.id(), reqrep.clone());
+            reqrep
+        }
+    };
+    Ok(reqrep)
+}
+
+/// Unregisters the client from the global registry
+pub fn unregister_client(reqrep_id: ReqRepId) -> Option<Client> {
+    let mut clients = CLIENTS.write().unwrap();
+    clients.remove(&reqrep_id)
+}
+
+/// Returns the client if it is registered
+pub fn client(reqrep_id: ReqRepId) -> Option<Client> {
+    CLIENTS.read().unwrap().get(&reqrep_id).cloned()
+}
+
+/// Returns set of registered ReqRepId(s)
+pub fn registered_client_ids() -> Vec<ReqRepId> {
+    CLIENTS.read().unwrap().keys().cloned().collect()
+}
+
+/// The context that is required by the NngClient's backend service.
 #[derive(Clone)]
 struct NngClientContext {
     id: ULID,
-    socket: nng::Socket,
-    dialer: nng::Dialer,
-    aio_context_pool_borrow: crossbeam::Receiver<mpsc::Sender<Request>>,
+    socket: Option<nng::Socket>,
+    dialer: Option<nng::Dialer>,
     aio_context_pool_return: crossbeam::Sender<mpsc::Sender<Request>>,
 }
 
 /// nng client
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone)]
 pub struct NngClient {
     id: ULID,
+    aio_context_pool_borrow: crossbeam::Receiver<mpsc::Sender<Request>>,
 }
 
 impl NngClient {
@@ -71,20 +120,21 @@ impl NngClient {
     ) -> Result<Self, NngClientError> {
         let id = ULID::generate();
         let parallelism = dialer_config.parallelism();
+        let (aio_context_pool_return, aio_context_pool_borrow) =
+            crossbeam::channel::bounded::<mpsc::Sender<Request>>(parallelism);
 
-        let create_context = || {
+        let create_context = move || {
             let socket = SocketConfig::create_socket(socket_config)
                 .map_err(NngClientError::SocketCreateFailure)?;
             let dialer = dialer_config
                 .start_dialer(&socket)
                 .map_err(NngClientError::DialerStartError)?;
-            let (tx, rx) = crossbeam::channel::bounded::<mpsc::Sender<Request>>(parallelism);
+
             Ok(NngClientContext {
                 id,
-                socket,
-                dialer,
-                aio_context_pool_borrow: rx,
-                aio_context_pool_return: tx,
+                socket: Some(socket),
+                dialer: Some(dialer),
+                aio_context_pool_return,
             })
         };
 
@@ -94,7 +144,7 @@ impl NngClient {
                 let (aio_tx, mut aio_rx) = futures::channel::mpsc::unbounded::<()>();
                 // wrap aio_tx within a Mutex in order to make it unwind safe and usable within  Aio callback
                 let aio_tx = Mutex::new(aio_tx);
-                let context = nng::Context::new(&ctx.socket)
+                let context = nng::Context::new(ctx.socket.as_ref().unwrap())
                     .map_err(NngClientError::NngContextCreateFailed)?;
                 let callback_ctx = context.clone();
                 let aio = nng::Aio::with_callback(move |_aio| {
@@ -128,14 +178,15 @@ impl NngClient {
                     return Err(NngClientError::AioContextPoolChannelClosed);
                 }
                 executor.spawn(async move {
-                    debug!("[{}] NngClient Aio Context task is running: {}", i, id);
+                    debug!("[{}-{}] NngClient Aio Context task is running", id, i);
                     while let Some(mut req) = await!(req_rx.next()) {
+                        debug!("[{}-{}] NngClient: processing request", id, i);
                         if let Some(msg) = req.msg.take() {
                             // send the request
                             match context.send(&aio, msg) {
                                 Ok(_) => {
                                     if await!(aio_rx.next()).is_none() {
-                                        debug!("[{}] NngClient Aio callback channel is closed: {}", i, id);
+                                        debug!("[{}-{}] NngClient Aio callback channel is closed", id, i);
                                         break
                                     }
                                     match aio.result().unwrap() {
@@ -145,7 +196,7 @@ impl NngClient {
                                             match context.recv(&aio) {
                                                 Ok(_) => {
                                                     if await!(aio_rx.next()).is_none() {
-                                                        debug!("[{}] NngClient Aio callback channel is closed: {}", i, id);
+                                                        debug!("[{}-{}] NngClient Aio callback channel is closed", id, i);
                                                         break
                                                     }
                                                     match aio.result().unwrap() {
@@ -161,31 +212,36 @@ impl NngClient {
                                                         }
                                                         Err(err) => {
                                                             let _ = req.reply_chan.send(Err(RequestError::RecvFailed(err)));
+                                                            aio.cancel();
                                                         }
                                                     }
                                                 },
                                                 Err(err) => {
                                                     let _ = req.reply_chan.send(Err(RequestError::RecvFailed(err)));
+                                                    aio.cancel();
                                                 }
                                             }
                                         },
                                         Err(err) => {
                                             let _ = req.reply_chan.send(Err(RequestError::SendFailed(err)));
+                                            aio.cancel();
                                         }
                                     }
                                 },
                                 Err((_msg, err)) =>  {
                                     let _ = req.reply_chan.send(Err(RequestError::SendFailed(err)));
+                                    aio.cancel();
                                 }
                             }
                         } else {
                             let _ = req.reply_chan.send(Err(RequestError::InvalidRequest("BUG: Request was received with no nng::Message".to_string())));
                         }
                         if let Err(err) = aio_context_pool_return.send(req_tx.clone()) {
-                            error!("Failed to return request sender back to the pool: {}", err)
+                            error!("[{}-{}] Failed to return request sender back to the pool: {}",id, i, err)
                         }
-                        debug!("[{}] NngClient Aio Context task is done: {}", i, id);
+                        debug!("[{}-{}] NngClient: request is done", id, i);
                     }
+                    debug!("[{}-{}] NngClient Aio Context task is done", id, i);
                 }).map_err(|err| NngClientError::AioContextTaskSpawnError(err.is_shutdown()))?;
             }
 
@@ -195,10 +251,13 @@ impl NngClient {
         let ctx = create_context()?;
         start_workers(&ctx)?;
 
-        let mut clients = CLIENTS.write().unwrap();
+        let mut clients = CLIENT_CONTEXTS.write().unwrap();
         clients.insert(ctx.id, Arc::new(ctx));
 
-        Ok(Self { id })
+        Ok(Self {
+            id,
+            aio_context_pool_borrow,
+        })
     }
 }
 
@@ -207,7 +266,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
         &mut self,
         req: nng::Message,
     ) -> reqrep::FutureReply<Result<nng::Message, RequestError>> {
-        let id = self.id;
+        let aio_context_pool_borrow = self.aio_context_pool_borrow.clone();
 
         async move {
             let (tx, rx) = oneshot::channel();
@@ -216,15 +275,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                 reply_chan: tx,
             };
 
-            let client = {
-                let clients = CLIENTS.read().unwrap();
-                clients
-                    .get(&id)
-                    .ok_or(RequestError::ClientNotRegistered)?
-                    .clone()
-            };
-
-            match client.aio_context_pool_borrow.recv() {
+            match aio_context_pool_borrow.recv() {
                 Ok(ref mut sender) => match await!(sender.send(request)) {
                     Ok(_) => match await!(rx) {
                         Ok(result) => result,
@@ -232,10 +283,32 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                     },
                     Err(err) => Err(RequestError::AioContextChannelDisconnected(err)),
                 },
-                Err(err) => Err(RequestError::NngAioContentPoolChannelDisconnected(err)),
+                Err(err) => Err(RequestError::NngAioContextPoolChannelDisconnected(err)),
             }
         }
             .boxed()
+    }
+
+    fn destroy(&mut self) {
+        debug!("NngClient({}) is being destroyed ...", self.id);
+        let mut client_contexts = CLIENT_CONTEXTS.write().unwrap();
+        if let Some(mut context) = client_contexts.remove(&self.id) {
+            Arc::get_mut(&mut context)
+                .unwrap()
+                .dialer
+                .take()
+                .unwrap()
+                .close();
+            debug!("NngClient({}): nng::Dialer is closed", self.id);
+            Arc::get_mut(&mut context)
+                .unwrap()
+                .socket
+                .take()
+                .unwrap()
+                .close();
+            debug!("NngClient({}): nng::Socket is closed", self.id);
+        }
+        debug!("NngClient({}) is destroyed", self.id);
     }
 }
 
@@ -263,21 +336,24 @@ pub enum NngClientError {
         _0
     )]
     AioContextTaskSpawnError(bool),
+    /// Failed to spawn Aio Context request handler task
+    #[fail(
+        display = "Failed to spawn ReqRep service: executor is shutdown = {}",
+        _0
+    )]
+    ReqRepServiceStartFailed(bool),
 }
 
 /// Request related errors
-#[derive(Debug, Fail)]
+#[derive(Debug, Fail, Clone)]
 pub enum RequestError {
-    ///
-    #[fail(display = "Client is not registered")]
-    ClientNotRegistered,
-    ///
+    /// The nng Aio Context pool channel is disconnected
     #[fail(display = "The nng Aio Context pool channel is disconnected: {}", _0)]
-    NngAioContentPoolChannelDisconnected(crossbeam::channel::RecvError),
-    ///
+    NngAioContextPoolChannelDisconnected(crossbeam::channel::RecvError),
+    /// The nng Aio Context channel is disconnected
     #[fail(display = "The nng Aio Context channel is disconnected: {}", _0)]
     AioContextChannelDisconnected(futures::channel::mpsc::SendError),
-    ///
+    /// Reply channel closed
     #[fail(display = "Reply channel closed")]
     ReplyChannelClosed,
     /// Failed to send the request
@@ -621,4 +697,204 @@ pub enum DialerConfigError {
     /// Failed to start Dialer
     #[fail(display = "Failed to start Dialer: {}", _0)]
     DialerStartError(nng::Error),
+}
+
+#[allow(warnings)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::opnng::config::{SocketConfig, SocketConfigError};
+    use crate::{
+        concurrent::{
+            execution::{self, *},
+            messaging::reqrep::{self, *},
+        },
+        configure_logging, metrics,
+        opnng::reqrep::server,
+    };
+    use futures::executor::ThreadPoolBuilder;
+    use oysterpack_uid::ULID;
+    use oysterpack_uid::*;
+    use std::{thread, time::Duration};
+
+    struct EchoService;
+    impl Processor<nng::Message, nng::Message> for EchoService {
+        fn process(&mut self, req: nng::Message) -> reqrep::FutureReply<nng::Message> {
+            async move { req }.boxed()
+        }
+    }
+
+    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+
+    fn start_server() -> ReqRep<nng::Message, nng::Message> {
+        let timer_buckets = metrics::TimerBuckets::from(
+            vec![
+                Duration::from_nanos(50),
+                Duration::from_nanos(100),
+                Duration::from_nanos(150),
+                Duration::from_nanos(200),
+            ]
+            .as_slice(),
+        );
+        ReqRep::start_service(
+            REQREP_ID,
+            1,
+            EchoService,
+            global_executor().clone(),
+            timer_buckets,
+        )
+        .unwrap()
+    }
+
+    fn start_client(url: &str) -> Client {
+        let timer_buckets = metrics::TimerBuckets::from(
+            vec![
+                Duration::from_nanos(50),
+                Duration::from_nanos(100),
+                Duration::from_nanos(150),
+                Duration::from_nanos(200),
+            ]
+            .as_slice(),
+        );
+
+        super::register_client(
+            ReqRepServiceConfig::new(REQREP_ID, 1, global_executor().clone(), timer_buckets),
+            None,
+            DialerConfig::new(url),
+            {
+                let client_executor_id = ExecutorId::generate();
+                let mut threadpool_builder = ThreadPoolBuilder::new();
+                execution::register(client_executor_id, &mut threadpool_builder).unwrap()
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn nng_client_single_client() {
+        configure_logging();
+        let mut executor = execution::global_executor();
+
+        // GIVEN: the server is running
+        let url = format!("inproc://{}", ULID::generate());
+        let server_executor_id = ExecutorId::generate();
+        let mut threadpool_builder = ThreadPoolBuilder::new();
+        let mut server_handle = server::spawn(
+            SocketConfig::default(),
+            server::ListenerConfig::new(url.as_str()),
+            start_server(),
+            execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
+        )
+        .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // GIVEN: the NngClient is registered
+        let mut client = start_client(&url);
+        // THEN: the client ReqRepId should match
+        assert_eq!(client.id(), REQREP_ID);
+
+        let reply: nng::Message = executor
+            .spawn_await(
+                async move {
+                    // WHEN: the client is looked up by ReqRepId
+                    let mut client = super::client(REQREP_ID).unwrap();
+                    // WHEN: a request is sent
+                    let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
+                        await!(client.send(nng::Message::new().unwrap())).unwrap();
+                    // THEN: a reply is received
+                    await!(reply_receiver.recv()).unwrap().unwrap()
+                },
+            )
+            .unwrap();
+        info!("+++ reply = {:?}", reply);
+
+        // WHEN: the client is dropped
+        drop(client);
+        const REQUEST_COUNT: usize = 100;
+        let replies: Vec<nng::Message> = executor
+            .spawn_await(
+                async {
+                    // Then: the client can still be retrieved from the global registry
+                    let mut client = super::client(REQREP_ID).unwrap();
+                    // AND: the client is still functional
+                    let mut replies = Vec::with_capacity(REQUEST_COUNT);
+                    for _ in 0..REQUEST_COUNT {
+                        let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
+                            await!(client.send(nng::Message::new().unwrap())).unwrap();
+                        replies.push(await!(reply_receiver.recv()).unwrap().unwrap());
+                    }
+                    replies
+                },
+            )
+            .unwrap();
+        // THEN: all requests were successfully processed
+        assert_eq!(replies.len(), REQUEST_COUNT);
+
+        // WHEN: the client is unregistered
+        let client = super::unregister_client(REQREP_ID).unwrap();
+        assert!(super::unregister_client(REQREP_ID).is_none());
+        assert!(super::client(REQREP_ID).is_none());
+
+        // WHEN: the last client reference is dropped
+        drop(client);
+        // THEN: the backend client service should stop
+    }
+
+    #[test]
+    fn nng_client_multithreaded_usage() {
+        configure_logging();
+        let mut thread_builder = ThreadPoolBuilder::new();
+        let mut executor =
+            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+
+        // GIVEN: the server is running
+        let url = format!("inproc://{}", ULID::generate());
+        let server_executor_id = ExecutorId::generate();
+        let mut threadpool_builder = ThreadPoolBuilder::new();
+        let mut server_handle = server::spawn(
+            SocketConfig::default(),
+            server::ListenerConfig::new(url.as_str()),
+            start_server(),
+            execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
+        )
+        .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // GIVEN: the NngClient is registered
+        let mut client = start_client(&url);
+
+        const TASK_COUNT: usize = 10;
+        const REQUEST_COUNT: usize = 100;
+        let mut handles = Vec::new();
+        for _ in 0..TASK_COUNT {
+            let handle = executor
+                .spawn_with_handle(
+                    async {
+                        // Then: the client can still be retrieved from the global registry
+                        let mut client = super::client(REQREP_ID).unwrap();
+                        // AND: the client is still functional
+                        let mut replies = Vec::with_capacity(REQUEST_COUNT);
+                        for _ in 0..REQUEST_COUNT {
+                            let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
+                                await!(client.send(nng::Message::new().unwrap())).unwrap();
+                            replies.push(await!(reply_receiver.recv()).unwrap().unwrap());
+                        }
+                        replies
+                    },
+                )
+                .unwrap();
+            handles.push(handle);
+        }
+
+        executor
+            .spawn_await(
+                async move {
+                    for handle in handles {
+                        let replies: Vec<nng::Message> = await!(handle);
+                        assert_eq!(replies.len(), REQUEST_COUNT);
+                    }
+                },
+            )
+            .unwrap();
+    }
 }

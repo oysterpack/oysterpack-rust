@@ -98,7 +98,7 @@ pub fn spawn(
 ) -> Result<ServerHandle, SpawnError> {
     let (server_command_tx, mut server_command_rx) = futures::channel::mpsc::channel(1);
 
-    let reqrep_id = service.reqrep_id();
+    let reqrep_id = service.id();
     let url = listener_config.url.clone();
     let parallelism = listener_config.parallelism();
     let server_metrics = ServerMetrics::new(reqrep_id);
@@ -276,7 +276,7 @@ pub fn spawn(
                                                                             Err(err) => reply_recv_failed(state, msg_id, err)
                                                                         }
                                                                     },
-                                                                    Err(err) => reqrep_send_failed(state, err, service_client.reqrep_id())
+                                                                    Err(err) => reqrep_send_failed(state, err, service_client.id())
                                                                 }
                                                             },
                                                             None => no_msg_available(state)

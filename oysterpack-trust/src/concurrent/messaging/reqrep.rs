@@ -75,6 +75,71 @@ pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
 pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
 
+/// ReqRep service config
+#[derive(Debug, Clone)]
+pub struct ReqRepServiceConfig {
+    reqrep_id: ReqRepId,
+    chan_buf_size: usize,
+    executor: Executor,
+    metric_timer_buckets: metrics::TimerBuckets,
+}
+
+impl ReqRepServiceConfig {
+    /// ReqRepId getter
+    pub fn reqrep_id(&self) -> ReqRepId {
+        self.reqrep_id
+    }
+
+    /// Returns the channel buffer size
+    pub fn chan_buf_size(&self) -> usize {
+        self.chan_buf_size
+    }
+
+    /// ReqRepId getter
+    pub fn executor(&self) -> &Executor {
+        &self.executor
+    }
+
+    /// Returns TimerBuckets used to configure the Histogram timer metric
+    pub fn metric_timer_buckets(&self) -> &metrics::TimerBuckets {
+        &self.metric_timer_buckets
+    }
+
+    /// constructor
+    pub fn new(
+        reqrep_id: ReqRepId,
+        chan_buf_size: usize,
+        executor: Executor,
+        metric_timer_buckets: metrics::TimerBuckets,
+    ) -> Self {
+        Self {
+            reqrep_id,
+            chan_buf_size,
+            executor,
+            metric_timer_buckets,
+        }
+    }
+
+    /// Starts the backend service message processor and returns the frontend ReqRep client
+    pub fn start_service<Req, Rep, Service>(
+        self,
+        processor: Service,
+    ) -> Result<ReqRep<Req, Rep>, SpawnError>
+    where
+        Req: Debug + Send + 'static,
+        Rep: Debug + Send + 'static,
+        Service: Processor<Req, Rep> + Send + 'static,
+    {
+        ReqRep::start_service(
+            self.reqrep_id,
+            self.chan_buf_size,
+            processor,
+            self.executor,
+            self.metric_timer_buckets,
+        )
+    }
+}
+
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
 #[derive(Debug, Clone)]
@@ -93,7 +158,7 @@ where
     Rep: Debug + Send + 'static,
 {
     /// Returns the ReqRepId
-    pub fn reqrep_id(&self) -> ReqRepId {
+    pub fn id(&self) -> ReqRepId {
         self.reqrep_id
     }
 
@@ -149,6 +214,12 @@ where
     ///     then the first set of timer buckets will be used - because the histogram timer metric
     ///     is registered when the first service is started and then referenced by additional service
     ///     instances
+    ///
+    /// ## Params
+    /// - reqrep_id: ReqRepId - the service ID
+    /// - chan_buf_size: usize - the channel buffer size used to send requests to the backend service message processor
+    /// - executor: Executor - used to spawn the backend service message processor
+    /// - metric_timer_buckets - used to configure Histogram timer metric
     ///
     /// ## Service Metrics
     /// - Processor timer (Histogram)
@@ -421,6 +492,39 @@ mod tests {
         );
         let mut req_rep =
             ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone(), timer_buckets).unwrap();
+        let task = async {
+            let rep_receiver = await!(req_rep.send(1)).unwrap();
+            info!("request MessageId: {}", rep_receiver.message_id());
+            await!(rep_receiver.recv()).unwrap()
+        };
+        let n = executor.run(task);
+        info!("n = {}", n);
+        assert_eq!(n, 2);
+        info!("{:#?}", metrics::registry().gather());
+    }
+
+    #[test]
+    fn req_rep_service_config_start_service() {
+        configure_logging();
+        const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+        let mut executor = global_executor();
+
+        // ReqRep processor //
+        struct Inc;
+
+        impl Processor<usize, usize> for Inc {
+            fn process(&mut self, req: usize) -> reqrep::FutureReply<usize> {
+                async move { req + 1 }.boxed()
+            }
+        }
+        // ReqRep processor //
+
+        let timer_buckets = metrics::TimerBuckets::from(
+            vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
+        );
+        let mut req_rep = ReqRepServiceConfig::new(REQREP_ID, 1, executor.clone(), timer_buckets)
+            .start_service(Inc)
+            .unwrap();
         let task = async {
             let rep_receiver = await!(req_rep.send(1)).unwrap();
             info!("request MessageId: {}", rep_receiver.message_id());
