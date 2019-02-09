@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-//! Provides support for Future compatible messaging
+//! Provides support for Future compatible messaging, i.e., async messaging
 
 pub mod errors;
 pub mod reqrep;

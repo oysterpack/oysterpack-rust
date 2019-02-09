@@ -15,14 +15,30 @@
  */
 
 //! Exposes lower level primitives for dealing with asynchronous execution:
-//! - async executors
-//! - global executor registry
-//! - global executor
+//! - async [executors](struct.Executor.html)
+//! - global [executor registry](struct.ExecutorRegistry.html)
+//!   - executors can be globally registered via [register()](fn.register.html)
+//! - [global executor](fn.global_executor.html)
+//!
+//! ## Metrics
+//! - Executor related metrics can be collected via [gather_metrics](fn.gather_metrics.html)
+//! - number of spawned tasks per Executor
+//! - number of completed tasks per Executor
+//! - number of threads started
+//! - Executor thread pool sizes
+//!
+//! ## How register an Executor
+//! Use [ExecutorBuilder](struct.ExecutorBuilder.html) to construct and register a new Executor
+//! ``` rust
+//! # use oysterpack_trust::concurrent::execution::*;
+//! const EXECUTOR_ID: ExecutorId = ExecutorId(1872692872983539779132843447162269015);
+//! let mut executor = ExecutorBuilder::new(EXECUTOR_ID).register().unwrap();
+//! ```
+//! - each Executor is uniquely identified by its [ExecutorId](struct.ExecutorId.html)
 
 use crate::metrics;
 use failure::Fail;
 use futures::{
-    channel,
     executor::{ThreadPool, ThreadPoolBuilder},
     future::{Future, FutureExt, FutureObj},
     task::{Spawn, SpawnError, SpawnExt},
@@ -337,20 +353,20 @@ impl Executor {
             .map_err(|_| ExecutorError::SpawnedFuturePanic)
     }
 
-    /// Spawns the future and returns a channel Receiver that can be used to retrieve the future result
-    /// from both inside and outside of an async context.
+    /// Spawns the future and returns a crossbeam channel Receiver that can be used to retrieve the
+    /// future result.
     ///
     /// ## Notes
     /// If the future panics, then the Receiver will become disconnected.
     pub fn spawn_channel<F>(
         &mut self,
         f: F,
-    ) -> Result<channel::oneshot::Receiver<F::Output>, ExecutorError>
+    ) -> Result<crossbeam::channel::Receiver<F::Output>, ExecutorError>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let (sender, receiver) = channel::oneshot::channel::<F::Output>();
+        let (sender, receiver) = crossbeam::channel::bounded(1);
         {
             self.thread_pool
                 .spawn(
@@ -699,27 +715,35 @@ mod tests {
     fn executor_spawn_channel() {
         configure_logging();
 
-        let executors = EXECUTOR_REGISTRY.read().unwrap();
-        let mut executor = executors.global_executor();
-        let result_rx = executor.spawn_channel(
-            async {
-                info!("spawned task says hello");
-                true
-            },
-        );
-        let result = executor.run(result_rx.unwrap());
+        let mut executor = super::global_executor();
+        // GIVEN: a task is spawned
+        let result_rx = executor
+            .spawn_channel(
+                async {
+                    info!("spawned task says hello");
+                    true
+                },
+            )
+            .unwrap();
+
+        // THEN: it is successfully received
+        let result = result_rx.recv().unwrap();
         info!("result: {:?}", result);
-        assert!(result.unwrap());
-        let result_rx = executor.spawn_channel(
-            async {
-                panic!("spawned task says hello");
-                true
-            },
-        );
-        let result = executor.spawn_await(result_rx.unwrap());
-        info!("result: {:?}", result);
-        match result {
-            Ok(Err(channel::oneshot::Canceled)) => {
+        assert!(result);
+
+        // GIVEN: a task that panics
+        let result_rx = executor
+            .spawn_channel(
+                async {
+                    panic!("spawned task says hello");
+                    true
+                },
+            )
+            .unwrap();
+
+        // THEN: the channel will become disconnected
+        match result_rx.recv() {
+            Err(crossbeam::channel::RecvError) => {
                 info!("The future panicked, which caused the Receiver to be cancelled")
             }
             other => panic!("Unexpected result: {:?}", other),

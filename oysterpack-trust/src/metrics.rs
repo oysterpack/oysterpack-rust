@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-//! Provides metrics support for prometheus.
+//! Provides metrics support for [prometheus](https://prometheus.io/).
 //! - provides a global [MetricRegistry](struct.MetricRegistry.html) via [registry()](fn.registry.html)
 //!
 //! ## Recommendations
@@ -59,7 +59,7 @@ pub struct MetricRegistry {
 }
 
 impl MetricRegistry {
-    /// Registers a new Collector to be included in metrics collection.
+    /// Registers a new metrics Collector.
     /// It returns an error if the descriptors provided by the Collector are invalid or if they —
     /// in combination with descriptors of already registered Collectors — do not fulfill the consistency
     /// and uniqueness criteria described in the documentation of Desc.
@@ -79,7 +79,7 @@ impl MetricRegistry {
         Ok(collector)
     }
 
-    /// Returns descriptors for registered metrics
+    /// Collects descriptors for registered metrics
     pub fn descs(&self) -> Vec<prometheus::core::Desc> {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
@@ -89,7 +89,7 @@ impl MetricRegistry {
             .collect()
     }
 
-    /// Returns descriptors for registered metrics that match the specified filter
+    /// Collects descriptors for registered metrics that match the specified filter
     pub fn filter_descs<F>(&self, mut filter: F) -> Vec<prometheus::core::Desc>
     where
         F: FnMut(&prometheus::core::Desc) -> bool,
@@ -103,7 +103,7 @@ impl MetricRegistry {
             .collect()
     }
 
-    /// Returns the list of registered collectors that match against the specified filter
+    /// Returns collectors that match against the specified filter
     pub fn filter_collectors<F>(&self, mut filter: F) -> Vec<ArcCollector>
     where
         F: FnMut(&ArcCollector) -> bool,
@@ -116,7 +116,7 @@ impl MetricRegistry {
             .collect()
     }
 
-    /// Returns the list of registered collectors
+    /// Returns the registered collectors
     pub fn collectors<F>(&self) -> Vec<ArcCollector> {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors.iter().cloned().collect()
@@ -140,7 +140,7 @@ impl MetricRegistry {
         metric_collectors.len()
     }
 
-    /// Tries to register an int gauge metric
+    /// Tries to register an IntGauge metric
     pub fn register_int_gauge(
         &self,
         metric_id: MetricId,
@@ -160,7 +160,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register an int gauge metric
+    /// Tries to register an Gauge metric
     pub fn register_gauge(
         &self,
         metric_id: MetricId,
@@ -180,27 +180,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a CounterVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
+    /// Tries to register a GaugeVec metric
     pub fn register_gauge_vec(
         &self,
         metric_id: MetricId,
@@ -223,27 +203,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a CounterVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
+    /// Tries to register a IntGaugeVec metric
     pub fn register_int_gauge_vec(
         &self,
         metric_id: MetricId,
@@ -266,7 +226,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register an int counter metric
+    /// Tries to register an IntCounter metric
     pub fn register_int_counter(
         &self,
         metric_id: MetricId,
@@ -286,7 +246,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register an int counter metric
+    /// Tries to register a Counter metric
     pub fn register_counter(
         &self,
         metric_id: MetricId,
@@ -306,24 +266,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a IntCounterVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
+    /// Tries to register an IntCounterVec metric
     pub fn register_int_counter_vec(
         &self,
         metric_id: MetricId,
@@ -347,23 +290,6 @@ impl MetricRegistry {
     }
 
     /// Tries to register a CounterVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
     pub fn register_counter_vec(
         &self,
         metric_id: MetricId,
@@ -387,23 +313,6 @@ impl MetricRegistry {
     }
 
     /// Tries to register a Histogram metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
     pub fn register_histogram(
         &self,
         metric_id: MetricId,
@@ -426,24 +335,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a Histogram metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
+    /// Tries to register a Histogram metric that is meant to be used as timer metric
     pub fn register_histogram_timer(
         &self,
         metric_id: MetricId,
@@ -455,26 +347,6 @@ impl MetricRegistry {
     }
 
     /// Tries to register a HistogramVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
     pub fn register_histogram_vec(
         &self,
         metric_id: MetricId,
@@ -500,27 +372,7 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a HistogramVec metric
-    ///
-    /// ## Params
-    /// - **metric_id** ULID is prefixed with 'M' to construct the [metric fully qualified name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-    ///   - e.g. if the MetricId ULID is *01D1ZMQVMQ5C6Z09JBF32T41ZK*, then the metric name will be **M***01D1ZMQVMQ5C6Z09JBF32T41ZK*
-    /// - **help** is mandatory - use it to provide a human friendly name for the metric and provide a short description
-    /// - label_names - the labels used to define the metric's dimensions
-    ///   - labels will be trimmed and must not be blank
-    /// - **buckets** define the buckets into which observations are counted.
-    ///   - Each element in the slice is the upper inclusive bound of a bucket.
-    ///   - The values will be deduped and sorted in strictly increasing order.
-    ///   - There is no need to add a highest bucket with +Inf bound, it will be added implicitly.
-    ///
-    /// ## Errors
-    /// - if no labels are provided
-    /// - if labels are blank
-    /// - if any of the constant label names or values are blank
-    /// - if there are no buckets defined
-    ///
-    /// ## Notes
-    ///
+    /// Tries to register a HistogramVec metric that is meant to be used as timer metric
     pub fn register_histogram_vec_timer(
         &self,
         metric_id: MetricId,
@@ -765,7 +617,7 @@ pub struct LabelId(pub u128);
 
 impl LabelId {
     /// returns the metric name
-    /// - the MetricId ULID is prefixedwith 'M' to ensure it does not start with a number because
+    /// - the LabelId ULID is prefixedwith 'L' to ensure it does not start with a number because
     ///   prometheus metric names must match the following pattern `[a-zA-Z_:][a-zA-Z0-9_:]*`
     pub fn name(&self) -> String {
         format!("L{}", self)
@@ -829,7 +681,7 @@ impl From<ULID> for MetricId {
     }
 }
 
-/// Runs the function and returns how long it took in nanos.
+/// Times how long it takes to run the function in nanos.
 ///
 /// ## Use Case
 /// Used to record timings which can then be reported on a Histogram metric
@@ -911,6 +763,8 @@ impl Into<Vec<f64>> for TimerBuckets {
 }
 
 /// Arc wrapped metrics collector
+/// - metric collectors that are registered are stored within the MetricRegistry within an ArcCollector
+/// - this enables the collectors to be shared and used across threads
 #[derive(Clone)]
 pub struct ArcCollector(Arc<dyn prometheus::core::Collector + 'static>);
 
