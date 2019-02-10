@@ -497,7 +497,8 @@ impl SocketConfig {
 /// Dialer Settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DialerConfig {
-    url: String,
+    #[serde(with = "url_serde")]
+    url: url::Url,
     parallelism: usize,
     recv_max_size: Option<usize>,
     no_delay: Option<bool>,
@@ -509,9 +510,9 @@ pub struct DialerConfig {
 impl DialerConfig {
     /// constructor
     /// - parallelism = number of logical CPUs
-    pub fn new(url: &str) -> DialerConfig {
+    pub fn new(url: url::Url) -> DialerConfig {
         DialerConfig {
-            url: url.to_string(),
+            url,
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
@@ -570,7 +571,7 @@ impl DialerConfig {
     }
 
     /// the address that the server is listening on
-    pub fn url(&self) -> &str {
+    pub fn url(&self) -> &url::Url {
         &self.url
     }
 
@@ -748,7 +749,7 @@ mod tests {
             .unwrap()
     }
 
-    fn start_client(url: &str) -> (Client, ExecutorId) {
+    fn start_client(url: url::Url) -> (Client, ExecutorId) {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![
                 Duration::from_nanos(50),
@@ -779,12 +780,12 @@ mod tests {
         let mut executor = execution::global_executor();
 
         // GIVEN: the server is running
-        let url = format!("inproc://{}", ULID::generate());
+        let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
         let mut threadpool_builder = ThreadPoolBuilder::new();
         let mut server_handle = server::spawn(
-            SocketConfig::default(),
-            server::ListenerConfig::new(url.as_str()),
+            None,
+            server::ListenerConfig::new(url.clone()),
             start_server(),
             execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
         )
@@ -792,7 +793,7 @@ mod tests {
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let (mut client, client_executor_id) = start_client(&url);
+        let (mut client, client_executor_id) = start_client(url.clone());
         // THEN: the client ReqRepId should match
         assert_eq!(client.id(), REQREP_ID);
         // WHEN: the client is dropped
@@ -840,12 +841,12 @@ mod tests {
             execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
 
         // GIVEN: the server is running
-        let url = format!("inproc://{}", ULID::generate());
+        let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
         let mut threadpool_builder = ThreadPoolBuilder::new();
         let mut server_handle = server::spawn(
-            SocketConfig::default(),
-            server::ListenerConfig::new(url.as_str()),
+            None,
+            server::ListenerConfig::new(url.clone()),
             start_server(),
             execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
         )
@@ -853,7 +854,7 @@ mod tests {
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let (mut client, client_executor_id) = start_client(&url);
+        let (mut client, client_executor_id) = start_client(url.clone());
 
         const TASK_COUNT: usize = 10;
         const REQUEST_COUNT: usize = 100;

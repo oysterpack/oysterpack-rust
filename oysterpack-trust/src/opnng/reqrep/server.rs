@@ -27,14 +27,19 @@
 //! Think of the futures based task as an AIO event loop that processes a stream of async IO events.
 //! The AIO event loop forwards messages to an [ReqRep](../../../concurrent/messaging/reqrep/struct.ReqRep.html) service backend for the actual message processing.
 //!
+//! <pre>
+//! client ---Req--> Socket --> Aio Callback --> Aio Event Loop ---Req--> service
+//! client <--Rep--- Socket <-------Rep--------- Aio Event Loop <--Rep--- service
+//! </pre>
+//!
 //! ## Config
 //! - [SocketConfig](../../config/struct.SocketConfig.html)
 //! - [ListenerConfig](struct.ListenerConfig.html)
 //!
 //! ## Metrics
-//! - active number of socket connections
-//! - total number of socket connections that have been made since the server has started
-//! - total number of connections that have been initiated since the server has started
+//! - active number of socket connections - [ACTIVE_CONN_COUNT_METRIC_ID](constant.ACTIVE_CONN_COUNT_METRIC_ID.html)
+//! - total number of socket connections that have been made since the server has started - [TOT_CONN_COUNT_METRIC_ID](constant.TOT_CONN_COUNT_METRIC_ID.html)
+//! - total number of connections that have been initiated since the server has started - [TOT_CONN_INITIATE_COUNT_METRIC_ID](constant.TOT_CONN_INITIATE_COUNT_METRIC_ID.html)
 //!   - this may be greater that the total number of socket connections - a connection may close before
 //!     being added to the socket
 //! - the ReqRep service provides the message processing metrics
@@ -117,7 +122,7 @@ pub const REQREP_LABEL_ID: metrics::LabelId =
 ///   - 1 for each Aio callback - based on [ListenerConfig.parallelism()](struct.ListenerConfig.html#method.parallelism)
 ///   - 1 server controller task
 pub fn spawn(
-    socket_config: SocketConfig,
+    socket_config: Option<SocketConfig>,
     listener_config: ListenerConfig,
     service: ReqRep<nng::Message, nng::Message>,
     mut executor: Executor,
@@ -149,9 +154,12 @@ pub fn spawn(
                 debug!("{:?} {:?}", pipe, event);
             })
             .map_err(SpawnError::SocketCreateFailure)?;
-        socket_config
-            .apply(socket)
-            .map_err(SpawnError::SocketConfigApplyFailed)
+        match socket_config {
+            Some(socket_config) => socket_config
+                .apply(socket)
+                .map_err(SpawnError::SocketConfigApplyFailed),
+            None => Ok(socket),
+        }
     };
 
     let start_listener = |socket: &nng::Socket| {
@@ -199,10 +207,7 @@ pub fn spawn(
                 executor
                     .spawn(
                         async move {
-                            debug!(
-                                "worker #{} is awaiting signal to start listening ...",
-                                i
-                            );
+                            debug!("worker #{} is awaiting signal to start listening ...", i);
                             match await!(start_rx) {
                                 Ok(_) => {
                                     debug!("worker #{} is starting ...", i);
@@ -211,29 +216,26 @@ pub fn spawn(
                                     let recv = |state: AioState| {
                                         if let Err(err) = ctx.recv(&aio) {
                                             // TODO: trigger alert - async I/O errors need to be investigated
-                                            error!("{:?}: Context::recv() failed: {}",state, err);
+                                            error!("{:?}: Context::recv() failed: {}", state, err);
                                         }
                                         AioState::Recv
                                     };
 
                                     let send = |state: AioState, msg: nng::Message| {
-                                        if let Err((_msg,err)) = ctx.send(&aio, msg) {
+                                        if let Err((_msg, err)) = ctx.send(&aio, msg) {
                                             // TODO: trigger alert - async I/O errors need to be investigated
-                                            error!("{:?}: Context::send() failed: {}",state, err);
+                                            error!("{:?}: Context::send() failed: {}", state, err);
                                             aio.cancel();
                                             return recv(state);
                                         }
                                         AioState::Send
                                     };
 
-                                    let reply_recv_failed = |state, msg_id, err| {
-                                        warn!("Reply was not received for MessageId({}): {}",msg_id, err);
-                                        aio.cancel();
-                                        recv(state)
-                                    };
-
-                                    let reqrep_send_failed = |state, err, reqrep_id| {
-                                        error!("ReqRep::send() failed: ReqRepId({}) : {}", reqrep_id , err);
+                                    let reqrep_send_recv_failed = |state, err, reqrep_id| {
+                                        error!(
+                                            "ReqRep::send_recv() failed: ReqRepId({}) : {}",
+                                            reqrep_id, err
+                                        );
                                         aio.cancel();
                                         recv(state)
                                     };
@@ -244,63 +246,46 @@ pub fn spawn(
                                         recv(state)
                                     };
 
-                                    let handle_aio_error = |state, err: nng::Error| {
-                                        match err.kind() {
-                                            nng::ErrorKind::Closed => {
-                                                AioState::Closed
-                                            },
-                                            _ => {
-                                                error!("{:?}: Aio error: {}",state, err);
-                                                aio.cancel();
-                                                recv(state)
-                                            }
+                                    let handle_aio_error = |state, err: nng::Error| match err.kind()
+                                    {
+                                        nng::ErrorKind::Closed => AioState::Closed,
+                                        _ => {
+                                            error!("{:?}: Aio error: {}", state, err);
+                                            aio.cancel();
+                                            recv(state)
                                         }
-                                    };
-
-                                    let no_io_operation_running = |state| {
-                                        // TODO: trigger alert - unexpected behaivor
-                                        warn!("{:?}: There is no I/O operation running ... this should never happen", state);
-                                        aio.cancel();
-                                        recv(state)
                                     };
 
                                     // start listening
                                     recv(state);
                                     debug!("worker #{} is listening ...", i);
+                                    // NOTE: aio.result().unwrap() is safe because we are being signalled
+                                    // by the Aio callback to handle an Aio event
                                     while let Some(_) = await!(aio_rx.next()) {
                                         state = match state {
-                                            AioState::Recv => {
-                                                match aio.result() {
-                                                    Some(Ok(_)) => {
-                                                        match aio.get_msg() {
-                                                            Some(msg) => {
-                                                                match await!(service_client.send(msg)) {
-                                                                    Ok(reply_receiver) => {
-                                                                        let msg_id = reply_receiver.message_id();
-                                                                        match await!(reply_receiver.recv()) {
-                                                                            Ok(reply) => send(state, reply),
-                                                                            Err(err) => reply_recv_failed(state, msg_id, err)
-                                                                        }
-                                                                    },
-                                                                    Err(err) => reqrep_send_failed(state, err, service_client.id())
-                                                                }
-                                                            },
-                                                            None => no_msg_available(state)
+                                            AioState::Recv => match aio.result().unwrap() {
+                                                Ok(_) => match aio.get_msg() {
+                                                    Some(msg) => {
+                                                        match await!(service_client.send_recv(msg))
+                                                        {
+                                                            Ok(reply) => send(state, reply),
+                                                            Err(err) => reqrep_send_recv_failed(
+                                                                state,
+                                                                err,
+                                                                service_client.id(),
+                                                            ),
                                                         }
-                                                    },
-                                                    Some(Err(err)) => handle_aio_error(state, err),
-                                                    None => no_io_operation_running(state)
-                                                }
-                                            }
-                                            AioState::Send => {
-                                                match aio.result() {
-                                                    Some(Ok(_)) => recv(state),
-                                                    Some(Err(err)) => handle_aio_error(state, err),
-                                                    None => no_io_operation_running(state)
-                                                }
+                                                    }
+                                                    None => no_msg_available(state),
+                                                },
+                                                Err(err) => handle_aio_error(state, err),
+                                            },
+                                            AioState::Send => match aio.result().unwrap() {
+                                                Ok(_) => recv(state),
+                                                Err(err) => handle_aio_error(state, err),
                                             },
                                             // this state will never be matched against, but we must fulfill the match contract
-                                            AioState::Closed => break
+                                            AioState::Closed => break,
                                         };
                                         if state == AioState::Closed {
                                             break;
@@ -383,7 +368,7 @@ pub fn spawn(
 #[derive(Debug, Clone)]
 pub struct ServerHandle {
     id: ULID,
-    url: String,
+    url: url::Url,
     reqrep_id: ReqRepId,
     parallelism: NonZeroUsize,
     handle: Option<future::Shared<future::RemoteHandle<()>>>,
@@ -399,7 +384,7 @@ impl ServerHandle {
     }
 
     /// Returns the URI that the server is listening on
-    pub fn url(&self) -> &str {
+    pub fn url(&self) -> &url::Url {
         &self.url
     }
 
@@ -642,7 +627,8 @@ impl fmt::Debug for ServerMetrics {
 /// Listener settings
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ListenerConfig {
-    url: String,
+    #[serde(with = "url_serde")]
+    url: url::Url,
     recv_max_size: Option<usize>,
     no_delay: Option<bool>,
     keep_alive: Option<bool>,
@@ -656,9 +642,9 @@ impl ListenerConfig {
     /// ## Default settings
     /// - non_blocking = true
     /// - parallelism = num of available CPUs + 1
-    pub fn new(url: &str) -> ListenerConfig {
+    pub fn new(url: url::Url) -> ListenerConfig {
         ListenerConfig {
-            url: url.to_string(),
+            url,
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
@@ -680,7 +666,7 @@ impl ListenerConfig {
         &self,
         socket: &nng::Socket,
     ) -> Result<nng::Listener, ListenerConfigError> {
-        let options = nng::ListenerOptions::new(socket, self.url())
+        let options = nng::ListenerOptions::new(socket, self.url().as_str())
             .map_err(ListenerConfigError::ListenerOptionsCreateFailed)?;
 
         if let Some(option) = self.recv_max_size.as_ref() {
@@ -707,7 +693,7 @@ impl ListenerConfig {
     }
 
     /// the address that the server is listening on
-    pub fn url(&self) -> &str {
+    pub fn url(&self) -> &url::Url {
         &self.url
     }
 
@@ -855,10 +841,10 @@ mod tests {
         configure_logging();
 
         // GIVEN: the server is running
-        let url = format!("inproc://{}", ULID::generate());
+        let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let mut server_handle = super::spawn(
-            SocketConfig::default(),
-            ListenerConfig::new(url.as_str()),
+            None,
+            ListenerConfig::new(url.clone()),
             start_service(),
             global_executor().clone(),
         )
@@ -932,8 +918,8 @@ mod tests {
 
         // WHEN: the server is restarted
         let mut server_handle = super::spawn(
-            SocketConfig::default(),
-            ListenerConfig::new(url.as_str()),
+            None,
+            ListenerConfig::new(url.clone()),
             start_service(),
             global_executor().clone(),
         )
@@ -959,10 +945,10 @@ mod tests {
         configure_logging();
 
         // GIVEN: the server is running
-        let url = format!("inproc://{}", ULID::generate());
+        let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let mut server_handle = super::spawn(
-            SocketConfig::default(),
-            ListenerConfig::new(url.as_str()),
+            None,
+            ListenerConfig::new(url.clone()),
             start_service(),
             global_executor().clone(),
         )

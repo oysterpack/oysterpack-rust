@@ -61,7 +61,7 @@ criterion_main!(benches);
 const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
 lazy_static! {
-    static ref URL: String = format!("inproc://{}", ULID::generate());
+    static ref URL: url::Url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
     static ref CLIENT: Arc<Mutex<Client>> = Arc::new(Mutex::new(start_client()));
 }
 
@@ -75,14 +75,10 @@ fn start_server() -> ReqRep<nng::Message, nng::Message> {
         ]
         .as_slice(),
     );
-    ReqRep::start_service(
-        REQREP_ID,
-        1,
-        EchoService,
-        global_executor().clone(),
-        timer_buckets,
-    )
-    .unwrap()
+    ReqRepConfig::new(REQREP_ID, timer_buckets)
+        .set_chan_buf_size(1)
+        .start_service(EchoService, global_executor().clone())
+        .unwrap()
 }
 
 fn start_client() -> Client {
@@ -97,9 +93,9 @@ fn start_client() -> Client {
     );
 
     register_client(
-        ReqRepServiceConfig::new(REQREP_ID, 1, global_executor().clone(), timer_buckets),
+        ReqRepConfig::new(REQREP_ID, timer_buckets).set_chan_buf_size(1),
         None,
-        DialerConfig::new(URL.as_str()),
+        DialerConfig::new(URL.clone()),
         {
             let client_executor_id = ExecutorId::generate();
             let mut threadpool_builder = ThreadPoolBuilder::new();
@@ -114,8 +110,8 @@ fn nng_reqrep_bench(c: &mut Criterion) {
     let server_executor_id = ExecutorId::generate();
     let mut threadpool_builder = ThreadPoolBuilder::new();
     let mut server_handle = server::spawn(
-        opnng::config::SocketConfig::default(),
-        server::ListenerConfig::new(URL.as_str()),
+        None,
+        server::ListenerConfig::new(URL.clone()),
         start_server(),
         execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
     )

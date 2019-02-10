@@ -25,6 +25,8 @@ num_cpus = "1.9.0"
 failure = "0.1.5"
 lazy_static = {version = "1.2.0", features = ["nightly"] }
 
+url = "1.7.2"
+url_serde = "0.2.0"
 
 serde = {version = "1", features = ["derive"] }
 bincode = {version = "1", features = ["i128"]}

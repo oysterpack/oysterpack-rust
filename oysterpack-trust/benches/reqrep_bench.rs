@@ -54,16 +54,15 @@ criterion_main!(benches);
 
 lazy_static! {
     static ref CLIENT: Arc<Mutex<ReqRep<(), ()>>> = {
-        let req_rep = ReqRep::start_service(
-            ReqRepId::generate(),
-            1,
-            EchoService,
-            ExecutorBuilder::new(ExecutorId::generate())
-                .register()
-                .unwrap(),
-            timer_buckets(),
-        )
-        .unwrap();
+        let req_rep = ReqRepConfig::new(ReqRepId::generate(), timer_buckets())
+            .set_chan_buf_size(1)
+            .start_service(
+                EchoService,
+                ExecutorBuilder::new(ExecutorId::generate())
+                    .register()
+                    .unwrap(),
+            )
+            .unwrap();
         Arc::new(Mutex::new(req_rep))
     };
 }
