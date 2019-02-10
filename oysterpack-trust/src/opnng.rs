@@ -14,8 +14,10 @@
  *    limitations under the License.
  */
 
-//! This module provides support for building scalable distributed applications leveraging proven
-//! [nng](https://nanomsg.github.io/nng/) technology.
+//! This module provides support for building robust scalable distributed applications leveraging proven
+//! [nng](https://nanomsg.github.io/nng/) messaging technology. nng provides the advanced messaging
+//! protocol-specific processing. Rust provides the power of fearless concurrency and futures for
+//! message processing.
 
 pub mod config;
 pub mod reqrep;

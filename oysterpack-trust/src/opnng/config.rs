@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-//! common nng configuration
+//! common nng configuration, i.e., common to all nng messaging protocols
 
 use failure::Fail;
 use nng::options::Options;

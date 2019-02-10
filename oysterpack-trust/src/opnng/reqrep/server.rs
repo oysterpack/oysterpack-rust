@@ -16,6 +16,28 @@
 
 //! This module provides support for building scalable, high performing messaging based server built
 //! on proven [nng](https://nanomsg.github.io/nng/)  technology.
+//!
+//! ## Design
+//! The server is designed to leverage nng's async capabilities. The approach is to integrate using
+//! [nng:Aio](https://docs.rs/nng/latest/nng/struct.Aio.html) and [nng::Context](https://docs.rs/nng/latest/nng/struct.Context.html).
+//! via nng's [callback](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback) mechanism.
+//! Parallelism is controlled by the number of [callbacks](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback)
+//! that are registered. Each callback is linked to a future's based task via an async channel.
+//! The callback's job is to simply forward async IO events to the backend end futures task to process.
+//! Think of the futures based task as an AIO event loop that processes a stream of async IO events.
+//! The AIO event loop forwards messages to an [ReqRep](../../../concurrent/messaging/reqrep/struct.ReqRep.html) service backend for the actual message processing.
+//!
+//! ## Config
+//! - [SocketConfig](../../config/struct.SocketConfig.html)
+//! - [ListenerConfig](struct.ListenerConfig.html)
+//!
+//! ## Metrics
+//! - active number of socket connections
+//! - total number of socket connections that have been made since the server has started
+//! - total number of connections that have been initiated since the server has started
+//!   - this may be greater that the total number of socket connections - a connection may close before
+//!     being added to the socket
+//! - the ReqRep service provides the message processing metrics
 
 use crate::concurrent::execution::Executor;
 use crate::concurrent::messaging::reqrep::{ReqRep, ReqRepId};
@@ -86,10 +108,14 @@ pub const REQREP_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1873168278096570673538811977244540631);
 
 /// Spawns a server background task
-/// - the server runs as a Future
+/// - the server runs as a Future task as an AIO stream processing event loop
 /// - returns a ServerHandle that can be used to stop the server
 ///   - the ServerHandle is registered globally
+///     - each server instance is assigned a ULID, which is used as the registry key
 ///   - when the server is stopped, the ServerHandle will be automatically unregistered
+/// - the executor spawns the following task:
+///   - 1 for each Aio callback - based on [ListenerConfig.parallelism()](struct.ListenerConfig.html#method.parallelism)
+///   - 1 server controller task
 pub fn spawn(
     socket_config: SocketConfig,
     listener_config: ListenerConfig,
@@ -103,16 +129,6 @@ pub fn spawn(
     let parallelism = listener_config.parallelism();
     let server_metrics = ServerMetrics::new(reqrep_id);
     let server_handle_id = ULID::generate();
-
-    // TODO: replace with Debug format once https://gitlab.com/neachdainn/nng-rs/issues/23 is released
-    fn pipe_event_display(event: nng::PipeEvent) -> &'static str {
-        match event {
-            nng::PipeEvent::AddPre => "PipeEvent::AddPre",
-            nng::PipeEvent::AddPost => "PipeEvent::AddPost",
-            nng::PipeEvent::RemovePost => "PipeEvent::RemovePost",
-            nng::PipeEvent::Unknown(_) => "nng::PipeEvent::Unknown",
-        }
-    }
 
     let create_socket = || {
         let server_metrics = server_metrics.clone();
@@ -130,7 +146,7 @@ pub fn spawn(
                     nng::PipeEvent::AddPre => server_metrics.tot_conn_initiate_count.inc(),
                     _ => (),
                 }
-                debug!("{:?} {}", pipe, pipe_event_display(event));
+                debug!("{:?} {:?}", pipe, event);
             })
             .map_err(SpawnError::SocketCreateFailure)?;
         socket_config
@@ -167,27 +183,17 @@ pub fn spawn(
                 let ctx = nng::Context::new(socket).map_err(SpawnError::ContextCreateFailure)?;
                 let callback_ctx = ctx.clone();
                 let aio = nng::Aio::with_callback(move |_aio| {
-                    match aio_tx.lock() {
-                        Ok(aio_tx) => {
-                            if let Err(err) = aio_tx.unbounded_send(()) {
-                                // means the channel has been disconnected because the worker Future task has completed
-                                // the server is either being stopped, or the worker has crashed
-                                // TODO: we need a way to know if the server is being shutdown
-                                warn!("Failed to nofify worker of Aio event. This means the worker is not running. The Aio Context will be closed: {}", err);
-                                // TODO: will cloning the Context work ? Context::close() cannot be invoked from the callback because it consumes the Context
-                                //       and rust won't allow it because the Context is being referenced by the FnMut closure
-                                callback_ctx.clone().close();
-                                // TODO: send an alert - if the worker crashed, i.e., panicked, then it may need to be restarted
-                            }
-                        }
-                        Err(err) => {
-                            // This should never happen
-                            error!("Failed to obtain lock on Aio sender channel. The Aio Context will be closed: {}", err);
-                            // TODO: will this work ?
-                            callback_ctx.clone().close();
-                            // TODO: trigger an alarm because this should never happen
-                        }
-                    };
+                    let aio_tx = aio_tx.lock().unwrap();
+                    if let Err(err) = aio_tx.unbounded_send(()) {
+                        // means the channel has been disconnected because the worker Future task has completed
+                        // the server is either being stopped, or the worker has crashed
+                        // TODO: we need a way to know if the server is being shutdown
+                        warn!("Failed to nofify worker of Aio event. This means the worker is not running. The Aio Context will be closed: {}", err);
+                        // TODO: will cloning the Context work ? Context::close() cannot be invoked from the callback because it consumes the Context
+                        //       and rust won't allow it because the Context is being referenced by the FnMut closure
+                        callback_ctx.clone().close();
+                        // TODO: send an alert - if the worker crashed, i.e., panicked, then it may need to be restarted
+                    }
                 }).map_err(SpawnError::AioCreateWithCallbackFailure)?;
                 let mut service_client = service.clone();
                 executor
@@ -369,10 +375,11 @@ pub fn spawn(
 }
 
 /// Server handle
+/// - the server handle is globally registered using its ULID as the key
 ///
-/// There are 2 ways to stop the server:
-/// 1. Explicitly signal the server to stop via [stop_async()](#method.stop_async)
-/// 2. When all instances of the ServerHandle are dropped
+///
+/// ## Stopping the server
+/// - [stop_async()](#method.stop_async) is used to signal the server to stop
 #[derive(Debug, Clone)]
 pub struct ServerHandle {
     id: ULID,
@@ -419,6 +426,7 @@ impl ServerHandle {
     }
 
     /// pings the server to check if it is still alive
+    /// - returns true if the server responds to the ping
     ///
     /// ## ServerHandleError
     /// - Internally, the Ping message is sent via an async channel, i.e., Futures based. This requires
@@ -435,8 +443,7 @@ impl ServerHandle {
                             let (tx, rx) = futures::channel::oneshot::channel();
                             if await!(server_command_channel.send(ServerCommand::Ping(tx))).is_ok()
                             {
-                                let _ = await!(rx);
-                                true
+                                await!(rx).is_ok()
                             } else {
                                 false
                             }

@@ -129,8 +129,7 @@ pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
                 .iter()
                 .find(|metric| {
                     metric.get_label().iter().any(|label_pair| {
-                        label_pair.get_name() == label_name
-                            && label_pair.get_value() == label_value
+                        label_pair.get_name() == label_name && label_pair.get_value() == label_value
                     })
                 })
                 .map(|mf| mf.get_gauge().get_value() as u64)
