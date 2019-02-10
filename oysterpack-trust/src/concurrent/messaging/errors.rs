@@ -20,21 +20,27 @@ use failure::Fail;
 use futures::channel;
 
 /// Channel sending related errors
-#[derive(Fail, Debug)]
-pub enum ChannelSendError {
+#[derive(Fail, Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum ChannelError {
     /// Failed to send because the channel is full
     #[fail(display = "Failed to send message because the channel is full")]
     Full,
-    /// Failed to send because the channel is disconnected
-    #[fail(display = "Failed to send message because the channel is disconnected")]
+    /// The channel is disconnected
+    #[fail(display = "The channel is disconnected")]
     Disconnected,
 }
 
-impl From<channel::mpsc::SendError> for ChannelSendError {
+impl From<channel::mpsc::SendError> for ChannelError {
     fn from(err: channel::mpsc::SendError) -> Self {
         if err.is_disconnected() {
-            return ChannelSendError::Disconnected;
+            return ChannelError::Disconnected;
         }
-        ChannelSendError::Full
+        ChannelError::Full
+    }
+}
+
+impl From<futures::channel::oneshot::Canceled> for ChannelError {
+    fn from(_: futures::channel::oneshot::Canceled) -> Self {
+        ChannelError::Disconnected
     }
 }

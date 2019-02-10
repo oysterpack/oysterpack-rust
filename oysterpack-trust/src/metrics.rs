@@ -753,6 +753,12 @@ impl From<&[Duration]> for TimerBuckets {
     }
 }
 
+impl From<Vec<Duration>> for TimerBuckets {
+    fn from(buckets: Vec<Duration>) -> Self {
+        Self(smallvec::SmallVec::from_slice(buckets.as_slice()))
+    }
+}
+
 impl Into<Vec<f64>> for TimerBuckets {
     fn into(self) -> Vec<f64> {
         self.0

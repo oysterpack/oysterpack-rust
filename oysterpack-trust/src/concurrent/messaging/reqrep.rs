@@ -17,10 +17,10 @@
 //! Provides support for request/reply messaging via async futures based channels.
 //!
 //! The design pattern is to decouple the backend service from the client via message channels.
-//! The interface is defined by ReqRep which defines:
+//! The interface is defined by [ReqRep](struct.ReqRep.html) which defines:
 //! - request message type
 //! - response message type
-//! - ReqRepId - represents the function identifier
+//! - [ReqRepId](struct.ReqRepId.html) - represents the function identifier
 //!
 //! <pre>
 //! client ---Req--> ReqRep ---Req--> service
@@ -30,10 +30,54 @@
 //! The beauty of this design is that the client and service are decoupled. Clients and services can
 //! be distributed over the network or be running on the same machine. This also makes it easy to mock
 //! services for testing purposes.
+//!
+//! ```rust
+//! # #![feature(async_await)]
+//! # #![feature(await_macro)]
+//! # use oysterpack_trust::concurrent::messaging::reqrep::{self, *};
+//! # use oysterpack_trust::concurrent::execution::*;
+//! # use oysterpack_trust::metrics;
+//! # use futures::{task::*, future::FutureExt};
+//! # use std::time::*;
+//! // ReqRep backend processor
+//! struct Inc;
+//!
+//! impl Processor<usize, usize> for Inc {
+//!   fn process(&mut self, req: usize) -> reqrep::FutureReply<usize> {
+//!      async move { req + 1 }.boxed()
+//!   }
+//! }
+//!
+//! // the ReqRepId should be defined as a constant
+//! const REQREP_ID: ReqRepId = ReqRepId(1872692872983539779132843447162269015);
+//!
+//! // configure the timer histogram bucket according to your use case
+//! let timer_buckets = metrics::TimerBuckets::from(vec![
+//!     Duration::from_millis(500),
+//!     Duration::from_millis(1000)]
+//! );
+//! let config = ReqRepConfig::new(REQREP_ID, timer_buckets);
+//! let mut client = config.start_service(Inc, global_executor()).unwrap();
+//! global_executor().spawn( async move {
+//!   // send the request async
+//!   let reply_receiver = await!(client.send(1)).unwrap();
+//!   // or send the request and await for the reply async
+//!   assert_eq!(2, await!(client.send_recv(1)).unwrap());
+//!   // await for the reply from the request sent above
+//!   assert_eq!(2, await!(reply_receiver.recv()).unwrap());
+//! });
+//! ```
+//!
+//! ## Config
+//! - [ReqRepConfig](struct.ReqRepConfig.html)
+//!
+//! ## Metrics
+//! - number of running backend service instances
+//! - request processing timings, i.e., [Processor::process()](trait.Processor.html#tymethod.process) is timed
 
 use crate::concurrent::{
     execution::Executor,
-    messaging::{errors::ChannelSendError, MessageId},
+    messaging::{errors::ChannelError, MessageId},
 };
 use crate::metrics;
 use futures::{
@@ -73,16 +117,37 @@ pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
 pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
 
-/// ReqRep service config
-#[derive(Debug, Clone)]
-pub struct ReqRepServiceConfig {
+/// return the ReqRep backend service count
+pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
+    let label_name = REQREPID_LABEL_ID.name();
+    let label_value = reqrep_id.to_string();
+    metrics::registry()
+        .gather_metrics_by_name(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
+        .iter()
+        .filter_map(|mf| {
+            mf.get_metric()
+                .iter()
+                .find(|metric| {
+                    metric.get_label().iter().any(|label_pair| {
+                        label_pair.get_name() == label_name
+                            && label_pair.get_value() == label_value
+                    })
+                })
+                .map(|mf| mf.get_gauge().get_value() as u64)
+        })
+        .next()
+        .unwrap_or(0)
+}
+
+/// ReqRep is used to configure and start a ReqRep service
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReqRepConfig {
     reqrep_id: ReqRepId,
     chan_buf_size: usize,
-    executor: Executor,
     metric_timer_buckets: metrics::TimerBuckets,
 }
 
-impl ReqRepServiceConfig {
+impl ReqRepConfig {
     /// ReqRepId getter
     pub fn reqrep_id(&self) -> ReqRepId {
         self.reqrep_id
@@ -93,35 +158,33 @@ impl ReqRepServiceConfig {
         self.chan_buf_size
     }
 
-    /// ReqRepId getter
-    pub fn executor(&self) -> &Executor {
-        &self.executor
-    }
-
     /// Returns TimerBuckets used to configure the Histogram timer metric
     pub fn metric_timer_buckets(&self) -> &metrics::TimerBuckets {
         &self.metric_timer_buckets
     }
 
     /// constructor
-    pub fn new(
-        reqrep_id: ReqRepId,
-        chan_buf_size: usize,
-        executor: Executor,
-        metric_timer_buckets: metrics::TimerBuckets,
-    ) -> Self {
+    /// - the chan_buf_size is by default set to the number of logical cpus
+    pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: metrics::TimerBuckets) -> Self {
         Self {
             reqrep_id,
-            chan_buf_size,
-            executor,
+            chan_buf_size: num_cpus::get(),
             metric_timer_buckets,
         }
     }
 
-    /// Starts the backend service message processor and returns the frontend ReqRep client
+    /// sets the channel buffer size
+    pub fn set_chan_buf_size(mut self, chan_buf_size: usize) -> ReqRepConfig {
+        self.chan_buf_size = chan_buf_size;
+        self
+    }
+
+    /// Starts the backend service message processor and returns the frontend ReqRep client, which
+    /// communicates with the backend service via a channel.
     pub fn start_service<Req, Rep, Service>(
         self,
         processor: Service,
+        executor: Executor,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
     where
         Req: Debug + Send + 'static,
@@ -132,7 +195,7 @@ impl ReqRepServiceConfig {
             self.reqrep_id,
             self.chan_buf_size,
             processor,
-            self.executor,
+            executor,
             self.metric_timer_buckets,
         )
     }
@@ -160,11 +223,10 @@ where
         self.reqrep_id
     }
 
-    /// Send the request
+    /// Send the request async
     /// - each request message is assigned a MessageId, which is returned within the ReplyReceiver
-    /// - the request is sent asynchronously
     /// - the ReplyReceiver is used to receive the reply via an async Future
-    pub async fn send(&mut self, req: Req) -> Result<ReplyReceiver<Rep>, ChannelSendError> {
+    pub async fn send(&mut self, req: Req) -> Result<ReplyReceiver<Rep>, ChannelError> {
         let (rep_sender, rep_receiver) = channel::oneshot::channel::<Rep>();
         let msg_id = MessageId::generate();
         let msg = ReqRepMessage {
@@ -180,13 +242,28 @@ where
         })
     }
 
+    /// Send the request and await to receive a reply
+    pub async fn send_recv(&mut self, req: Req) -> Result<Rep, ChannelError> {
+        let (rep_sender, rep_receiver) = channel::oneshot::channel::<Rep>();
+        let msg_id = MessageId::generate();
+        let msg = ReqRepMessage {
+            req: Some(req),
+            rep_sender,
+            msg_id,
+            reqrep_id: self.reqrep_id,
+        };
+        await!(self.request_sender.send(msg))?;
+        let reply = await!(rep_receiver)?;
+        Ok(reply)
+    }
+
     /// constructor
     ///
     /// ## Notes
     /// - the backend service channel is returned, which needs to be wired up to a backend service
     ///   implementation
     ///   - see [start_service()](struct.ReqRep.html#method.start_service)
-    pub fn new(
+    fn new(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
     ) -> (
@@ -226,7 +303,7 @@ where
     ///   - [SERVICE_INSTANCE_COUNT_METRIC_ID]() defines the MetricId
     ///   - [REQREPID_LABEL_ID]() contains the ReqRepId ULID
     ///   - when the backend service exits, the count is decremented
-    pub fn start_service<Service>(
+    fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
         mut processor: Service,
@@ -304,7 +381,7 @@ where
 
 /// ReqRep service metrics
 #[derive(Clone)]
-pub struct ReqRepServiceMetrics {
+struct ReqRepServiceMetrics {
     timer: prometheus::Histogram,
     service_count: prometheus::IntGauge,
 }
@@ -317,7 +394,7 @@ impl fmt::Debug for ReqRepServiceMetrics {
 
 /// Message used for request/reply patterns.
 #[derive(Debug)]
-pub struct ReqRepMessage<Req, Rep>
+struct ReqRepMessage<Req, Rep>
 where
     Req: Debug + Send + 'static,
     Rep: Debug + Send + 'static,
@@ -342,10 +419,10 @@ where
     }
 
     /// Send the reply
-    pub fn reply(self, rep: Rep) -> Result<(), ChannelSendError> {
+    pub fn reply(self, rep: Rep) -> Result<(), ChannelError> {
         self.rep_sender
             .send(rep)
-            .map_err(|_| ChannelSendError::Disconnected)
+            .map_err(|_| ChannelError::Disconnected)
     }
 
     /// Returns the ReqRepId
@@ -368,6 +445,7 @@ where
 pub struct ReqRepId(pub u128);
 
 /// Reply Receiver
+/// - is used to decouple sending the request from receiving the reply - see [ReqRep::send()](struct.ReqRep.html#method.send)
 #[derive(Debug)]
 pub struct ReplyReceiver<Rep>
 where
@@ -409,6 +487,8 @@ where
     Rep: Debug + Send + 'static,
 {
     /// request / reply processing
+    /// - it returns a Future which will produce the reply
+    /// - the reason it returns a future is to minimizing blocking within the Processor task
     fn process(&mut self, req: Req) -> FutureReply<Rep>;
 
     /// Invoked before any messages have been sent
@@ -488,23 +568,39 @@ mod tests {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
         );
+
+        // GIVEN: a ReqRep client
         let mut req_rep =
             ReqRep::start_service(REQREP_ID, 1, Inc, executor.clone(), timer_buckets).unwrap();
+
         let task = async {
+            // WHEN: a request is sent async
             let rep_receiver = await!(req_rep.send(1)).unwrap();
+            // THEN: a ReplyReceiver is returned
+            // AND: a MessageId has been assigned to the request
             info!("request MessageId: {}", rep_receiver.message_id());
+            // WHEN: the reply is received async
             await!(rep_receiver.recv()).unwrap()
         };
+        // THEN: a reply is received
         let n = executor.run(task);
         info!("n = {}", n);
         assert_eq!(n, 2);
         info!("{:#?}", metrics::registry().gather());
+
+        let task = async {
+            // WHEN: a request is sent
+            await!(req_rep.send_recv(1)).unwrap()
+        };
+        // THEN: a reply is received
+        let n = executor.run(task);
+        assert_eq!(n, 2);
     }
 
     #[test]
     fn req_rep_service_config_start_service() {
         configure_logging();
-        const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+        let REQREP_ID: ReqRepId = ReqRepId::generate();
         let mut executor = global_executor();
 
         // ReqRep processor //
@@ -520,11 +616,11 @@ mod tests {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
         );
-        let mut req_rep = ReqRepServiceConfig::new(REQREP_ID, 1, executor.clone(), timer_buckets)
-            .start_service(Inc)
+        let mut client = ReqRepConfig::new(REQREP_ID, timer_buckets)
+            .start_service(Inc, executor.clone())
             .unwrap();
         let task = async {
-            let rep_receiver = await!(req_rep.send(1)).unwrap();
+            let rep_receiver = await!(client.send(1)).unwrap();
             info!("request MessageId: {}", rep_receiver.message_id());
             await!(rep_receiver.recv()).unwrap()
         };
@@ -532,6 +628,23 @@ mod tests {
         info!("n = {}", n);
         assert_eq!(n, 2);
         info!("{:#?}", metrics::registry().gather());
+
+        assert_eq!(service_instance_count(REQREP_ID), 1);
+        // WHEN: all clients are dropped
+        drop(client);
+        // THEN: the backend service will stop
+        while service_instance_count(REQREP_ID) != 0 {
+            info!(
+                "waiting for backend service to stop: {}",
+                service_instance_count(REQREP_ID)
+            );
+            thread::yield_now();
+        }
+        info!(
+            "service_instance_count({}) = {}",
+            REQREP_ID,
+            service_instance_count(REQREP_ID)
+        );
     }
 
     #[test]

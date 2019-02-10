@@ -20,20 +20,25 @@
 //!   - executors can be globally registered via [register()](fn.register.html)
 //! - [global executor](fn.global_executor.html)
 //!
+//! ## Config
+//! - [ExecutorBuilder](struct.ExecutorBuilder.html) - is also used to register a new [Executor](struct.Executor.html)
+//! ``` rust
+//! # use oysterpack_trust::concurrent::execution::*;
+//! # use std::num::*;
+//! const EXECUTOR_ID: ExecutorId = ExecutorId(1872692872983539779132843447162269015);
+//! let mut executor = ExecutorBuilder::new(EXECUTOR_ID)
+//!     .set_pool_size(NonZeroUsize::new(16).unwrap())
+//!     .set_stack_size(NonZeroUsize::new(1024*64).unwrap())
+//!     .register()
+//!     .unwrap();
+//! ```
+//! - each Executor is uniquely identified by its [ExecutorId](struct.ExecutorId.html)
+//!
 //! ## Metrics
 //! - number of spawned tasks per Executor
 //! - number of completed tasks per Executor
 //! - number of threads started
 //! - Executor thread pool sizes
-//!
-//! ## How register an Executor
-//! Use [ExecutorBuilder](struct.ExecutorBuilder.html) to construct and register a new Executor
-//! ``` rust
-//! # use oysterpack_trust::concurrent::execution::*;
-//! const EXECUTOR_ID: ExecutorId = ExecutorId(1872692872983539779132843447162269015);
-//! let mut executor = ExecutorBuilder::new(EXECUTOR_ID).register().unwrap();
-//! ```
-//! - each Executor is uniquely identified by its [ExecutorId](struct.ExecutorId.html)
 
 use crate::metrics;
 use failure::Fail;
@@ -545,7 +550,7 @@ impl ExecutorBuilder {
     }
 
     /// Tries to build and register the Executor with the global ExecutorRegistry
-    pub fn register(&self) -> Result<Executor, ExecutorRegistryError> {
+    pub fn register(self) -> Result<Executor, ExecutorRegistryError> {
         let mut executors = EXECUTOR_REGISTRY.write().unwrap();
         let mut threadpool_builder = self.builder();
         executors.register(self.id, &mut threadpool_builder)
@@ -809,14 +814,14 @@ mod tests {
         }
 
         let threadpool_config = ExecutorBuilder::new(ExecutorId::generate());
+        let executor_id = threadpool_config.executor_id();
         assert!(threadpool_config.register().is_ok());
+        let threadpool_config = ExecutorBuilder::new(executor_id);
         match threadpool_config
             .register()
             .expect_err("expected ExecutorAlreadyRegistered")
         {
-            ExecutorRegistryError::ExecutorAlreadyRegistered(id) => {
-                assert_eq!(id, threadpool_config.executor_id())
-            }
+            ExecutorRegistryError::ExecutorAlreadyRegistered(id) => assert_eq!(id, executor_id),
             err => panic!(
                 "expected ExecutorAlreadyRegistered, but error was : {:?}",
                 err

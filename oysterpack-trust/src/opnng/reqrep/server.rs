@@ -837,14 +837,10 @@ mod tests {
             ]
             .as_slice(),
         );
-        ReqRep::start_service(
-            REQREP_ID,
-            1,
-            EchoService,
-            global_executor().clone(),
-            timer_buckets,
-        )
-        .unwrap()
+
+        ReqRepConfig::new(REQREP_ID, timer_buckets)
+            .start_service(EchoService, global_executor().clone())
+            .unwrap()
     }
 
     #[test]

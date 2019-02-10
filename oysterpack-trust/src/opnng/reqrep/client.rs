@@ -54,7 +54,7 @@ pub type Client = ReqRep<nng::Message, Result<nng::Message, RequestError>>;
 /// If a client with the same ReqRepId is currently registered, then it will be returned.
 /// Otherwise, a new client instance is started and registered.
 pub fn register_client(
-    reqrep_service_config: reqrep::ReqRepServiceConfig,
+    reqrep_service_config: reqrep::ReqRepConfig,
     socket_config: Option<SocketConfig>,
     dialer_config: DialerConfig,
     executor: Executor,
@@ -63,9 +63,9 @@ pub fn register_client(
     let reqrep = match clients.get(&reqrep_service_config.reqrep_id()) {
         Some(reqrep) => reqrep.clone(),
         None => {
-            let nng_client = NngClient::new(socket_config, dialer_config, executor)?;
+            let nng_client = NngClient::new(socket_config, dialer_config, executor.clone())?;
             let reqrep = reqrep_service_config
-                .start_service(nng_client)
+                .start_service(nng_client, executor)
                 .map_err(|err| NngClientError::ReqRepServiceStartFailed(err.is_shutdown()))?;
             let _ = clients.insert(reqrep.id(), reqrep.clone());
             reqrep
@@ -101,7 +101,7 @@ struct NngClientContext {
 
 /// nng client
 #[derive(Debug, Clone)]
-pub struct NngClient {
+struct NngClient {
     id: ULID,
     aio_context_pool_borrow: crossbeam::Receiver<mpsc::Sender<Request>>,
 }
@@ -113,7 +113,7 @@ impl NngClient {
     /// The Executor is used to spawn tasks for handling the nng request / reply processing.
     /// The parallelism defined by the DialerConfig corresponds to the number of Aio callbacks that
     /// will be registered, which corresponds to the number of Aio Context handler tasks spawned.
-    pub fn new(
+    fn new(
         socket_config: Option<SocketConfig>,
         dialer_config: DialerConfig,
         mut executor: Executor,
@@ -743,14 +743,9 @@ mod tests {
             ]
             .as_slice(),
         );
-        ReqRep::start_service(
-            REQREP_ID,
-            1,
-            EchoService,
-            global_executor().clone(),
-            timer_buckets,
-        )
-        .unwrap()
+        ReqRepConfig::new(REQREP_ID, timer_buckets)
+            .start_service(EchoService, global_executor().clone())
+            .unwrap()
     }
 
     fn start_client(url: &str) -> (Client, ExecutorId) {
@@ -766,7 +761,7 @@ mod tests {
 
         let client_executor_id = ExecutorId::generate();
         let client = super::register_client(
-            ReqRepServiceConfig::new(REQREP_ID, 1, global_executor().clone(), timer_buckets),
+            ReqRepConfig::new(REQREP_ID, timer_buckets),
             None,
             DialerConfig::new(url),
             {
