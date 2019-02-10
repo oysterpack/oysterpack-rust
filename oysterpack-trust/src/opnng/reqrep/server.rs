@@ -24,13 +24,30 @@
 //! Parallelism is controlled by the number of [callbacks](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback)
 //! that are registered. Each callback is linked to a future's based task via an async channel.
 //! The callback's job is to simply forward async IO events to the backend end futures task to process.
-//! Think of the futures based task as an AIO event loop that processes a stream of async IO events.
-//! The AIO event loop forwards messages to an [ReqRep](../../../concurrent/messaging/reqrep/struct.ReqRep.html) service backend for the actual message processing.
+//! Think of the futures based task as an AIO event loop that processes an async IO event stream.
+//! The AIO event loop forwards messages to an  service backend for the actual message processing.
 //!
 //! <pre>
 //! client ---Req--> Socket --> Aio Callback --> Aio Event Loop ---Req--> service
 //! client <--Rep--- Socket <-------Rep--------- Aio Event Loop <--Rep--- service
 //! </pre>
+//!
+//! There is one additional server controller task that is spawned. The server's lifetime is coupled
+//! with the controller's lifetime. The controller's purpose is handle the server management commands:
+//! - respond to ping requests - which can be used check that the server is running
+//! - listen for a signal to stop the server. Upon receiving the signal the controller will
+//!   - close the nng Listener and Socket
+//!   - unregister the ServerHandle from the global registry
+//!
+//! ### Server Components and Resources
+//! - nng::Socket
+//! - nng:Listener
+//! - N number of nng::Aio callbacks registered with the nng::Socket
+//!   - based on [ListenerConfig::parallelism()](struct.ListenerConfig.html#method.parallelism) setting
+//! - N number of Aio event loop tasks
+//! - [ReqRep service](../../../concurrent/messaging/reqrep/struct.ReqRep.html)
+//! - server controller task
+//! - ServerHandle - reference stored in global registry
 //!
 //! ## Config
 //! - [SocketConfig](../../config/struct.SocketConfig.html)
@@ -55,17 +72,12 @@ use nng::options::Options;
 use oysterpack_log::*;
 use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    num::NonZeroUsize,
-    sync::Mutex,
-    sync::{Arc, RwLock},
-};
+use std::{fmt, num::NonZeroUsize, sync::Mutex, sync::RwLock};
 
 lazy_static! {
 
     /// Global Executor registry
-    static ref SERVER_HANDLES: RwLock<fnv::FnvHashMap<ULID, Arc<ServerHandle>>> = RwLock::new(fnv::FnvHashMap::default());
+    static ref SERVER_HANDLES: RwLock<fnv::FnvHashMap<ULID, ServerHandle>> = RwLock::new(fnv::FnvHashMap::default());
 
     /// the metric is incremented on nng::PipeEvent::AddPost and decremented on nng::PipeEvent::RemovePost
     static ref ACTIVE_CONN_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
@@ -121,6 +133,9 @@ pub const REQREP_LABEL_ID: metrics::LabelId =
 /// - the executor spawns the following task:
 ///   - 1 for each Aio callback - based on [ListenerConfig.parallelism()](struct.ListenerConfig.html#method.parallelism)
 ///   - 1 server controller task
+///     - handles server management commands
+///       - responds to ping requests
+///       - listens for a stop signal from the ServerHandle
 pub fn spawn(
     socket_config: Option<SocketConfig>,
     listener_config: ListenerConfig,
@@ -354,7 +369,7 @@ pub fn spawn(
     };
 
     let mut server_handles = SERVER_HANDLES.write().unwrap();
-    server_handles.insert(server_handle.id(), Arc::new(server_handle.clone()));
+    server_handles.insert(server_handle.id(), server_handle.clone());
 
     Ok(server_handle)
 }
@@ -479,7 +494,7 @@ impl ServerHandle {
 
     /// Returns the ServerHandle - only if the server is still alive
     /// - ServerHandle(s) are globally registered when the server is spawned
-    pub fn get(id: ULID) -> Option<Arc<ServerHandle>> {
+    pub fn get(id: ULID) -> Option<ServerHandle> {
         let server_handle = {
             let server_handles = SERVER_HANDLES.read().unwrap();
             server_handles.get(&id).cloned()
@@ -502,6 +517,11 @@ impl ServerHandle {
         }
     }
 
+    /// returns all registered ServerHandle(s)
+    pub fn all() -> Vec<ServerHandle> {
+        SERVER_HANDLES.read().unwrap().values().cloned().collect()
+    }
+
     /// Returns the list of registered ServerHandle ULIDs along with the server's ReqRepId
     pub fn ids() -> Vec<(ULID, ReqRepId)> {
         let server_handles = SERVER_HANDLES.read().unwrap();
@@ -512,7 +532,7 @@ impl ServerHandle {
     }
 
     /// Returns ServerHandle(s) that are registered for the specified ReqRepId
-    pub fn get_by_reqrep_id(reqrep_id: ReqRepId) -> Vec<Arc<ServerHandle>> {
+    pub fn get_by_reqrep_id(reqrep_id: ReqRepId) -> Vec<ServerHandle> {
         let server_handles = SERVER_HANDLES.read().unwrap();
         server_handles
             .values()
@@ -624,7 +644,7 @@ impl fmt::Debug for ServerMetrics {
     }
 }
 
-/// Listener settings
+/// Listener configuration.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ListenerConfig {
     #[serde(with = "url_serde")]
@@ -638,6 +658,7 @@ pub struct ListenerConfig {
 
 impl ListenerConfig {
     /// constructor
+    /// - refer to nng for supported [transports](https://nanomsg.github.io/nng/man/v1.1.0/index.html#_section_7_protocols_and_transports)
     ///
     /// ## Default settings
     /// - non_blocking = true
@@ -930,6 +951,8 @@ mod tests {
         let reply = executor.spawn_await(handle).unwrap();
         info!("Reply was received: {:?}", reply);
 
+        let server_handle_id = server_handle.id();
+
         // WHEN: the server handle is dropped
         drop(server_handle);
 
@@ -938,6 +961,22 @@ mod tests {
         let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
         let result = s.dial(url.as_str());
         assert!(result.is_ok());
+
+        // WHEN: the ServerHandle is looked up in the global registry
+        let mut server_handle = ServerHandle::get(server_handle_id).unwrap();
+
+        let server_handles = ServerHandle::all();
+        assert!(server_handles
+            .iter()
+            .any(|handle| handle.id == server_handle.id));
+
+        // WHEN: the server is signalled to stop
+        server_handle.stop_async();
+        assert!(server_handle.stop_signalled());
+        // THEN: await the server to shutdown
+        server_handle.await_shutdown();
+        // THEN: the server handle is unregistered
+        assert!(ServerHandle::get(server_handle_id).is_none());
     }
 
     #[test]

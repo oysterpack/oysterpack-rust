@@ -14,7 +14,28 @@
  *    limitations under the License.
  */
 
-//! Provides an ReqRep nng client
+//! Provides an ReqRep [Client](type.Client.html) application interface for nng clients.
+//! - [register_client](fn.register_client.html) is used to register clients in a global registry
+//! - [client](fn.client.html) is used to lookup Clients by ReqRepId
+//!
+//! - The client is fully async and supports parallelism. The level of parallelism is configured via
+//!   [DialerConfig::parallelism()](struct.DialerConfig.html#method.parallelism).
+//! - When all [Client(s)](type.Client.html) are unregistered and all references fall out of scope, then
+//!   the backend ReqRep service will stop which will:
+//!   - unregister its context
+//!   - close the nng::Dialer and nng:Socket resources
+//!   - close the Aio event loop channels, which will trigger the Aio event loop tasks to exit
+//!
+//! ## Design
+//! The server is designed to leverage nng's async capabilities. The approach is to integrate using
+//! [nng:Aio](https://docs.rs/nng/latest/nng/struct.Aio.html) and [nng::Context](https://docs.rs/nng/latest/nng/struct.Context.html).
+//! via nng's [callback](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback) mechanism.
+//! Parallelism is controlled by the number of [callbacks](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback)
+//! that are registered. Each callback is linked to a future's based task via an async channel.
+//! The callback's job is to simply forward async IO events to the backend end futures task to process.
+//! Think of the futures based task as an AIO event loop that processes an async IO event stream.
+//! The AIO event loop forwards messages to an  service backend for the actual message processing.
+//!
 
 use crate::concurrent::{
     execution::Executor,
@@ -148,28 +169,17 @@ impl NngClient {
                     .map_err(NngClientError::NngContextCreateFailed)?;
                 let callback_ctx = context.clone();
                 let aio = nng::Aio::with_callback(move |_aio| {
-                    match aio_tx.lock() {
-                        Ok(aio_tx) => {
-                            if let Err(err) = aio_tx.unbounded_send(()) {
-                                // means the channel has been disconnected because the worker Future task has completed
-                                // the server is either being stopped, or the worker has crashed
-                                // TODO: we need a way to know if the server is being shutdown
-                                warn!("Failed to nofify worker of Aio event. This means the worker is not running. The Aio Context will be closed: {}", err);
-                                // TODO: will cloning the Context work ? Context::close() cannot be invoked from the callback because it consumes the Context
-                                //       and rust won't allow it because the Context is being referenced by the FnMut closure
-                                callback_ctx.clone().close();
-                                // TODO: send an alert - if the worker crashed, i.e., panicked, then it may need to be restarted
-                            }
-                        }
-                        Err(err) => {
-                            // This should never happen
-                            error!("Failed to obtain lock on Aio sender channel. The Aio Context will be closed: {}", err);
-                            // TODO: will this work ? Calling close directly is not permitted by the compiler because Context.close consumes the
-                            //       object, but the compiler thinks the FnMut closure will be called again
-                            callback_ctx.clone().close();
-                            // TODO: trigger an alarm because this should never happen
-                        }
-                    };
+                    let aio_tx = aio_tx.lock().unwrap();
+                    if let Err(err) = aio_tx.unbounded_send(()) {
+                        // means the channel has been disconnected because the worker Future task has completed
+                        // the server is either being stopped, or the worker has crashed
+                        // TODO: we need a way to know if the server is being shutdown
+                        warn!("Failed to nofify worker of Aio event. This means the worker is not running. The Aio Context will be closed: {}", err);
+                        // TODO: will cloning the Context work ? Context::close() cannot be invoked from the callback because it consumes the Context
+                        //       and rust won't allow it because the Context is being referenced by the FnMut closure
+                        callback_ctx.clone().close();
+                        // TODO: send an alert - if the worker crashed, i.e., panicked, then it may need to be restarted
+                    }
                 }).map_err(NngClientError::NngAioCreateFailed)?;
 
                 let (req_tx, mut req_rx) = futures::channel::mpsc::channel::<Request>(1);
@@ -275,6 +285,8 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                 reply_chan: tx,
             };
 
+            // blocks until a worker becomes available to handle the request
+            // TODO: is there a way to do this pure async, i.e., in a nonblocking manner
             match aio_context_pool_borrow.recv() {
                 Ok(ref mut sender) => match await!(sender.send(request)) {
                     Ok(_) => match await!(rx) {
