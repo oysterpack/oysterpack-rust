@@ -80,19 +80,23 @@ pub fn register_client(
     socket_config: Option<SocketConfig>,
     dialer_config: DialerConfig,
     executor: Executor,
-) -> Result<Client, NngClientError> {
+) -> Result<Client, ClientRegistrationError> {
     let mut clients = CLIENTS.write().unwrap();
-    let reqrep = match clients.get(&reqrep_service_config.reqrep_id()) {
-        Some(reqrep) => reqrep.clone(),
-        None => {
-            let nng_client = NngClient::new(socket_config, dialer_config, executor.clone())?;
-            let reqrep = reqrep_service_config
-                .start_service(nng_client, executor)
-                .map_err(|err| NngClientError::ReqRepServiceStartFailed(err.is_shutdown()))?;
-            let _ = clients.insert(reqrep.id(), reqrep.clone());
-            reqrep
-        }
-    };
+    if clients.contains_key(&reqrep_service_config.reqrep_id()) {
+        return Err(ClientRegistrationError::ClientAlreadyRegistered(
+            reqrep_service_config.reqrep_id(),
+        ));
+    }
+    let nng_client = NngClient::new(socket_config, dialer_config, executor.clone())
+        .map_err(ClientRegistrationError::NngError)?;
+    let reqrep = reqrep_service_config
+        .start_service(nng_client, executor)
+        .map_err(|err| {
+            ClientRegistrationError::NngError(NngClientError::ReqRepServiceStartFailed(
+                err.is_shutdown(),
+            ))
+        })?;
+    let _ = clients.insert(reqrep.id(), reqrep.clone());
     Ok(reqrep)
 }
 
@@ -358,6 +362,17 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
         }
         debug!("NngClient({}) is destroyed", self.id);
     }
+}
+
+/// Client registration errors
+#[derive(Debug, Fail)]
+pub enum ClientRegistrationError {
+    /// Client is already registered
+    #[fail(display = "Client is already registered: {}", _0)]
+    ClientAlreadyRegistered(ReqRepId),
+    /// nng error
+    #[fail(display = "nng error: {}", _0)]
+    NngError(NngClientError),
 }
 
 /// NngClient related errors
@@ -773,7 +788,7 @@ mod tests {
         }
     }
 
-    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+    //    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
     fn start_server() -> ReqRep<nng::Message, nng::Message> {
         let timer_buckets = metrics::TimerBuckets::from(
@@ -785,12 +800,12 @@ mod tests {
             ]
             .as_slice(),
         );
-        ReqRepConfig::new(REQREP_ID, timer_buckets)
+        ReqRepConfig::new(ReqRepId::generate(), timer_buckets)
             .start_service(EchoService, global_executor().clone())
             .unwrap()
     }
 
-    fn start_client(url: url::Url) -> (Client, ExecutorId) {
+    fn start_client(reqrep_id: ReqRepId, url: url::Url) -> (Client, ExecutorId) {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![
                 Duration::from_nanos(50),
@@ -803,7 +818,7 @@ mod tests {
 
         let client_executor_id = ExecutorId::generate();
         let client = super::register_client(
-            ReqRepConfig::new(REQREP_ID, timer_buckets),
+            ReqRepConfig::new(reqrep_id, timer_buckets),
             None,
             DialerConfig::new(url),
             {
@@ -824,27 +839,29 @@ mod tests {
         let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
         let mut threadpool_builder = ThreadPoolBuilder::new();
+        let server_reqrep = start_server();
+        let reqrep_id = server_reqrep.id();
         let mut server_handle = server::spawn(
             None,
             server::ListenerConfig::new(url.clone()),
-            start_server(),
+            server_reqrep,
             execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
         )
         .unwrap();
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let (mut client, client_executor_id) = start_client(url.clone());
+        let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
         // THEN: the client ReqRepId should match
-        assert_eq!(client.id(), REQREP_ID);
+        assert_eq!(client.id(), reqrep_id);
         // WHEN: the client is dropped
         drop(client);
         const REQUEST_COUNT: usize = 100;
         let replies: Vec<nng::Message> = executor
             .spawn_await(
-                async {
+                async move {
                     // Then: the client can still be retrieved from the global registry
-                    let mut client = super::client(REQREP_ID).unwrap();
+                    let mut client = super::client(reqrep_id).unwrap();
                     // AND: the client is still functional
                     let mut replies = Vec::with_capacity(REQUEST_COUNT);
                     for _ in 0..REQUEST_COUNT {
@@ -860,9 +877,9 @@ mod tests {
         assert_eq!(replies.len(), REQUEST_COUNT);
 
         // WHEN: the client is unregistered
-        let client = super::unregister_client(REQREP_ID).unwrap();
-        assert!(super::unregister_client(REQREP_ID).is_none());
-        assert!(super::client(REQREP_ID).is_none());
+        let client = super::unregister_client(reqrep_id).unwrap();
+        assert!(super::unregister_client(reqrep_id).is_none());
+        assert!(super::client(reqrep_id).is_none());
 
         // WHEN: the last client reference is dropped
         drop(client);
@@ -890,17 +907,19 @@ mod tests {
         let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
         let mut threadpool_builder = ThreadPoolBuilder::new();
+        let server_reqrep = start_server();
+        let reqrep_id = server_reqrep.id();
         let mut server_handle = server::spawn(
             None,
             server::ListenerConfig::new(url.clone()),
-            start_server(),
+            server_reqrep,
             execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
         )
         .unwrap();
         assert!(server_handle.ping().unwrap());
 
         // GIVEN: the NngClient is registered
-        let (mut client, client_executor_id) = start_client(url.clone());
+        let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
 
         const TASK_COUNT: usize = 10;
         const REQUEST_COUNT: usize = 100;
@@ -908,9 +927,9 @@ mod tests {
         for _ in 0..TASK_COUNT {
             let handle = executor
                 .spawn_with_handle(
-                    async {
+                    async move {
                         // Then: the client can still be retrieved from the global registry
-                        let mut client = super::client(REQREP_ID).unwrap();
+                        let mut client = super::client(reqrep_id).unwrap();
                         // AND: the client is still functional
                         let mut replies = Vec::with_capacity(REQUEST_COUNT);
                         for _ in 0..REQUEST_COUNT {
