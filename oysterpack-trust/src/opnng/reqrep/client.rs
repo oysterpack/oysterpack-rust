@@ -53,7 +53,6 @@ use futures::{
 use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
-use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -64,7 +63,7 @@ use std::{
 
 lazy_static! {
      /// Global Client contexts
-    static ref CLIENT_CONTEXTS: RwLock<fnv::FnvHashMap<ULID, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
+    static ref CLIENT_CONTEXTS: RwLock<fnv::FnvHashMap<ReqRepId, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
 
     /// Global ReqRep nng client registry
     static ref CLIENTS: RwLock<fnv::FnvHashMap<ReqRepId, Client>> = RwLock::new(fnv::FnvHashMap::default());
@@ -87,8 +86,13 @@ pub fn register_client(
             reqrep_service_config.reqrep_id(),
         ));
     }
-    let nng_client = NngClient::new(socket_config, dialer_config, executor.clone())
-        .map_err(ClientRegistrationError::NngError)?;
+    let nng_client = NngClient::new(
+        reqrep_service_config.reqrep_id(),
+        socket_config,
+        dialer_config,
+        executor.clone(),
+    )
+    .map_err(ClientRegistrationError::NngError)?;
     let reqrep = reqrep_service_config
         .start_service(nng_client, executor)
         .map_err(|err| {
@@ -119,7 +123,7 @@ pub fn registered_client_ids() -> Vec<ReqRepId> {
 /// The context that is required by the NngClient's backend service.
 #[derive(Clone)]
 struct NngClientContext {
-    id: ULID,
+    id: ReqRepId,
     socket: Option<nng::Socket>,
     dialer: Option<nng::Dialer>,
     aio_context_pool_return: mpsc::Sender<mpsc::Sender<Request>>,
@@ -128,7 +132,7 @@ struct NngClientContext {
 /// nng client
 #[derive(Clone)]
 struct NngClient {
-    id: ULID,
+    id: ReqRepId,
     borrow: mpsc::Sender<oneshot::Sender<mpsc::Sender<Request>>>,
 }
 
@@ -140,12 +144,12 @@ impl NngClient {
     /// The parallelism defined by the DialerConfig corresponds to the number of Aio callbacks that
     /// will be registered, which corresponds to the number of Aio Context handler tasks spawned.
     fn new(
+        id: ReqRepId,
         socket_config: Option<SocketConfig>,
         dialer_config: DialerConfig,
         mut executor: Executor,
     ) -> Result<Self, NngClientError> {
         let mut nng_client_executor = executor.clone();
-        let id = ULID::generate();
         let parallelism = dialer_config.parallelism();
         let (aio_context_pool_return, mut aio_context_pool_borrow) =
             mpsc::channel::<mpsc::Sender<Request>>(parallelism);
