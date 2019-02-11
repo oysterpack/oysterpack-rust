@@ -56,6 +56,7 @@ use oysterpack_log::*;
 use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt,
     num::NonZeroUsize,
     sync::{Arc, Mutex, RwLock},
     time::Duration,
@@ -117,14 +118,14 @@ struct NngClientContext {
     id: ULID,
     socket: Option<nng::Socket>,
     dialer: Option<nng::Dialer>,
-    aio_context_pool_return: crossbeam::Sender<mpsc::Sender<Request>>,
+    aio_context_pool_return: mpsc::Sender<mpsc::Sender<Request>>,
 }
 
 /// nng client
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct NngClient {
     id: ULID,
-    aio_context_pool_borrow: crossbeam::Receiver<mpsc::Sender<Request>>,
+    borrow: mpsc::Sender<oneshot::Sender<mpsc::Sender<Request>>>,
 }
 
 impl NngClient {
@@ -139,10 +140,11 @@ impl NngClient {
         dialer_config: DialerConfig,
         mut executor: Executor,
     ) -> Result<Self, NngClientError> {
+        let mut nng_client_executor = executor.clone();
         let id = ULID::generate();
         let parallelism = dialer_config.parallelism();
-        let (aio_context_pool_return, aio_context_pool_borrow) =
-            crossbeam::channel::bounded::<mpsc::Sender<Request>>(parallelism);
+        let (aio_context_pool_return, mut aio_context_pool_borrow) =
+            mpsc::channel::<mpsc::Sender<Request>>(parallelism);
 
         let create_context = move || {
             let socket = SocketConfig::create_socket(socket_config)
@@ -183,9 +185,15 @@ impl NngClient {
                 }).map_err(NngClientError::NngAioCreateFailed)?;
 
                 let (req_tx, mut req_rx) = futures::channel::mpsc::channel::<Request>(1);
-                let aio_context_pool_return = ctx.aio_context_pool_return.clone();
-                if aio_context_pool_return.send(req_tx.clone()).is_err() {
-                    return Err(NngClientError::AioContextPoolChannelClosed);
+                let mut aio_context_pool_return = ctx.aio_context_pool_return.clone();
+                {
+                    let req_tx = req_tx.clone();
+                    let mut aio_context_pool_return = aio_context_pool_return.clone();
+                    let aio_context_pool_return_send_result = executor
+                        .spawn_await(async move { await!(aio_context_pool_return.send(req_tx)) });
+                    if aio_context_pool_return_send_result.is_err() {
+                        return Err(NngClientError::AioContextPoolChannelClosed);
+                    }
                 }
                 executor.spawn(async move {
                     debug!("[{}-{}] NngClient Aio Context task is running", id, i);
@@ -246,7 +254,8 @@ impl NngClient {
                         } else {
                             let _ = req.reply_chan.send(Err(RequestError::InvalidRequest("BUG: Request was received with no nng::Message".to_string())));
                         }
-                        if let Err(err) = aio_context_pool_return.send(req_tx.clone()) {
+                        // add a request Sender back to the pool, indicating the worker is now available
+                        if let Err(err) = await!(aio_context_pool_return.send(req_tx.clone())) {
                             error!("[{}-{}] Failed to return request sender back to the pool: {}",id, i, err)
                         }
                         debug!("[{}-{}] NngClient: request is done", id, i);
@@ -264,10 +273,40 @@ impl NngClient {
         let mut clients = CLIENT_CONTEXTS.write().unwrap();
         clients.insert(ctx.id, Arc::new(ctx));
 
+        let (borrow_tx, mut borrow_rx) = mpsc::channel::<oneshot::Sender<mpsc::Sender<Request>>>(1);
+        nng_client_executor.spawn(async move {
+            debug!("NngClient Aio Context Pool task is running: {}", id);
+            while let Some(reply_chan) = await!(borrow_rx.next()) {
+                match await!(aio_context_pool_borrow.next()) {
+                    Some(request_sender) => {
+                        let _ = reply_chan.send(request_sender);
+                    },
+                    None => {
+                        debug!("`aio_context_pool_borrow` channel is disconnected - thus we are done");
+                        break;
+                    }
+                }
+            }
+            // drain the aio_context_pool_borrow channel and close the Aio Context handler channels
+            // - this is required in order for the AIO Context handler tasks to exit
+            while let Some(mut sender) = await!(aio_context_pool_borrow.next()) {
+                sender.close_channel();
+                debug!("closed Aio Context channel");
+            }
+
+            debug!("NngClient Aio Context Pool task is done: {}", id);
+        }).map_err(|err| NngClientError::AioContextTaskSpawnError(err.is_shutdown()))?;
+
         Ok(Self {
             id,
-            aio_context_pool_borrow,
+            borrow: borrow_tx,
         })
+    }
+}
+
+impl fmt::Debug for NngClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "NngClient({})", self.id)
     }
 }
 
@@ -276,18 +315,21 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
         &mut self,
         req: nng::Message,
     ) -> reqrep::FutureReply<Result<nng::Message, RequestError>> {
-        let aio_context_pool_borrow = self.aio_context_pool_borrow.clone();
+        let mut borrow = self.borrow.clone();
 
         async move {
+            let (borrow_tx, borrow_rx) = oneshot::channel();
+            if await!(borrow.send(borrow_tx)).is_err() {
+                return Err(RequestError::NngAioContextPoolChannelDisconnected);
+            }
+
             let (tx, rx) = oneshot::channel();
             let request = Request {
                 msg: Some(req),
                 reply_chan: tx,
             };
 
-            // blocks until a worker becomes available to handle the request
-            // TODO: is there a way to do this pure async, i.e., in a nonblocking manner
-            match aio_context_pool_borrow.recv() {
+            match await!(borrow_rx) {
                 Ok(ref mut sender) => match await!(sender.send(request)) {
                     Ok(_) => match await!(rx) {
                         Ok(result) => result,
@@ -295,7 +337,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                     },
                     Err(err) => Err(RequestError::AioContextChannelDisconnected(err)),
                 },
-                Err(err) => Err(RequestError::NngAioContextPoolChannelDisconnected(err)),
+                Err(_) => Err(RequestError::NngAioContextPoolChannelDisconnected),
             }
         }
             .boxed()
@@ -305,27 +347,14 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
         debug!("NngClient({}) is being destroyed ...", self.id);
         let mut client_contexts = CLIENT_CONTEXTS.write().unwrap();
         if let Some(mut context) = client_contexts.remove(&self.id) {
-            Arc::get_mut(&mut context)
-                .unwrap()
-                .dialer
-                .take()
-                .unwrap()
-                .close();
-            debug!("NngClient({}): nng::Dialer is closed", self.id);
-            Arc::get_mut(&mut context)
-                .unwrap()
-                .socket
-                .take()
-                .unwrap()
-                .close();
-            debug!("NngClient({}): nng::Socket is closed", self.id);
-
-            // drain the aio_context_pool_borrow channel and close the Aio Context handler channels
-            // - this is required in order for the AIO Context handler tasks to exit
-            while let Ok(mut sender) = self.aio_context_pool_borrow.try_recv() {
-                sender.close_channel();
-                debug!("NngClient({}): Aio Context channel is closed", self.id);
-            }
+            let context = Arc::get_mut(&mut context).unwrap();
+            context.dialer.take().unwrap().close();
+            debug!("NngClient({}): closed nng::Dialer", self.id);
+            context.socket.take().unwrap().close();
+            debug!("NngClient({}): closed nng::Socket ", self.id);
+            context.aio_context_pool_return.close_channel();
+            self.borrow.close_channel();
+            debug!("NngClient({}): closed channels", self.id);
         }
         debug!("NngClient({}) is destroyed", self.id);
     }
@@ -367,8 +396,8 @@ pub enum NngClientError {
 #[derive(Debug, Fail, Clone)]
 pub enum RequestError {
     /// The nng Aio Context pool channel is disconnected
-    #[fail(display = "The nng Aio Context pool channel is disconnected: {}", _0)]
-    NngAioContextPoolChannelDisconnected(crossbeam::channel::RecvError),
+    #[fail(display = "The nng Aio Context pool channel is disconnected.")]
+    NngAioContextPoolChannelDisconnected,
     /// The nng Aio Context channel is disconnected
     #[fail(display = "The nng Aio Context channel is disconnected: {}", _0)]
     AioContextChannelDisconnected(futures::channel::mpsc::SendError),
@@ -839,10 +868,15 @@ mod tests {
         drop(client);
         thread::yield_now();
         let executor = execution::executor(client_executor_id).unwrap();
-        while executor.active_task_count() != 0 {
+        for _ in 0..10 {
+            if executor.active_task_count() == 0 {
+                info!("all client tasks have completed");
+                break;
+            }
             info!("waiting for NngClient Aio Context handler tasks to exit: executor.active_task_count() = {}", executor.active_task_count());
-            thread::yield_now();
+            thread::sleep_ms(1);
         }
+        assert_eq!(executor.active_task_count(), 0);
     }
 
     #[test]
