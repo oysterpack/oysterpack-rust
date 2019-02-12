@@ -27,15 +27,17 @@
 //!   - close the Aio event loop channels, which will trigger the Aio event loop tasks to exit
 //!
 //! ## Design
-//! The server is designed to leverage nng's async capabilities. The approach is to integrate using
+//! The server is designed internally to be async and non-blocking leveraging nng's async capabilities.
+//! coupled with [futures](https://crates.io/crates/futures-preview). The approach is to integrate using
 //! [nng:Aio](https://docs.rs/nng/latest/nng/struct.Aio.html) and [nng::Context](https://docs.rs/nng/latest/nng/struct.Context.html).
 //! via nng's [callback](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback) mechanism.
 //! Parallelism is controlled by the number of [callbacks](https://docs.rs/nng/latest/nng/struct.Aio.html#method.with_callback)
 //! that are registered. Each callback is linked to a future's based task via an async channel.
 //! The callback's job is to simply forward async IO events to the backend end futures task to process.
-//! Think of the futures based task as an AIO event loop that processes an async IO event stream.
-//! The AIO event loop forwards messages to an  service backend for the actual message processing.
-//!
+//! The Aio callback tasks form a pool of Aio contexts which can handle multiple requests in parallel.
+//! When a Client submits a request, the request / reply workflow is serviced by one of the Aio callback
+//! tasks. If all Aio context tasks are busy, then requests will wait asynchronously in a non-blocking
+//! manner for an Aio context task.
 
 use crate::concurrent::{
     execution::Executor,
@@ -72,8 +74,8 @@ lazy_static! {
 /// Client type alias
 pub type Client = ReqRep<nng::Message, Result<nng::Message, RequestError>>;
 
-/// If a client with the same ReqRepId is currently registered, then it will be returned.
-/// Otherwise, a new client instance is started and registered.
+/// The client's ReqRepId is used as the registry key. Thus, if a Client is already registered with
+/// the same ReqRepId, then a [ClientRegistrationError::ClientAlreadyRegistered] error is returned.
 pub fn register_client(
     reqrep_service_config: reqrep::ReqRepConfig,
     socket_config: Option<SocketConfig>,
@@ -275,35 +277,40 @@ impl NngClient {
             Ok(())
         };
 
-        let ctx = create_context()?;
-        start_workers(&ctx)?;
-
-        let mut clients = CLIENT_CONTEXTS.write().unwrap();
-        clients.insert(ctx.id, Arc::new(ctx));
-
         let (borrow_tx, mut borrow_rx) = mpsc::channel::<oneshot::Sender<mpsc::Sender<Request>>>(1);
-        nng_client_executor.spawn(async move {
-            debug!("NngClient Aio Context Pool task is running: {}", id);
-            while let Some(reply_chan) = await!(borrow_rx.next()) {
-                match await!(aio_context_pool_borrow.next()) {
-                    Some(request_sender) => {
-                        let _ = reply_chan.send(request_sender);
-                    },
-                    None => {
-                        debug!("`aio_context_pool_borrow` channel is disconnected - thus we are done");
-                        break;
+        let start_request_sender_pool_task = move || {
+            nng_client_executor.spawn(async move {
+                debug!("NngClient Aio Context Pool task is running: {}", id);
+                while let Some(reply_chan) = await!(borrow_rx.next()) {
+                    match await!(aio_context_pool_borrow.next()) {
+                        Some(request_sender) => {
+                            let _ = reply_chan.send(request_sender);
+                        },
+                        None => {
+                            debug!("`aio_context_pool_borrow` channel is disconnected - thus we are done");
+                            break;
+                        }
                     }
                 }
-            }
-            // drain the aio_context_pool_borrow channel and close the Aio Context handler channels
-            // - this is required in order for the AIO Context handler tasks to exit
-            while let Some(mut sender) = await!(aio_context_pool_borrow.next()) {
-                sender.close_channel();
-                debug!("closed Aio Context channel");
-            }
+                // drain the aio_context_pool_borrow channel and close the Aio Context handler channels
+                // - this is required in order for the AIO Context handler tasks to exit
+                while let Some(mut sender) = await!(aio_context_pool_borrow.next()) {
+                    sender.close_channel();
+                    debug!("closed Aio Context channel");
+                }
 
-            debug!("NngClient Aio Context Pool task is done: {}", id);
-        }).map_err(|err| NngClientError::AioContextTaskSpawnError(err.is_shutdown()))?;
+                debug!("NngClient Aio Context Pool task is done: {}", id);
+            }).map_err(|err| NngClientError::AioContextTaskSpawnError(err.is_shutdown()))
+        };
+
+        let ctx = create_context()?;
+        start_workers(&ctx)?;
+        start_request_sender_pool_task()?;
+
+        {
+            let mut clients = CLIENT_CONTEXTS.write().unwrap();
+            clients.insert(ctx.id, Arc::new(ctx));
+        }
 
         Ok(Self {
             id,
@@ -360,6 +367,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
             debug!("NngClient({}): closed nng::Dialer", self.id);
             context.socket.take().unwrap().close();
             debug!("NngClient({}): closed nng::Socket ", self.id);
+            // closing the `aio_context_pool_return` and `borrow` channels will cause the request sender pool task to exit
             context.aio_context_pool_return.close_channel();
             self.borrow.close_channel();
             debug!("NngClient({}): closed channels", self.id);
@@ -792,9 +800,11 @@ mod tests {
         }
     }
 
-    //    const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-
     fn start_server() -> ReqRep<nng::Message, nng::Message> {
+        start_server_with_reqrep_id(ReqRepId::generate())
+    }
+
+    fn start_server_with_reqrep_id(reqrep_id: ReqRepId) -> ReqRep<nng::Message, nng::Message> {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![
                 Duration::from_nanos(50),
@@ -804,12 +814,19 @@ mod tests {
             ]
             .as_slice(),
         );
-        ReqRepConfig::new(ReqRepId::generate(), timer_buckets)
+        ReqRepConfig::new(reqrep_id, timer_buckets)
             .start_service(EchoService, global_executor().clone())
             .unwrap()
     }
 
     fn start_client(reqrep_id: ReqRepId, url: url::Url) -> (Client, ExecutorId) {
+        start_client_with_dialer_config(reqrep_id, DialerConfig::new(url))
+    }
+
+    fn start_client_with_dialer_config(
+        reqrep_id: ReqRepId,
+        dialer_config: DialerConfig,
+    ) -> (Client, ExecutorId) {
         let timer_buckets = metrics::TimerBuckets::from(
             vec![
                 Duration::from_nanos(50),
@@ -824,7 +841,7 @@ mod tests {
         let client = super::register_client(
             ReqRepConfig::new(reqrep_id, timer_buckets),
             None,
-            DialerConfig::new(url),
+            dialer_config,
             {
                 let mut threadpool_builder = ThreadPoolBuilder::new();
                 execution::register(client_executor_id, &mut threadpool_builder).unwrap()
@@ -958,5 +975,119 @@ mod tests {
                 },
             )
             .unwrap();
+    }
+
+    #[test]
+    fn check_client_internal_task_count() {
+        configure_logging();
+        let mut thread_builder = ThreadPoolBuilder::new();
+        let mut executor =
+            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+
+        let reqrep_id = ReqRepId::generate();
+        let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
+
+        // WHEN: the client is started
+        let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
+        // THEN: we expect the Client to have N number of tasks running = 1 Aio worker per logical cpu + 1 ReqRep backend service task + 1 request sender pool task
+        let expected_task_count = num_cpus::get() as u64 + 2;
+        let executor = execution::executor(client_executor_id).unwrap();
+        info!("active task count = {}", executor.active_task_count());
+        for _ in 0..10 {
+            if executor.active_task_count() == expected_task_count {
+                break;
+            }
+            thread::sleep_ms(1);
+        }
+        assert_eq!(executor.active_task_count(), expected_task_count);
+    }
+
+    #[test]
+    fn dialer_config_reconnect_time_min_max() {
+        configure_logging();
+        let mut thread_builder = ThreadPoolBuilder::new();
+        let mut executor =
+            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+
+        let reqrep_id = ReqRepId::generate();
+        let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
+
+        // GIVEN: a DialerConfig that is configured with a reconnect min and max time of 50 ms
+        let dialer_config = DialerConfig::new(url.clone())
+            .set_reconnect_min_time(Duration::from_millis(50))
+            .set_reconnect_max_time(Duration::from_millis(100));
+
+        // WHEN: the client is started before the server
+        let (mut client, client_executor_id) =
+            start_client_with_dialer_config(reqrep_id, dialer_config);
+        // AND: the client sends a request before the server is running
+        let client_request_handle = {
+            let mut client = client.clone();
+            executor.spawn_with_handle(
+                async move { await!(client.send_recv(nng::Message::new().unwrap())) },
+            )
+        }
+        .unwrap();
+
+        // WHEN: the server starts
+        let server_reqrep = start_server_with_reqrep_id(reqrep_id);
+        let mut server_handle = server::spawn(
+            None,
+            server::ListenerConfig::new(url.clone()),
+            server_reqrep,
+            global_executor(),
+        )
+        .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // THEN: the request is processed successfully
+        let reply = executor
+            .spawn_await(async move { await!(client_request_handle) })
+            .unwrap();
+        info!("reply = {:?}", reply.unwrap().unwrap());
+    }
+
+    #[test]
+    fn dialer_config_reconnect_time_min() {
+        configure_logging();
+        let mut thread_builder = ThreadPoolBuilder::new();
+        let mut executor =
+            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+
+        let reqrep_id = ReqRepId::generate();
+        let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
+
+        // GIVEN: a DialerConfig that is configured with a reconnect min and max time of 50 ms
+        let dialer_config =
+            DialerConfig::new(url.clone()).set_reconnect_min_time(Duration::from_millis(50));
+
+        // WHEN: the client is started before the server
+        let (mut client, client_executor_id) =
+            start_client_with_dialer_config(reqrep_id, dialer_config);
+        // AND: the client sends a request before the server is running
+        let client_request_handle = {
+            let mut client = client.clone();
+            executor.spawn_with_handle(
+                async move { await!(client.send_recv(nng::Message::new().unwrap())) },
+            )
+        }
+        .unwrap();
+
+        // WHEN: the server starts
+        let server_reqrep = start_server_with_reqrep_id(reqrep_id);
+        let mut server_handle = server::spawn(
+            None,
+            server::ListenerConfig::new(url.clone()),
+            server_reqrep,
+            global_executor(),
+        )
+        .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // THEN: the request is processed successfully
+        let reply = executor
+            .spawn_await(async move { await!(client_request_handle) })
+            .unwrap();
+        info!("reply = {:?}", reply.unwrap().unwrap());
     }
 }

@@ -12,7 +12,7 @@ edition = "2018"
 oysterpack_app_metadata = {path = "../oysterpack-app-metadata", version = "0.3"}
 oysterpack_app_metadata_macros = {path = "../oysterpack-app-metadata-macros", version = "0.1"}
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
-oysterpack_log = {path = "../oysterpack-log", version = "0.1"}
+oysterpack_log = {path = "../oysterpack-log", version = "0.1" }
 oysterpack_events = {path = "../oysterpack-events", version = "0.1"}
 oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
 

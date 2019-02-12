@@ -130,8 +130,11 @@ pub const REQREP_LABEL_ID: metrics::LabelId =
 ///   - the ServerHandle is registered globally
 ///     - each server instance is assigned a ULID, which is used as the registry key
 ///   - when the server is stopped, the ServerHandle will be automatically unregistered
-/// - the executor spawns the following task:
-///   - 1 for each Aio callback - based on [ListenerConfig.parallelism()](struct.ListenerConfig.html#method.parallelism)
+///
+/// ## Design Notes
+/// - the server is internally composed of multiple message driven tasks communicating over async channels
+///   - 1 task per Aio callback - based on [ListenerConfig.parallelism()](struct.ListenerConfig.html#method.parallelism)
+///   - 1 ReqRep backend service task
 ///   - 1 server controller task
 ///     - handles server management commands
 ///       - responds to ping requests
@@ -823,7 +826,7 @@ mod tests {
     use super::*;
     use crate::{
         concurrent::{
-            execution::*,
+            execution::{self, *},
             messaging::reqrep::{self, *},
         },
         configure_logging, metrics,
@@ -1050,6 +1053,37 @@ mod tests {
         assert!(server_handle.stop_async().unwrap());
         // THEN: the server shuts down
         server_handle.await_shutdown();
+    }
+
+    #[test]
+    fn check_server_internal_task_count() {
+        configure_logging();
+        configure_logging();
+
+        // GIVEN: the server is running
+        let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
+        let executor_id = ExecutorId::generate();
+        let mut threadpool_builder = futures::executor::ThreadPoolBuilder::new();
+        let executor = execution::register(executor_id, &mut threadpool_builder).unwrap();
+        let mut server_handle = super::spawn(
+            None,
+            ListenerConfig::new(url.clone()),
+            start_service(),
+            executor.clone(),
+        )
+        .unwrap();
+        assert!(server_handle.ping().unwrap());
+
+        // THEN: we expect the server to have N number of tasks running = 1 Aio worker per logical cpu + 1 controller task + 1 ReqRep backend service task
+        let expected_task_count = num_cpus::get() as u64 + 2;
+        info!("active task count = {}", executor.active_task_count());
+        for _ in 0..10 {
+            if executor.active_task_count() == expected_task_count {
+                break;
+            }
+            thread::sleep_ms(1);
+        }
+        assert_eq!(executor.active_task_count(), expected_task_count);
     }
 
 }
