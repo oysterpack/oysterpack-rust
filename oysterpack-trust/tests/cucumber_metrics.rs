@@ -19,11 +19,12 @@ use cucumber_rust::*;
 mod steps;
 
 use oysterpack_trust::metrics;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Default)]
 pub struct TestContext {
     pub metric_id: Option<metrics::MetricId>,
-    pub metric_ids: Option<Vec<metrics::MetricId>>,
+    pub metrics: Option<HashMap<metrics::MetricId, Arc<dyn prometheus::core::Collector>>>,
     pub int_counter_registration_result: Option<Result<prometheus::IntCounter, prometheus::Error>>,
 }
 
@@ -31,7 +32,7 @@ impl TestContext {
     fn init(&mut self) {
         self.metric_id = None;
         self.int_counter_registration_result = None;
-        self.metric_ids = None;
+        self.metrics = None;
     }
 }
 

@@ -16,6 +16,7 @@
 
 use cucumber_rust::*;
 use oysterpack_trust::metrics;
+use std::{collections::HashMap, sync::Arc};
 
 steps!(crate::TestContext => {
 
@@ -29,6 +30,14 @@ steps!(crate::TestContext => {
 
     then regex "01D3J3D7PA4NR9JABZWT635S6B-3" |world, matches, step| {
         gather_metrics(world, matches, step);
+    };
+
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-4" |world, matches, step| {
+        gather_metrics_using_desc_ids(world, matches, step);
+    };
+
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-5" |world, matches, step| {
+        gather_metrics_by_name(world, matches, step);
     };
 
     given regex "01D3J3DRS0CJ2YN99KAWQ19103-1" |world, matches, step| {
@@ -55,31 +64,31 @@ fn given_global_registry(
 }
 
 fn register_metrics(world: &mut crate::TestContext, _matches: &[String], step: &gherkin::Step) {
-    let mut metric_ids = vec![];
+    let mut metrics = HashMap::<metrics::MetricId, Arc<dyn prometheus::core::Collector>>::new();
     for ref tables in step.table.as_ref() {
         for row in tables.rows.iter() {
             match row[0].as_str() {
                 "IntCounter" => {
                     let metric_id = metrics::MetricId::generate();
-                    metric_ids.push(metric_id);
                     let counter = metrics::registry()
                         .register_int_counter(metric_id, "IntCounter", None)
                         .unwrap();
                     counter.inc();
+                    metrics.insert(metric_id, Arc::new(counter));
                 }
                 "Counter" => {
                     let metric_id = metrics::MetricId::generate();
-                    metric_ids.push(metric_id);
                     let counter = metrics::registry()
                         .register_counter(metric_id, "Counter", None)
                         .unwrap();
                     counter.inc();
+                    metrics.insert(metric_id, Arc::new(counter));
                 }
                 _ => panic!("unsupported metric type: {}", row[0]),
             }
         }
     }
-    world.metric_ids = Some(metric_ids);
+    world.metrics = Some(metrics);
 }
 
 fn register_metric(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
@@ -116,10 +125,10 @@ fn registering_duplicate_metric_fails(
 }
 
 fn get_metric_descs(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
-    assert!(world.metric_ids.is_some());
+    assert!(world.metrics.is_some());
     let descs = metrics::registry().descs();
-    for metric_ids in world.metric_ids.as_ref() {
-        for metric_id in metric_ids {
+    for metrics in world.metrics.as_ref() {
+        for metric_id in metrics.keys() {
             metrics::registry()
                 .filter_descs(|desc| desc.fq_name == metric_id.name())
                 .first()
@@ -132,15 +141,65 @@ fn get_metric_descs(world: &mut crate::TestContext, _matches: &[String], _step: 
 fn gather_metrics(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
     let metric_families = metrics::registry().gather();
     assert!(!metric_families.is_empty());
-    assert!(world.metric_ids.is_some());
-    for metric_ids in world.metric_ids.iter() {
-        assert!(!metric_ids.is_empty());
-        assert!(metric_families.len() >= metric_ids.len());
-        for metric_id in metric_ids {
+    assert!(world.metrics.is_some());
+    for metrics in world.metrics.iter() {
+        assert!(!metrics.is_empty());
+        assert!(metric_families.len() >= metrics.len());
+        for metric_id in metrics.keys() {
             let metric_name = metric_id.name();
             assert!(metric_families
                 .iter()
                 .any(|mf| mf.get_name() == metric_name.as_str()));
+        }
+    }
+}
+
+fn gather_metrics_using_desc_ids(
+    world: &mut crate::TestContext,
+    _matches: &[String],
+    _step: &gherkin::Step,
+) {
+    let metric_families = metrics::registry().gather();
+    assert!(!metric_families.is_empty());
+    assert!(world.metrics.is_some());
+    let registry = metrics::registry();
+    for metrics in world.metrics.iter() {
+        assert!(!metrics.is_empty());
+        assert!(metric_families.len() >= metrics.len());
+        for metric in metrics.values() {
+            for desc in metric.desc() {
+                let metric_families = registry.gather_metrics(&[desc.id]);
+                assert_eq!(metric_families.len(), 1);
+                assert_eq!(
+                    metric_families.first().unwrap().get_name(),
+                    desc.fq_name.as_str()
+                );
+            }
+        }
+    }
+}
+
+fn gather_metrics_by_name(
+    world: &mut crate::TestContext,
+    _matches: &[String],
+    _step: &gherkin::Step,
+) {
+    let metric_families = metrics::registry().gather();
+    assert!(!metric_families.is_empty());
+    assert!(world.metrics.is_some());
+    let registry = metrics::registry();
+    for metrics in world.metrics.iter() {
+        assert!(!metrics.is_empty());
+        assert!(metric_families.len() >= metrics.len());
+        for metric in metrics.values() {
+            for desc in metric.desc() {
+                let metric_families = registry.gather_metrics_by_name(&[desc.fq_name.as_str()]);
+                assert_eq!(metric_families.len(), 1);
+                assert_eq!(
+                    metric_families.first().unwrap().get_name(),
+                    desc.fq_name.as_str()
+                );
+            }
         }
     }
 }
