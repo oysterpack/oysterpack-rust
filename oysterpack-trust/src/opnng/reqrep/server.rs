@@ -82,7 +82,7 @@ lazy_static! {
     /// the metric is incremented on nng::PipeEvent::AddPost and decremented on nng::PipeEvent::RemovePost
     static ref ACTIVE_CONN_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
         ACTIVE_CONN_COUNT_METRIC_ID,
-        "Active number of socket connections".to_string(),
+        "Active number of socket connections",
         &[REQREP_LABEL_ID],
         None
     ).unwrap();
@@ -90,7 +90,7 @@ lazy_static! {
     /// the metric is incremented on nng::PipeEvent::AddPost
     static ref TOT_CONN_COUNT: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         TOT_CONN_COUNT_METRIC_ID,
-        "Total number of socket connections since the server was started".to_string(),
+        "Total number of socket connections since the server was started",
         &[REQREP_LABEL_ID],
         None
     ).unwrap();
@@ -100,7 +100,7 @@ lazy_static! {
     ///   then it means connections are being closed before being added to the socket.
     static ref TOT_CONN_INITIATE_COUNT: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         TOT_CONN_INITIATE_COUNT_METRIC_ID,
-        "Total number of connections that have been initiated, but before being added to the socket, since the server was started.".to_string(),
+        "Total number of connections that have been initiated, but before being added to the socket, since the server was started.",
         &[REQREP_LABEL_ID],
         None
     ).unwrap();
@@ -264,9 +264,8 @@ pub fn spawn(
                                         recv(state)
                                     };
 
-                                    let handle_aio_error = |state, err: nng::Error| match err.kind()
-                                    {
-                                        nng::ErrorKind::Closed => AioState::Closed,
+                                    let handle_aio_error = |state, err: nng::Error| match err {
+                                        nng::Error::Closed => AioState::Closed,
                                         _ => {
                                             error!("{:?}: Aio error: {}", state, err);
                                             aio.cancel();

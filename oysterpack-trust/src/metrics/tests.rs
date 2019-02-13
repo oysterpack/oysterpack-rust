@@ -32,7 +32,7 @@ fn metric_registry_int_gauge() {
     let metric_id = MetricId::generate();
     let registry = MetricRegistry::default();
     let mut gauge = registry
-        .register_int_gauge(metric_id, "Active Sessions".to_string(), None)
+        .register_int_gauge(metric_id, "Active Sessions", None)
         .unwrap();
 
     const COUNT: u64 = 10;
@@ -60,7 +60,7 @@ fn metric_registry_gauge() {
     let metric_id = MetricId::generate();
     let registry = MetricRegistry::default();
     let mut gauge = registry
-        .register_gauge(metric_id, "Active Sessions".to_string(), None)
+        .register_gauge(metric_id, "Active Sessions", None)
         .unwrap();
 
     const COUNT: u64 = 10;
@@ -90,7 +90,7 @@ fn metric_registry_gauge_vec() {
     let label = LabelId::generate();
     let labels = vec![label];
     let mut gauge_vec = registry
-        .register_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+        .register_gauge_vec(metric_id, "A Gauge Vector", &labels, None)
         .unwrap();
 
     let mut counter = gauge_vec.with_label_values(&["ABC"]);
@@ -121,7 +121,7 @@ fn metric_registry_int_gauge_vec() {
     let label = LabelId::generate();
     let labels = vec![label];
     let mut gauge_vec = registry
-        .register_int_gauge_vec(metric_id, "A Gauge Vector".to_string(), &labels, None)
+        .register_int_gauge_vec(metric_id, "A Gauge Vector", &labels, None)
         .unwrap();
 
     let mut counter = gauge_vec.with_label_values(&["ABC"]);
@@ -150,7 +150,7 @@ fn metric_registry_int_counter() {
     let metric_id = MetricId::generate();
     let registry = MetricRegistry::default();
     let counter = registry
-        .register_int_counter(metric_id, "ReqRep timer".to_string(), None)
+        .register_int_counter(metric_id, "ReqRep timer", None)
         .unwrap();
 
     let mut counter = counter.local();
@@ -194,7 +194,7 @@ fn metric_registry_int_counter_vec() {
     let label = LabelId::generate();
     let labels = vec![label];
     let mut counter_vec = registry
-        .register_int_counter_vec(metric_id, "ReqRep timer".to_string(), &labels, None)
+        .register_int_counter_vec(metric_id, "ReqRep timer", &labels, None)
         .unwrap();
 
     info!("{:#?}", registry);
@@ -240,7 +240,7 @@ fn metric_registry_histogram_vec() {
     let mut reqrep_timer_local = registry
         .register_histogram_vec(
             METRIC_ID,
-            "ReqRep timer".to_string(),
+            "ReqRep timer",
             &[LabelId::generate()],
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             None,
@@ -274,7 +274,7 @@ fn metric_registry_histogram() {
     let mut reqrep_timer = registry
         .register_histogram(
             metric_id,
-            "ReqRep timer".to_string(),
+            "ReqRep timer",
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             None,
         )
@@ -319,7 +319,7 @@ fn metric_registry_histogram_using_timer() {
     let mut reqrep_timer = registry
         .register_histogram(
             metric_id,
-            "ReqRep timer".to_string(),
+            "ReqRep timer",
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             None,
         )
@@ -364,7 +364,7 @@ fn metric_registry_histogram_vec_with_const_labels() {
     let mut reqrep_timer_local = registry
         .register_histogram_vec(
             metric_id,
-            "ReqRep timer".to_string(),
+            "ReqRep timer",
             &[LabelId::generate()],
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             Some(const_labels),
@@ -419,7 +419,7 @@ fn metric_registry_histogram_vec_with_blank_const_label() {
         const_labels.insert(LabelId::generate(), "  ".to_string());
         let result = registry.register_histogram_vec(
             metric_id,
-            "ReqRep timer".to_string(),
+            "ReqRep timer",
             &[LabelId::generate()],
             vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
             Some(const_labels),
@@ -440,7 +440,7 @@ fn metric_registry_histogram_vec_with_blank_help() {
 
     let result = registry.register_histogram_vec(
         metric_id,
-        " ".to_string(),
+        " ",
         &[LabelId::generate()],
         vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
         None,
@@ -503,7 +503,7 @@ fn metric_registry_gather() {
     let mut register_counters = || {
         {
             let metric = registry
-                .register_int_counter(int_counter_metric_id, "IntCounter".to_string(), None)
+                .register_int_counter(int_counter_metric_id, "IntCounter", None)
                 .unwrap();
 
             for _ in 0..5 {
@@ -512,7 +512,7 @@ fn metric_registry_gather() {
         }
         {
             let metric = registry
-                .register_counter(counter_metric_id, "Counter".to_string(), None)
+                .register_counter(counter_metric_id, "Counter", None)
                 .unwrap();
 
             for _ in 0..5 {
@@ -525,7 +525,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_int_counter_vec(
                     int_counter_vec_with_const_labels_metric_id,
-                    "IntCounterVec with const labels".to_string(),
+                    "IntCounterVec with const labels",
                     &[LabelId::generate()],
                     Some(const_labels),
                 )
@@ -543,7 +543,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_int_counter_vec(
                     int_counter_vec_metric_id,
-                    "IntCounterVec with no const labels".to_string(),
+                    "IntCounterVec with no const labels",
                     &[LabelId::generate()],
                     None,
                 )
@@ -561,7 +561,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_int_counter_vec(
                     counter_vec_metric_id,
-                    "CounterVec with no const labels".to_string(),
+                    "CounterVec with no const labels",
                     &[LabelId::generate()],
                     None,
                 )
@@ -581,7 +581,7 @@ fn metric_registry_gather() {
     let mut register_gauges = || {
         {
             let metric = registry
-                .register_gauge(gauge_metric_id, "Gauge".to_string(), None)
+                .register_gauge(gauge_metric_id, "Gauge", None)
                 .unwrap();
 
             for _ in 0..5 {
@@ -590,7 +590,7 @@ fn metric_registry_gather() {
         }
         {
             let metric = registry
-                .register_int_gauge(int_gauge_metric_id, "IntGauge".to_string(), None)
+                .register_int_gauge(int_gauge_metric_id, "IntGauge", None)
                 .unwrap();
 
             for _ in 0..5 {
@@ -603,7 +603,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_gauge_vec(
                     gauge_vec_with_const_labels_metric_id,
-                    "GaugeVec with const labels".to_string(),
+                    "GaugeVec with const labels",
                     &[LabelId::generate()],
                     Some(const_labels),
                 )
@@ -619,7 +619,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_gauge_vec(
                     gauge_vec_metric_id,
-                    "GaugeVec with no const labels".to_string(),
+                    "GaugeVec with no const labels",
                     &[LabelId::generate()],
                     None,
                 )
@@ -637,7 +637,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_int_gauge_vec(
                     int_gauge_vec_with_const_labels_metric_id,
-                    "IntGaugeVec with const labels".to_string(),
+                    "IntGaugeVec with const labels",
                     &[LabelId::generate()],
                     Some(const_labels),
                 )
@@ -653,7 +653,7 @@ fn metric_registry_gather() {
             let mut metric = registry
                 .register_int_gauge_vec(
                     int_gauge_vec_metric_id,
-                    "IntgaugeVec with no const labels".to_string(),
+                    "IntgaugeVec with no const labels",
                     &[LabelId::generate()],
                     None,
                 )
@@ -673,7 +673,7 @@ fn metric_registry_gather() {
             let metric = registry
                 .register_histogram(
                     histogram_metric_id,
-                    "Histogram with no const labels".to_string(),
+                    "Histogram with no const labels",
                     vec![0.001, 0.0025, 0.005], // will be sorted and deduped automatically
                     None,
                 )
@@ -697,7 +697,7 @@ fn metric_registry_gather() {
             let metric = registry
                 .register_histogram_vec(
                     histogram_with_const_labels_metric_id,
-                    "HistogramVec with const labels".to_string(),
+                    "HistogramVec with const labels",
                     &[LabelId::generate()],
                     vec![0.01, 0.025, 0.05, 0.005, 0.0050, 0.005], // will be sorted and deduped automatically
                     Some(const_labels),
@@ -722,7 +722,7 @@ fn metric_registry_gather() {
             let metric = registry
                 .register_histogram_vec(
                     histogram_vec_metric_id,
-                    "HistogramVec with no const labels".to_string(),
+                    "HistogramVec with no const labels",
                     &labels,
                     vec![0.001, 0.0025, 0.005], // will be sorted and deduped automatically
                     None,
@@ -751,7 +751,7 @@ fn metric_registry_gather() {
             let metric = registry
                 .register_histogram_vec(
                     histogram_vec_with_const_labels_metric_id,
-                    "HistogramVec with const labels".to_string(),
+                    "HistogramVec with const labels",
                     &labels,
                     vec![0.001, 0.0025, 0.005], // will be sorted and deduped automatically
                     Some(const_labels),
@@ -783,44 +783,6 @@ fn metric_registry_gather() {
     assert_eq!(metrics.len(), registry.metric_family_count());
     let descs = registry.descs();
     assert_eq!(descs.len(), metrics.len());
-
-    //    assert_eq!(metrics.metrics().len(), all_metrics.metrics.len());
-
-    // verify that metrics are reporting as expected
-    //    match metrics.metric(int_counter_metric_id).unwrap() {
-    //        Metric::IntCounter { desc, value } => {
-    //            assert_eq!(*value, 5);
-    //            assert_eq!(desc.help, "IntCounter");
-    //        }
-    //        metric => panic!("Wrong metric type has been returned: {:?}", metric),
-    //    }
-    //    match metrics
-    //        .metric(int_counter_vec_with_const_labels_metric_id)
-    //        .unwrap()
-    //    {
-    //        Metric::IntCounterVec { desc, values } => {
-    //            assert_eq!(values.len(), 1);
-    //            assert_eq!(values[0].value, 5);
-    //            assert_eq!(values[0].labels[0].1, "FOO".to_string());
-    //            assert_eq!(desc.help(), "IntCounterVec with const labels");
-    //        }
-    //        metric => panic!("Wrong metric type has been returned: {:?}", metric),
-    //    }
-
-    //    let int_counter_vec_with_const_labels_metric_id = MetricId::generate();
-    //    let int_counter_vec_metric_id = MetricId::generate();
-    //
-    //    let gauge_metric_id = MetricId::generate();
-    //    let int_gauge_metric_id = MetricId::generate();
-    //    let gauge_vec_with_const_labels_metric_id = MetricId::generate();
-    //    let gauge_vec_metric_id = MetricId::generate();
-    //    let int_gauge_vec_with_const_labels_metric_id = MetricId::generate();
-    //    let int_gauge_vec_metric_id = MetricId::generate();
-    //
-    //    let histogram_metric_id = MetricId::generate();
-    //    let histogram_with_const_labels_metric_id = MetricId::generate();
-    //    let histogram_vec_metric_id = MetricId::generate();
-    //    let histogram_vec_with_const_labels_metric_id = MetricId::generate();
 }
 
 #[test]
@@ -845,7 +807,7 @@ fn registry_gather_metrics() {
     let timer = metric_registry
         .register_histogram_vec(
             MetricId::generate(),
-            "ReqRep processor timer".to_string(),
+            "ReqRep processor timer",
             &[LabelId::generate()],
             vec![0.0, 1.0, 5.0],
             Some({
@@ -863,7 +825,7 @@ fn registry_gather_metrics() {
     let timer = metric_registry
         .register_histogram_vec(
             metric_id,
-            "ReqRep processor timer".to_string(),
+            "ReqRep processor timer",
             &[var_label_id],
             vec![0.0, 1.0, 5.0],
             Some({
@@ -879,7 +841,7 @@ fn registry_gather_metrics() {
     let timer = metric_registry
         .register_histogram_vec(
             metric_id,
-            "ReqRep processor timer".to_string(),
+            "ReqRep processor timer",
             &[var_label_id],
             vec![0.0, 1.0, 5.0],
             Some({
@@ -928,7 +890,7 @@ fn registry_gather_metrics_by_name() {
     let timer = metric_registry
         .register_histogram_vec(
             MetricId::generate(),
-            "ReqRep processor timer".to_string(),
+            "ReqRep processor timer",
             &[LabelId::generate()],
             vec![0.0, 1.0, 5.0],
             Some({
@@ -948,7 +910,7 @@ fn registry_gather_metrics_by_name() {
         let timer = metric_registry
             .register_histogram_vec(
                 metric_id,
-                "ReqRep processor timer".to_string(),
+                "ReqRep processor timer",
                 &[var_label_id],
                 vec![0.0, 1.0, 5.0],
                 Some({
@@ -964,7 +926,7 @@ fn registry_gather_metrics_by_name() {
         let timer = metric_registry
             .register_histogram_vec(
                 metric_id,
-                "ReqRep processor timer".to_string(),
+                "ReqRep processor timer",
                 &[var_label_id],
                 vec![0.0, 1.0, 5.0],
                 Some({
@@ -987,7 +949,7 @@ fn registry_gather_metrics_by_name() {
         let timer = metric_registry
             .register_histogram(
                 metric_id,
-                "ReqRep processor timer".to_string(),
+                "ReqRep processor timer",
                 vec![0.0, 1.0, 5.0],
                 Some({
                     let mut labels = HashMap::new();
@@ -1002,7 +964,7 @@ fn registry_gather_metrics_by_name() {
         let timer = metric_registry
             .register_histogram(
                 metric_id,
-                "ReqRep processor timer".to_string(),
+                "ReqRep processor timer",
                 vec![0.0, 1.0, 5.0],
                 Some({
                     let mut labels = HashMap::new();

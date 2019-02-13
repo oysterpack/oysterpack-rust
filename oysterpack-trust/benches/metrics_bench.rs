@@ -135,7 +135,7 @@ fn metrics_local_counter_bench(c: &mut Criterion) {
 
     let metric_id = MetricId::generate();
     let counter = metrics::registry()
-        .register_int_counter(metric_id, ULID::generate().to_string(), None)
+        .register_int_counter(metric_id, ULID::generate().to_string().as_str(), None)
         .unwrap();
     let mut async_local_counter =
         LocalCounter::new(counter.local(), global_executor().clone()).unwrap();

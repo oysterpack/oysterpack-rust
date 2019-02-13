@@ -144,7 +144,7 @@ impl MetricRegistry {
     pub fn register_int_gauge(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGauge> {
         let help = Self::check_help(help)?;
@@ -164,7 +164,7 @@ impl MetricRegistry {
     pub fn register_gauge(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Gauge> {
         let help = Self::check_help(help)?;
@@ -184,7 +184,7 @@ impl MetricRegistry {
     pub fn register_gauge_vec(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::GaugeVec> {
@@ -207,7 +207,7 @@ impl MetricRegistry {
     pub fn register_int_gauge_vec(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGaugeVec> {
@@ -230,7 +230,7 @@ impl MetricRegistry {
     pub fn register_int_counter(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounter> {
         let help = Self::check_help(help)?;
@@ -250,7 +250,7 @@ impl MetricRegistry {
     pub fn register_counter(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Counter> {
         let help = Self::check_help(help)?;
@@ -270,7 +270,7 @@ impl MetricRegistry {
     pub fn register_int_counter_vec(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounterVec> {
@@ -293,7 +293,7 @@ impl MetricRegistry {
     pub fn register_counter_vec(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::CounterVec> {
@@ -316,7 +316,7 @@ impl MetricRegistry {
     pub fn register_histogram(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Histogram> {
@@ -339,7 +339,7 @@ impl MetricRegistry {
     pub fn register_histogram_timer(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         buckets: TimerBuckets,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Histogram> {
@@ -350,7 +350,7 @@ impl MetricRegistry {
     pub fn register_histogram_vec(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
@@ -376,7 +376,7 @@ impl MetricRegistry {
     pub fn register_histogram_vec_timer(
         &self,
         metric_id: MetricId,
-        help: String,
+        help: &str,
         label_ids: &[LabelId],
         buckets: TimerBuckets,
         const_labels: Option<HashMap<LabelId, String>>,
@@ -384,7 +384,7 @@ impl MetricRegistry {
         self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
-    fn check_help(help: String) -> Result<String, prometheus::Error> {
+    fn check_help(help: &str) -> Result<String, prometheus::Error> {
         let help = help.trim();
         if help.is_empty() {
             Err(prometheus::Error::Msg(
@@ -695,7 +695,7 @@ impl From<ULID> for MetricId {
 ///    let mut reqrep_timer_local = registry
 ///        .register_histogram_vec(
 ///            METRIC_ID,
-///            "ReqRep timer".to_string(),
+///            "ReqRep timer",
 ///            &[LabelId::generate()],
 ///            vec![0.01, 0.025, 0.05, 0.1],
 ///            None,

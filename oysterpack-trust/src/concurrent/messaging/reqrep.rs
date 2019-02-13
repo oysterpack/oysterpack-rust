@@ -102,7 +102,7 @@ lazy_static::lazy_static! {
 
     static ref REQ_REP_SERVICE_INSTANCE_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
         SERVICE_INSTANCE_COUNT_METRIC_ID,
-        "ReqRep service instance count".to_string(),
+        "ReqRep service instance count",
         &[REQREPID_LABEL_ID],
         None,
     ).unwrap();
@@ -320,7 +320,7 @@ where
                     let timer = metrics::registry()
                         .register_histogram_timer(
                             metrics::MetricId(reqrep_id.0),
-                            "ReqRep message processor timer in seconds".to_string(),
+                            "ReqRep message processor timer in seconds",
                             metric_timer_buckets,
                             None,
                         )

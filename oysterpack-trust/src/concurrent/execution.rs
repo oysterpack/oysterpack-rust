@@ -60,7 +60,7 @@ lazy_static! {
     /// Metric: Number of tasks that the Executor has spawned
     static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         SPAWNED_TASK_COUNTER_METRIC_ID,
-        "Number of tasks that the Executor has spawned".to_string(),
+        "Number of tasks that the Executor has spawned",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -68,7 +68,7 @@ lazy_static! {
     /// Metric: Number of tasks that the Executor has completed
     static ref COMPLETED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         COMPLETED_TASK_COUNTER_METRIC_ID,
-        "Number of tasks that the Executor has completed".to_string(),
+        "Number of tasks that the Executor has completed",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -76,7 +76,7 @@ lazy_static! {
     /// Metric: Executor thread pool sizes
     static ref THREAD_POOL_SIZE_GAUGE: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
         THREADS_POOL_SIZE_GAUGE_METRIC_ID,
-        "Thread pool size".to_string(),
+        "Thread pool size",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -84,7 +84,7 @@ lazy_static! {
     /// Metric: Total number of Executor threads that have been started
     static ref THREADS_STARTED_TOTAL_COUNTER: prometheus::IntCounter = metrics::registry().register_int_counter(
         THREADS_STARTED_TOTAL_COUNTER_METRIC_ID,
-        "Total number of threads that have been started across all Executors".to_string(),
+        "Total number of threads that have been started across all Executors",
         None
     ).unwrap();
 
