@@ -117,7 +117,7 @@ impl MetricRegistry {
     }
 
     /// Returns the registered collectors
-    pub fn collectors<F>(&self) -> Vec<ArcCollector> {
+    pub fn collectors(&self) -> Vec<ArcCollector> {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors.iter().cloned().collect()
     }

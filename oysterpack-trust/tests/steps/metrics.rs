@@ -16,54 +16,148 @@
 
 use cucumber_rust::*;
 use oysterpack_trust::metrics;
-use std::{collections::HashMap, sync::Arc};
+use oysterpack_uid::ULID;
+use prometheus::core::Collector;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 steps!(crate::TestContext => {
 
-    given regex "01D3J3D7PA4NR9JABZWT635S6B-1" |world, matches, step| {
-        register_metrics(world, matches, step);
+    given regex "01D3J3D7PA4NR9JABZWT635S6B-1" |world, _matches, step| {
+        register_metrics(world, step);
     };
 
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-2" |world, matches, step| {
-        get_metric_descs(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-2" |world, _matches, _step| {
+        get_metric_descs(world);
     };
 
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-3" |world, matches, step| {
-        gather_metrics(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-3" |world, _matches, _step| {
+        gather_metrics(world);
     };
 
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-4" |world, matches, step| {
-        gather_metrics_using_desc_ids(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-4" |world, _matches, _step| {
+        gather_metrics_using_desc_ids(world);
     };
 
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-5" |world, matches, step| {
-        gather_metrics_by_name(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-5" |world, _matches, _step| {
+        gather_metrics_by_name(world);
     };
 
-    given regex "01D3J3DRS0CJ2YN99KAWQ19103-1" |world, matches, step| {
-        given_global_registry(world, matches, step);
-        register_metric(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-6" |world, _matches, _step| {
+        check_collectors_contain_metrics(world);
     };
 
-    when regex "01D3J3DRS0CJ2YN99KAWQ19103-2" |world, matches, step| {
-        register_duplicate_metric(world, matches, step);
+    then regex "01D3J3D7PA4NR9JABZWT635S6B-7" |_world, _matches, _step| {
+        check_metric_family_count();
     };
 
-    then regex "01D3J3DRS0CJ2YN99KAWQ19103-3" |world, matches, step| {
-        registering_duplicate_metric_fails(world, matches, step);
+    given regex "01D3J3DRS0CJ2YN99KAWQ19103-1" |world, _matches, _step| {
+        world.init();
+        register_metric(world);
+    };
+
+    when regex "01D3J3DRS0CJ2YN99KAWQ19103-2" |world, _matches, _step| {
+        register_duplicate_metric(world);
+    };
+
+    then regex "01D3J3DRS0CJ2YN99KAWQ19103-3" |world, _matches, _step| {
+        check_metric_id_desc_count(world, 1);
+    };
+
+    given regex "01D3MT4JY1NZH2WW0347B9ZAS7-1" |world, _matches, _step| {
+        world.init();
+        register_counter_with_const_labels(world)
+    };
+
+    when regex "01D3MT4JY1NZH2WW0347B9ZAS7-2" |world, _matches, _step| {
+        register_gauge_with_dup_desc(world);
+    };
+
+    then regex "01D3MT4JY1NZH2WW0347B9ZAS7-3" |world, _matches, _step| {
+        check_metric_id_desc_count(world, 1);
+    };
+
+    given regex "01D3MT8KDP434DKZ6Y54C80BB0-1" |world, _matches, _step| {
+        world.init();
+        register_counter_with_const_labels(world)
+    };
+
+    when regex "01D3MT8KDP434DKZ6Y54C80BB0-2" |world, _matches, _step| {
+        register_gauge_with_different_const_label_values(world);
+    };
+
+    then regex "01D3MT8KDP434DKZ6Y54C80BB0-3" |world, _matches, _step| {
+        check_metric_id_desc_count(world, 2);
     };
 
 });
 
-fn given_global_registry(
-    world: &mut crate::TestContext,
-    _matches: &[String],
-    _step: &gherkin::Step,
-) {
-    world.init();
+fn register_counter_with_const_labels(world: &mut crate::TestContext) {
+    let metric_id = metrics::MetricId::generate();
+    let mut labels = HashMap::new();
+    labels.insert(metrics::LabelId::generate(), "A".to_string());
+    let _counter = metrics::registry()
+        .register_counter(metric_id, "counter", Some(labels))
+        .unwrap();
+    world.metric_id = Some(metric_id);
 }
 
-fn register_metrics(world: &mut crate::TestContext, _matches: &[String], step: &gherkin::Step) {
+fn register_gauge_with_dup_desc(world: &mut crate::TestContext) {
+    let metric_id = world.metric_id.unwrap();
+    let desc = metrics::registry().filter_descs(|desc| desc.fq_name == metric_id.name().as_str());
+    let desc = desc.first().unwrap();
+    let labels = desc
+        .const_label_pairs
+        .iter()
+        .fold(HashMap::new(), |mut map, label_pair| {
+            map.insert(
+                label_pair.get_name().parse::<metrics::LabelId>().unwrap(),
+                label_pair.get_value().to_string(),
+            );
+            map
+        });
+    assert!(metrics::registry()
+        .register_gauge(metric_id, desc.help.as_str(), Some(labels))
+        .is_err());
+}
+
+fn register_gauge_with_different_const_label_values(world: &mut crate::TestContext) {
+    let metric_id = world.metric_id.unwrap();
+    let desc = metrics::registry().filter_descs(|desc| desc.fq_name == metric_id.name().as_str());
+    let desc = desc.first().unwrap();
+    let labels = desc
+        .const_label_pairs
+        .iter()
+        .fold(HashMap::new(), |mut map, label_pair| {
+            map.insert(
+                label_pair.get_name().parse::<metrics::LabelId>().unwrap(),
+                ULID::generate().to_string(),
+            );
+            map
+        });
+
+    if let Err(err) =
+        metrics::registry().register_gauge(metric_id, desc.help.as_str(), Some(labels))
+    {
+        panic!("{}", err);
+    }
+}
+
+fn check_metric_id_desc_count(world: &mut crate::TestContext, expected_count: usize) {
+    match world.metric_id {
+        Some(metric_id) => {
+            let name = metric_id.name();
+            assert_eq!(
+                metrics::registry()
+                    .filter_descs(|desc| desc.fq_name == name.as_str())
+                    .len(),
+                expected_count
+            )
+        }
+        None => panic!("world.metric_id is required"),
+    }
+}
+
+fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
     let mut metrics = HashMap::<metrics::MetricId, Arc<dyn prometheus::core::Collector>>::new();
     for ref tables in step.table.as_ref() {
         for row in tables.rows.iter() {
@@ -84,6 +178,83 @@ fn register_metrics(world: &mut crate::TestContext, _matches: &[String], step: &
                     counter.inc();
                     metrics.insert(metric_id, Arc::new(counter));
                 }
+                "CounterVec" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let label_id = metrics::LabelId::generate();
+                    let counter = metrics::registry()
+                        .register_counter_vec(metric_id, "CounterVec", &[label_id], None)
+                        .unwrap();
+                    let counter = counter.with_label_values(&["A"]);
+                    counter.inc();
+                    metrics.insert(metric_id, Arc::new(counter));
+                }
+                "IntGauge" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let gauge = metrics::registry()
+                        .register_int_gauge(metric_id, "IntGauge", None)
+                        .unwrap();
+                    gauge.inc();
+                    metrics.insert(metric_id, Arc::new(gauge));
+                }
+                "Gauge" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let gauge = metrics::registry()
+                        .register_int_gauge(metric_id, "Gauge", None)
+                        .unwrap();
+                    gauge.inc();
+                    metrics.insert(metric_id, Arc::new(gauge));
+                }
+                "GaugeVec" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let label_id = metrics::LabelId::generate();
+                    let gauge = metrics::registry()
+                        .register_gauge_vec(metric_id, "GaugeVec", &[label_id], None)
+                        .unwrap();
+                    let gauge = gauge.with_label_values(&["A"]);
+                    gauge.inc();
+                    metrics.insert(metric_id, Arc::new(gauge));
+                }
+                "Histogram" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let histogram = metrics::registry()
+                        .register_histogram(metric_id, "Histogram", vec![0.1, 0.5, 1.0], None)
+                        .unwrap();
+                    histogram.observe(0.001);
+                    metrics.insert(metric_id, Arc::new(histogram));
+                }
+                "HistogramTimer" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let histogram = metrics::registry()
+                        .register_histogram_timer(
+                            metric_id,
+                            "HistogramTimer",
+                            metrics::TimerBuckets::from(vec![
+                                Duration::from_millis(50),
+                                Duration::from_millis(100),
+                                Duration::from_millis(500),
+                            ]),
+                            None,
+                        )
+                        .unwrap();
+                    histogram.observe(0.001);
+                    metrics.insert(metric_id, Arc::new(histogram));
+                }
+                "HistogramVec" => {
+                    let metric_id = metrics::MetricId::generate();
+                    let label_id = metrics::LabelId::generate();
+                    let histogram = metrics::registry()
+                        .register_histogram_vec(
+                            metric_id,
+                            "HistogramVec",
+                            &[label_id],
+                            vec![0.1, 0.5, 1.0],
+                            None,
+                        )
+                        .unwrap();
+                    let histogram = histogram.with_label_values(&[label_id.name().as_str()]);
+                    histogram.observe(0.001);
+                    metrics.insert(metric_id, Arc::new(histogram));
+                }
                 _ => panic!("unsupported metric type: {}", row[0]),
             }
         }
@@ -91,7 +262,7 @@ fn register_metrics(world: &mut crate::TestContext, _matches: &[String], step: &
     world.metrics = Some(metrics);
 }
 
-fn register_metric(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
+fn register_metric(world: &mut crate::TestContext) {
     let metric_id = metrics::MetricId::generate();
     world.metric_id = Some(metric_id);
     let counter = metrics::registry()
@@ -100,31 +271,15 @@ fn register_metric(world: &mut crate::TestContext, _matches: &[String], _step: &
     counter.inc();
 }
 
-fn register_duplicate_metric(
-    world: &mut crate::TestContext,
-    _matches: &[String],
-    _step: &gherkin::Step,
-) {
+fn register_duplicate_metric(world: &mut crate::TestContext) {
     for metric_id in world.metric_id {
-        world.int_counter_registration_result =
-            Some(metrics::registry().register_int_counter(metric_id, "counter", None));
+        assert!(metrics::registry()
+            .register_int_counter(metric_id, "counter", None)
+            .is_err());
     }
 }
 
-fn registering_duplicate_metric_fails(
-    world: &mut crate::TestContext,
-    _matches: &[String],
-    _step: &gherkin::Step,
-) {
-    for result in world.int_counter_registration_result.take() {
-        match result {
-            Err(err) => eprintln!("{}", err),
-            Ok(_) => panic!("metric should have failed to register because it is a duplicate"),
-        }
-    }
-}
-
-fn get_metric_descs(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
+fn get_metric_descs(world: &mut crate::TestContext) {
     assert!(world.metrics.is_some());
     let descs = metrics::registry().descs();
     for metrics in world.metrics.as_ref() {
@@ -138,7 +293,7 @@ fn get_metric_descs(world: &mut crate::TestContext, _matches: &[String], _step: 
     }
 }
 
-fn gather_metrics(world: &mut crate::TestContext, _matches: &[String], _step: &gherkin::Step) {
+fn gather_metrics(world: &mut crate::TestContext) {
     let metric_families = metrics::registry().gather();
     assert!(!metric_families.is_empty());
     assert!(world.metrics.is_some());
@@ -154,11 +309,7 @@ fn gather_metrics(world: &mut crate::TestContext, _matches: &[String], _step: &g
     }
 }
 
-fn gather_metrics_using_desc_ids(
-    world: &mut crate::TestContext,
-    _matches: &[String],
-    _step: &gherkin::Step,
-) {
+fn gather_metrics_using_desc_ids(world: &mut crate::TestContext) {
     let metric_families = metrics::registry().gather();
     assert!(!metric_families.is_empty());
     assert!(world.metrics.is_some());
@@ -179,11 +330,7 @@ fn gather_metrics_using_desc_ids(
     }
 }
 
-fn gather_metrics_by_name(
-    world: &mut crate::TestContext,
-    _matches: &[String],
-    _step: &gherkin::Step,
-) {
+fn gather_metrics_by_name(world: &mut crate::TestContext) {
     let metric_families = metrics::registry().gather();
     assert!(!metric_families.is_empty());
     assert!(world.metrics.is_some());
@@ -202,4 +349,33 @@ fn gather_metrics_by_name(
             }
         }
     }
+}
+
+fn check_collectors_contain_metrics(world: &mut crate::TestContext) {
+    let collectors = metrics::registry().collectors();
+    for metrics in world.metrics.iter() {
+        for registered_collector in metrics.values() {
+            let registered_collector_descs = registered_collector.desc();
+            // check if there is a collector with matching descs
+            assert!(collectors.iter().any(|collector| {
+                let descs = collector.desc();
+                let matching_desc_count = descs
+                    .iter()
+                    .filter(|desc1| {
+                        registered_collector_descs
+                            .iter()
+                            .any(|desc2| desc1.id == desc2.id)
+                    })
+                    .count();
+                descs.len() == matching_desc_count
+            }));
+        }
+    }
+}
+
+fn check_metric_family_count() {
+    assert_eq!(
+        metrics::registry().metric_family_count(),
+        metrics::registry().gather().len()
+    );
 }

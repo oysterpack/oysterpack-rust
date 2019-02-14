@@ -25,13 +25,11 @@ use std::{collections::HashMap, sync::Arc};
 pub struct TestContext {
     pub metric_id: Option<metrics::MetricId>,
     pub metrics: Option<HashMap<metrics::MetricId, Arc<dyn prometheus::core::Collector>>>,
-    pub int_counter_registration_result: Option<Result<prometheus::IntCounter, prometheus::Error>>,
 }
 
 impl TestContext {
     fn init(&mut self) {
         self.metric_id = None;
-        self.int_counter_registration_result = None;
         self.metrics = None;
     }
 }

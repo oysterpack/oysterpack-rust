@@ -934,7 +934,8 @@ mod tests {
                 break;
             }
             info!("waiting for NngClient Aio Context handler tasks to exit: executor.active_task_count() = {}", executor.active_task_count());
-            thread::sleep_ms(1);
+            thread::sleep_ms(5);
+            thread::yield_now();
         }
         // TODO: this sometimes fails, which means there is a bug
         // It has failed where the active task count = 1
