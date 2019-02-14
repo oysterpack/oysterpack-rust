@@ -136,7 +136,7 @@ struct NngClientContext {
 struct NngClient {
     id: ReqRepId,
     borrow: mpsc::Sender<oneshot::Sender<mpsc::Sender<Request>>>,
-    request_sender_pool_task_stop_tx: Option<Arc<oneshot::Sender<()>>>,
+    request_sender_pool_task_stop_tx: mpsc::Sender<()>,
 }
 
 impl NngClient {
@@ -285,7 +285,7 @@ impl NngClient {
         let (borrow_tx, mut borrow_rx) = mpsc::channel::<oneshot::Sender<mpsc::Sender<Request>>>(1);
         // used to notify the task that the NngClient is being closed
         let (request_sender_pool_task_stop_tx, request_sender_pool_task_stop_rx) =
-            oneshot::channel::<()>();
+            mpsc::channel::<()>(0);
         let start_request_sender_pool_task = move || {
             nng_client_executor.spawn(async move {
                 debug!("NngClient Aio Context Pool task is running: {}", id);
@@ -305,7 +305,7 @@ impl NngClient {
                                 break
                             }
                         },
-                        _ = request_sender_pool_task_stop_rx => break,
+                        _ = request_sender_pool_task_stop_rx.next() => break,
                     }
                 }
 
@@ -332,7 +332,7 @@ impl NngClient {
         Ok(Self {
             id,
             borrow: borrow_tx,
-            request_sender_pool_task_stop_tx: Some(Arc::new(request_sender_pool_task_stop_tx)),
+            request_sender_pool_task_stop_tx,
         })
     }
 }
@@ -385,13 +385,9 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
             debug!("NngClient({}): closed nng::Dialer", self.id);
             context.socket.take().unwrap().close();
             debug!("NngClient({}): closed nng::Socket ", self.id);
-            // notify the
+            // shutdown the Sender<Request> pool task
             self.borrow.close_channel();
-            let request_sender_pool_task_stop_tx =
-                self.request_sender_pool_task_stop_tx.take().unwrap();
-            let request_sender_pool_task_stop_tx =
-                Arc::try_unwrap(request_sender_pool_task_stop_tx).unwrap();
-            let _ = request_sender_pool_task_stop_tx.send(());
+            self.request_sender_pool_task_stop_tx.close_channel();
             debug!("NngClient({}): closed channels", self.id);
         }
         debug!("NngClient({}) is destroyed", self.id);

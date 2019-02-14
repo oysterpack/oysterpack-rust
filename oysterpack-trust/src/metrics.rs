@@ -122,16 +122,20 @@ impl MetricRegistry {
         metric_collectors.iter().cloned().collect()
     }
 
-    /// Returns the number of registered metric families, equates to total number of registered metric descriptors
+    /// Returns the number of metric families that would be gathered without gathering metrics.
+    /// The number of metric families equates to the total number of unique registered metric descriptor
+    /// fully qualified names.
     ///
     /// ## Notes
-    /// Each metric family may have 1 or more metrics depending on label values
+    /// Each metric family may map to more than 1 metric Desc depending on label values
     pub fn metric_family_count(&self) -> usize {
         let metric_collectors = self.metric_collectors.read().unwrap();
-        metric_collectors
+        let mut desc_names = metric_collectors
             .iter()
             .flat_map(|collector| collector.desc())
-            .count()
+            .collect::<Vec<_>>();
+        desc_names.dedup_by(|desc1, desc2| desc1.fq_name == desc2.fq_name);
+        desc_names.len()
     }
 
     /// Returns the number of registered collectors
