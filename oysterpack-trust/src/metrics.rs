@@ -103,6 +103,20 @@ impl MetricRegistry {
             .collect()
     }
 
+    /// Returns descriptors for the specified MetricId(s)
+    pub fn descs_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<prometheus::core::Desc>
+    {
+        let metric_names = metric_ids.iter().map(|id| id.name()).collect::<fnv::FnvHashSet<_>>();
+        self.filter_descs(|desc|metric_names.contains(&desc.fq_name))
+    }
+
+    /// Returns descriptors for the specified MetricId
+    pub fn descs_for_metric_id(&self, metric_id: MetricId) -> Vec<prometheus::core::Desc>
+    {
+        let metric_name = metric_id.name();
+        self.filter_descs(|desc| desc.fq_name == metric_name)
+    }
+
     /// Returns collectors that match against the specified filter
     pub fn filter_collectors<F>(&self, mut filter: F) -> Vec<ArcCollector>
     where
@@ -114,6 +128,20 @@ impl MetricRegistry {
             .filter(|collector| filter(collector))
             .cloned()
             .collect()
+    }
+
+    /// Returns collectors that contain metric descriptors for the specified MetricId(s)
+    pub fn collectors_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<ArcCollector>
+    {
+        let metric_names = metric_ids.iter().map(|id| id.name()).collect::<fnv::FnvHashSet<_>>();
+        self.filter_collectors(|c| c.desc().iter().any(|desc| metric_names.contains(&desc.fq_name)))
+    }
+
+    /// Returns collectors that contain metric descriptors for the specified MetricId
+    pub fn collectors_for_metric_id(&self, metric_id: MetricId) -> Vec<ArcCollector>
+    {
+        let metric_name = metric_id.name();
+        self.filter_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
     }
 
     /// Returns the registered collectors

@@ -1,24 +1,9 @@
-Feature: [01D3J441N6BM05NKCBQEVYTZY8] A global prometheus metrics registry
+Feature: [01D3J441N6BM05NKCBQEVYTZY8] A global prometheus metrics registry will be made available for the application.
 
-  Scenario: [01D3J3D7PA4NR9JABZWT635S6B] Registering metrics
-    Given [01D3J3D7PA4NR9JABZWT635S6B-1] metrics are registered for the following types:
-      |MetricType     |
-      |IntCounter     |
-      |Counter        |
-      |CounterVec     |
-      |IntGauge       |
-      |Gauge          |
-      |GaugeVec       |
-      |Histogram      |
-      |HistogramTimer |
-      |HistogramVec   |
-    Then [01D3J3D7PA4NR9JABZWT635S6B-2] the registered metric's Desc can be retrieved via `MetricRegistry::descs()` and `MetricRegistry::filter_descs()`
-    And [01D3J3D7PA4NR9JABZWT635S6B-3] the metrics are gathered as part of global metric collection - `MetricRegistry::gather()`
-    And [01D3J3D7PA4NR9JABZWT635S6B-4] metrics can be gathered using Desc ids - `MetricsRegistry::gather_metrics()`
-    And [01D3J3D7PA4NR9JABZWT635S6B-5] its metrics can be gathered using its MetricId name - `MetricsRegistry::gather_metrics_by_name()`
-    And [01D3J3D7PA4NR9JABZWT635S6B-6] the metric collector can be retrieved - `MetricsRegistry::collectors()`
-    And [01D3J3D7PA4NR9JABZWT635S6B-7] the metric family count shows the metrics were added - `MetricsRegistry::metric_family_count()`
-
+  Scenario: [01D3J3D7PA4NR9JABZWT635S6B] Using the global registry from multiple threads
+    Given [01D3J3D7PA4NR9JABZWT635S6B-1] there are 2 threads using the global registry
+    When [01D3J3D7PA4NR9JABZWT635S6B-2] 1 thread registers a metric
+    Then [01D3J3D7PA4NR9JABZWT635S6B-3] the other thread will be able to see that the metric was registered via the global registry
 
   Rule: Descriptors registered with the same registry have to fulfill certain consistency and uniqueness criteria if they share the same fully-qualified name.
 

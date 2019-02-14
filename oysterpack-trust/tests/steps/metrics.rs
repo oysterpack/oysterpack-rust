@@ -19,35 +19,22 @@ use oysterpack_trust::metrics;
 use oysterpack_uid::ULID;
 use prometheus::core::Collector;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use maplit::*;
 
 steps!(crate::TestContext => {
 
-    given regex "01D3J3D7PA4NR9JABZWT635S6B-1" |world, _matches, step| {
-        register_metrics(world, step);
+    given regex "01D3J3D7PA4NR9JABZWT635S6B-1" |world, _matches, _step| {
+        world.init();
+        world.spawn_command_handlers();
     };
 
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-2" |world, _matches, _step| {
-        get_metric_descs(world);
+    when regex "01D3J3D7PA4NR9JABZWT635S6B-2" |world, _matches, _step| {
+        send_register_metric_command(world);
     };
 
     then regex "01D3J3D7PA4NR9JABZWT635S6B-3" |world, _matches, _step| {
-        gather_metrics(world);
-    };
-
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-4" |world, _matches, _step| {
-        gather_metrics_using_desc_ids(world);
-    };
-
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-5" |world, _matches, _step| {
-        gather_metrics_by_name(world);
-    };
-
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-6" |world, _matches, _step| {
-        check_collectors_contain_metrics(world);
-    };
-
-    then regex "01D3J3D7PA4NR9JABZWT635S6B-7" |_world, _matches, _step| {
-        check_metric_family_count();
+        send_check_metric_command(world);
+        world.stop_command_handlers();
     };
 
     given regex "01D3J3DRS0CJ2YN99KAWQ19103-1" |world, _matches, _step| {
@@ -89,7 +76,75 @@ steps!(crate::TestContext => {
         check_metric_id_desc_count(world, 2);
     };
 
+    given regex "01D3PB6MDJ85MWP3SQ1H94S6R7-1" |world, _matches, step| {
+        register_metrics(world, step);
+    };
+
+    then regex "01D3PB6MDJ85MWP3SQ1H94S6R7-2" |world, _matches, _step| {
+        check_metric_names_are_metric_ids(world);
+    };
+
+    then regex "01D3PB6MDJ85MWP3SQ1H94S6R7-3" |world, _matches, _step| {
+        check_label_names_are_label_ids(world);
+    };
+
+    given regex "01D3J441N6BM05NKCBQEVYTZY8" |world, _matches, step| {
+        register_metrics(world, step);
+    };
+
 });
+
+fn send_register_metric_command(world: &mut crate::TestContext) {
+    for sender in world.command_sender.iter() {
+        let (tx, rx) = crossbeam::channel::unbounded();
+        sender.send(crate::Command::RegisterMetrics(tx));
+        let metric_id = rx.recv().unwrap();
+        world.metric_id = Some(metric_id);
+    }
+}
+
+fn send_check_metric_command(world: &mut crate::TestContext) {
+    for metric_id in world.metric_id.iter().cloned() {
+        for sender in world.command_sender.iter() {
+            let (tx, rx) = crossbeam::channel::unbounded();
+            sender.send(crate::Command::CheckMetric(metric_id, tx));
+            rx.recv().unwrap();
+        }
+    }
+}
+
+fn check_metric_names_are_metric_ids(world: &mut crate::TestContext) {
+    let registry = metrics::registry();
+    for metrics in world.metrics.iter() {
+        let metric_ids = metrics.keys().cloned().collect::<Vec<_>>();
+        // MetricId alone is not the unique identifier for a metric
+        // - thus multiple collectors may have descs with the same MetricId
+        assert!(registry.collectors_for_metric_ids(&metric_ids).len() >= metric_ids.len());
+        for metric_id in metrics.keys().cloned() {
+            let metric_name = metric_id.name();
+            let metric_name = metric_name.as_str();
+            assert!(!registry.filter_descs(|desc| desc.fq_name == metric_name).is_empty());
+            // ensure collectors can be looked via MetricId
+            assert!(!registry.collectors_for_metric_id(metric_id).is_empty());
+        }
+    }
+}
+
+fn check_label_names_are_label_ids(world: &mut crate::TestContext) {
+    let registry = metrics::registry();
+    for metrics in world.metrics.iter() {
+        for metric_id in metrics.keys() {
+            let metric_name = metric_id.name();
+            let metric_name = metric_name.as_str();
+            let all_label_names_can_be_parsed_into_label_ids = registry.filter_descs(|desc| !desc.const_label_pairs.is_empty() &&  desc.fq_name == metric_name)
+                .iter()
+                .all(|desc| desc.const_label_pairs.iter().all(|label_pair| {
+                    label_pair.get_name().parse::<metrics::LabelId>().is_ok()
+                }));
+            assert!(all_label_names_can_be_parsed_into_label_ids);
+        }
+    }
+}
 
 fn register_counter_with_const_labels(world: &mut crate::TestContext) {
     let metric_id = metrics::MetricId::generate();
@@ -165,7 +220,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                 "IntCounter" => {
                     let metric_id = metrics::MetricId::generate();
                     let counter = metrics::registry()
-                        .register_int_counter(metric_id, "IntCounter", None)
+                        .register_int_counter(metric_id, "IntCounter", Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     counter.inc();
                     metrics.insert(metric_id, Arc::new(counter));
@@ -173,7 +231,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                 "Counter" => {
                     let metric_id = metrics::MetricId::generate();
                     let counter = metrics::registry()
-                        .register_counter(metric_id, "Counter", None)
+                        .register_counter(metric_id, "Counter", Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     counter.inc();
                     metrics.insert(metric_id, Arc::new(counter));
@@ -182,7 +243,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                     let metric_id = metrics::MetricId::generate();
                     let label_id = metrics::LabelId::generate();
                     let counter = metrics::registry()
-                        .register_counter_vec(metric_id, "CounterVec", &[label_id], None)
+                        .register_counter_vec(metric_id, "CounterVec", &[label_id], Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     let counter = counter.with_label_values(&["A"]);
                     counter.inc();
@@ -191,7 +255,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                 "IntGauge" => {
                     let metric_id = metrics::MetricId::generate();
                     let gauge = metrics::registry()
-                        .register_int_gauge(metric_id, "IntGauge", None)
+                        .register_int_gauge(metric_id, "IntGauge", Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     gauge.inc();
                     metrics.insert(metric_id, Arc::new(gauge));
@@ -199,7 +266,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                 "Gauge" => {
                     let metric_id = metrics::MetricId::generate();
                     let gauge = metrics::registry()
-                        .register_int_gauge(metric_id, "Gauge", None)
+                        .register_int_gauge(metric_id, "Gauge", Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     gauge.inc();
                     metrics.insert(metric_id, Arc::new(gauge));
@@ -208,7 +278,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                     let metric_id = metrics::MetricId::generate();
                     let label_id = metrics::LabelId::generate();
                     let gauge = metrics::registry()
-                        .register_gauge_vec(metric_id, "GaugeVec", &[label_id], None)
+                        .register_gauge_vec(metric_id, "GaugeVec", &[label_id], Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     let gauge = gauge.with_label_values(&["A"]);
                     gauge.inc();
@@ -217,7 +290,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                 "Histogram" => {
                     let metric_id = metrics::MetricId::generate();
                     let histogram = metrics::registry()
-                        .register_histogram(metric_id, "Histogram", vec![0.1, 0.5, 1.0], None)
+                        .register_histogram(metric_id, "Histogram", vec![0.1, 0.5, 1.0], Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }))
                         .unwrap();
                     histogram.observe(0.001);
                     metrics.insert(metric_id, Arc::new(histogram));
@@ -233,7 +309,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                                 Duration::from_millis(100),
                                 Duration::from_millis(500),
                             ]),
-                            None,
+                            Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }),
                         )
                         .unwrap();
                     histogram.observe(0.001);
@@ -248,7 +327,10 @@ fn register_metrics(world: &mut crate::TestContext, step: &gherkin::Step) {
                             "HistogramVec",
                             &[label_id],
                             vec![0.1, 0.5, 1.0],
-                            None,
+                            Some(hashmap!{
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                            metrics::LabelId::generate() => ULID::generate().to_string(),
+                        }),
                         )
                         .unwrap();
                     let histogram = histogram.with_label_values(&[label_id.name().as_str()]);
