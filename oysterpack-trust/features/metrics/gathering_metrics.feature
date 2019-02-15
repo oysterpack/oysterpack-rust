@@ -1,4 +1,4 @@
-Feature: [01D3J441N6BM05NKCBQEVYTZY8] Metrics can gathered.
+Feature: [01D3J441N6BM05NKCBQEVYTZY8] Gathering metrics
 
   Background:
     Given [01D3J441N6BM05NKCBQEVYTZY8] metrics are registered for the following types:

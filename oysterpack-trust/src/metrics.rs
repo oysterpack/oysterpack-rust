@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt,
+    hash::BuildHasher,
     io::Write,
     iter::Iterator,
     str::FromStr,
@@ -51,6 +52,195 @@ pub fn registry() -> &'static MetricRegistry {
     &METRIC_REGISTRY
 }
 
+/// IntCounter constructor using MetricId and LabelId
+pub fn new_int_counter<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::IntCounter> {
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    prometheus::IntCounter::with_opts(opts)
+}
+
+/// IntGauge constructor using MetricId and LabelId
+pub fn new_int_gauge<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::IntGauge> {
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    prometheus::IntGauge::with_opts(opts)
+}
+
+/// Gauge constructor using MetricId and LabelId
+pub fn new_gauge<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::Gauge> {
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    prometheus::Gauge::with_opts(opts)
+}
+
+/// GaugeVec constructor using MetricId and LabelId
+pub fn new_gauge_vec<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    label_ids: &[LabelId],
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::GaugeVec> {
+    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    prometheus::GaugeVec::new(opts, &label_names)
+}
+
+/// IntGaugeVec constructor using MetricId and LabelId
+pub fn new_int_gauge_vec<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    label_ids: &[LabelId],
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::IntGaugeVec> {
+    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    prometheus::IntGaugeVec::new(opts, &label_names)
+}
+
+/// Counter constructor using MetricId and LabelId
+pub fn new_counter<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::Counter> {
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    prometheus::Counter::with_opts(opts)
+}
+
+/// IntCounterVec constructor using MetricId and LabelId
+pub fn new_int_counter_vec<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    label_ids: &[LabelId],
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::IntCounterVec> {
+    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    prometheus::IntCounterVec::new(opts, &label_names)
+}
+
+/// CounterVec constructor using MetricId and LabelId
+pub fn new_counter_vec<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    label_ids: &[LabelId],
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::CounterVec> {
+    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let help = MetricRegistry::check_help(help)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::Opts::new(metric_id.name(), help);
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    prometheus::CounterVec::new(opts, &label_names)
+}
+
+/// Histogram constructor using MetricId and LabelId
+pub fn new_histogram<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    buckets: Vec<f64>,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::Histogram> {
+    let help = MetricRegistry::check_help(help)?;
+    let buckets = MetricRegistry::check_buckets(buckets)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::HistogramOpts::new(metric_id.name(), help).buckets(buckets.clone());
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    prometheus::Histogram::with_opts(opts)
+}
+
+/// HistogramVec constructor using MetricId and LabelId
+pub fn new_histogram_vec<S: BuildHasher>(
+    metric_id: MetricId,
+    help: &str,
+    label_ids: &[LabelId],
+    buckets: Vec<f64>,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::HistogramVec> {
+    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let help = MetricRegistry::check_help(help)?;
+    let buckets = MetricRegistry::check_buckets(buckets)?;
+    let const_labels = MetricRegistry::check_const_labels(const_labels)?;
+
+    let mut opts = prometheus::HistogramOpts::new(metric_id.name(), help).buckets(buckets.clone());
+    if let Some(const_labels) = const_labels {
+        opts = opts.const_labels(const_labels);
+    }
+
+    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    prometheus::HistogramVec::new(opts, &label_names)
+}
+
 /// Metric Registry
 /// - process metrics collector is automatically added
 pub struct MetricRegistry {
@@ -66,7 +256,7 @@ impl MetricRegistry {
     ///
     /// If the provided Collector is equal to a Collector already registered (which includes the
     /// case of re-registering the same Collector), the AlreadyReg error returns.
-    pub fn register_collector(
+    pub fn register(
         &self,
         collector: impl prometheus::core::Collector + 'static,
     ) -> prometheus::Result<ArcCollector> {
@@ -104,15 +294,16 @@ impl MetricRegistry {
     }
 
     /// Returns descriptors for the specified MetricId(s)
-    pub fn descs_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<prometheus::core::Desc>
-    {
-        let metric_names = metric_ids.iter().map(|id| id.name()).collect::<fnv::FnvHashSet<_>>();
-        self.filter_descs(|desc|metric_names.contains(&desc.fq_name))
+    pub fn descs_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<prometheus::core::Desc> {
+        let metric_names = metric_ids
+            .iter()
+            .map(|id| id.name())
+            .collect::<fnv::FnvHashSet<_>>();
+        self.filter_descs(|desc| metric_names.contains(&desc.fq_name))
     }
 
     /// Returns descriptors for the specified MetricId
-    pub fn descs_for_metric_id(&self, metric_id: MetricId) -> Vec<prometheus::core::Desc>
-    {
+    pub fn descs_for_metric_id(&self, metric_id: MetricId) -> Vec<prometheus::core::Desc> {
         let metric_name = metric_id.name();
         self.filter_descs(|desc| desc.fq_name == metric_name)
     }
@@ -131,15 +322,20 @@ impl MetricRegistry {
     }
 
     /// Returns collectors that contain metric descriptors for the specified MetricId(s)
-    pub fn collectors_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<ArcCollector>
-    {
-        let metric_names = metric_ids.iter().map(|id| id.name()).collect::<fnv::FnvHashSet<_>>();
-        self.filter_collectors(|c| c.desc().iter().any(|desc| metric_names.contains(&desc.fq_name)))
+    pub fn collectors_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<ArcCollector> {
+        let metric_names = metric_ids
+            .iter()
+            .map(|id| id.name())
+            .collect::<fnv::FnvHashSet<_>>();
+        self.filter_collectors(|c| {
+            c.desc()
+                .iter()
+                .any(|desc| metric_names.contains(&desc.fq_name))
+        })
     }
 
     /// Returns collectors that contain metric descriptors for the specified MetricId
-    pub fn collectors_for_metric_id(&self, metric_id: MetricId) -> Vec<ArcCollector>
-    {
+    pub fn collectors_for_metric_id(&self, metric_id: MetricId) -> Vec<ArcCollector> {
         let metric_name = metric_id.name();
         self.filter_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
     }
@@ -179,16 +375,8 @@ impl MetricRegistry {
         help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGauge> {
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let metric = prometheus::IntGauge::with_opts(opts)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_int_gauge(metric_id, help, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -199,16 +387,8 @@ impl MetricRegistry {
         help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Gauge> {
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let metric = prometheus::Gauge::with_opts(opts)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_gauge(metric_id, help, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -220,18 +400,8 @@ impl MetricRegistry {
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::GaugeVec> {
-        let label_names = Self::check_labels(label_ids)?;
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
-        let metric = prometheus::GaugeVec::new(opts, &label_names)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_gauge_vec(metric_id, help, label_ids, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -243,18 +413,8 @@ impl MetricRegistry {
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGaugeVec> {
-        let label_names = Self::check_labels(label_ids)?;
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
-        let metric = prometheus::IntGaugeVec::new(opts, &label_names)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_int_gauge_vec(metric_id, help, label_ids, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -265,16 +425,8 @@ impl MetricRegistry {
         help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounter> {
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let metric = prometheus::IntCounter::with_opts(opts)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_int_counter(metric_id, help, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -285,16 +437,8 @@ impl MetricRegistry {
         help: &str,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Counter> {
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let metric = prometheus::Counter::with_opts(opts)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_counter(metric_id, help, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -306,18 +450,8 @@ impl MetricRegistry {
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounterVec> {
-        let label_names = Self::check_labels(label_ids)?;
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
-        let metric = prometheus::IntCounterVec::new(opts, &label_names)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_int_counter_vec(metric_id, help, label_ids, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -329,18 +463,8 @@ impl MetricRegistry {
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::CounterVec> {
-        let label_names = Self::check_labels(label_ids)?;
-        let help = Self::check_help(help)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts = prometheus::Opts::new(metric_id.name(), help);
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
-        let metric = prometheus::CounterVec::new(opts, &label_names)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_counter_vec(metric_id, help, label_ids, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -352,18 +476,8 @@ impl MetricRegistry {
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Histogram> {
-        let help = Self::check_help(help)?;
-        let buckets = Self::check_buckets(buckets)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts =
-            prometheus::HistogramOpts::new(metric_id.name(), help).buckets(buckets.clone());
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let metric = prometheus::Histogram::with_opts(opts)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_histogram(metric_id, help, buckets, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -387,20 +501,8 @@ impl MetricRegistry {
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::HistogramVec> {
-        let label_names = Self::check_labels(label_ids)?;
-        let help = Self::check_help(help)?;
-        let buckets = Self::check_buckets(buckets)?;
-        let const_labels = Self::check_const_labels(const_labels)?;
-
-        let mut opts =
-            prometheus::HistogramOpts::new(metric_id.name(), help).buckets(buckets.clone());
-        if let Some(const_labels) = const_labels {
-            opts = opts.const_labels(const_labels);
-        }
-
-        let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
-        let metric = prometheus::HistogramVec::new(opts, &label_names)?;
-        self.register_collector(metric.clone())?;
+        let metric = new_histogram_vec(metric_id, help, label_ids, buckets, const_labels)?;
+        self.register(metric.clone())?;
         Ok(metric)
     }
 
@@ -427,8 +529,8 @@ impl MetricRegistry {
         }
     }
 
-    fn check_const_labels(
-        const_labels: Option<HashMap<LabelId, String>>,
+    fn check_const_labels<S: BuildHasher>(
+        const_labels: Option<HashMap<LabelId, String, S>>,
     ) -> Result<Option<HashMap<String, String>>, prometheus::Error> {
         match const_labels {
             Some(const_labels) => {
@@ -525,67 +627,60 @@ impl MetricRegistry {
 
     /// gather metrics for collectors for the specified desc ids
     /// - Desc.id maps to a compound key composed of: `(Desc.fq_name, [Desc.const_label_values])`,
-    ///   i.e., it enables you gather metrics with specific constant label values
+    ///   i.e., it enables you to gather metrics with specific constant label values
     ///   - if metrics do not have constant labels, then the id maps to `Desc.fq_name`
     /// - the returned MetricFamily will contain only the requested metrics
     pub fn gather_metrics(&self, desc_ids: &[u64]) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
+        //BUG: a collector may have more than 1 matching desc
+
+        let descs = self.filter_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
+
         collectors
             .iter()
-            .filter_map(|collector| {
-                match collector
+            .filter(|collector| {
+                // do any of the collector's desc match on id
+                collector
                     .desc()
                     .iter()
-                    .find(|desc| desc_ids.iter().any(|id| *id == desc.id))
-                {
-                    Some(desc) => {
-                        if desc.const_label_pairs.is_empty() {
-                            Some((
-                                collector,
-                                desc.fq_name.clone(),
-                                Some(desc.const_label_pairs.clone()),
-                            ))
-                        } else {
-                            Some((collector, desc.fq_name.clone(), None))
-                        }
-                    }
-                    None => None,
-                }
+                    .any(|desc| desc_ids.iter().any(|desc_id| *desc_id == desc.id))
             })
-            .flat_map(|(collector, name, label_pairs)| match label_pairs {
-                Some(label_pairs) => collector
-                    .collect()
-                    .into_iter()
-                    .filter_map(|mut metric_family| {
-                        if metric_family.get_name() == name {
-                            let metrics = metric_family.mut_metric();
+            .flat_map(|collector| collector.collect())
+            .filter_map(|mut mf| {
+                // filter out MetricFamily that does not match any Desc
+                // a collector may return multiple MetricFamily
+                match descs
+                    .iter()
+                    .find(|desc| desc.fq_name.as_str() == mf.get_name())
+                {
+                    None => None,
+                    Some(desc) => {
+                        // A MetricFamily may consist of more than 1 metric
+                        let metrics = mf.get_metric();
+                        if metrics.len() > 1 && !desc.const_label_pairs.is_empty() {
+                            // filter out metrics that do not match const label values
+                            let metrics = mf.mut_metric();
                             let mut i = 0;
-                            'outer: while i < metrics.len() {
+                            while i < metrics.len() {
                                 let metric = &metrics[i];
                                 for label_pair in metric.get_label() {
                                     let value = label_pair.get_value();
-                                    if label_pairs
+                                    if desc
+                                        .const_label_pairs
                                         .iter()
                                         .find(|label_pair| value == label_pair.get_value())
                                         .is_none()
                                     {
                                         metrics.remove(i);
-                                        break 'outer;
+                                        break;
                                     }
                                 }
                                 i += 1
                             }
-                            Some(metric_family)
-                        } else {
-                            None
                         }
-                    })
-                    .collect::<Vec<prometheus::proto::MetricFamily>>(),
-                None => collector
-                    .collect()
-                    .into_iter()
-                    .filter(|metric_family| metric_family.get_name() == name)
-                    .collect::<Vec<prometheus::proto::MetricFamily>>(),
+                        Some(mf)
+                    }
+                }
             })
             .collect()
     }
@@ -636,7 +731,7 @@ impl Default for MetricRegistry {
         };
 
         registry
-            .register_collector(prometheus::process_collector::ProcessCollector::for_self())
+            .register(prometheus::process_collector::ProcessCollector::for_self())
             .unwrap();
 
         registry

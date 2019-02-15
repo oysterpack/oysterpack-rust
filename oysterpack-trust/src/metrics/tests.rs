@@ -18,6 +18,7 @@
 
 use super::*;
 use crate::configure_logging;
+use maplit::*;
 use oysterpack_log::*;
 use std::{collections::HashSet, thread, time::Duration};
 
@@ -804,6 +805,7 @@ fn registry_gather_metrics() {
     configure_logging();
     let metric_registry = MetricRegistry::default();
 
+    // Given a metric is registered with a random MetricId
     let timer = metric_registry
         .register_histogram_vec(
             MetricId::generate(),
@@ -819,51 +821,41 @@ fn registry_gather_metrics() {
         .unwrap();
     timer.with_label_values(&["1"]).observe(0.2);
 
+    // And 2 metrics are registered with the same MetricId and LabelId, but different const label values
     let metric_id = MetricId::generate();
     let label_id = LabelId::generate();
     let var_label_id = LabelId::generate();
-    let timer = metric_registry
-        .register_histogram_vec(
-            metric_id,
-            "ReqRep processor timer",
-            &[var_label_id],
-            vec![0.0, 1.0, 5.0],
-            Some({
-                let mut labels = HashMap::new();
-                labels.insert(label_id, "B".to_string());
-                labels
-            }),
-        )
-        .unwrap();
-    timer.with_label_values(&["1"]).observe(1.2);
-    timer.with_label_values(&["2"]).observe(2.2);
-
-    let timer = metric_registry
-        .register_histogram_vec(
-            metric_id,
-            "ReqRep processor timer",
-            &[var_label_id],
-            vec![0.0, 1.0, 5.0],
-            Some({
-                let mut labels = HashMap::new();
-                labels.insert(label_id, "C".to_string());
-                labels
-            }),
-        )
-        .unwrap();
-    timer.with_label_values(&["3"]).observe(1.2);
-    timer.with_label_values(&["4"]).observe(2.2);
+    for i in 0..2 {
+        let timer = metric_registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep processor timer",
+                &[var_label_id],
+                vec![0.0, 1.0, 5.0],
+                Some(hashmap! {
+                    label_id => format!("{}",i)
+                }),
+            )
+            .unwrap();
+        // And metrics are observed across 2 dimensions
+        timer.with_label_values(&["1"]).observe(1.2);
+        timer.with_label_values(&["2"]).observe(2.2);
+    }
 
     let descs = metric_registry.descs();
     info!("descs: {:#?}", descs);
+    // When metrics are gathered
     let mfs = metric_registry.gather();
     info!("{:#?}", mfs);
+    // Then when gathering metrics for each Desc, only 1 MetricFamily will be returned because a Metric
+    // can only be part of 1 MetricFamily
     for ref desc in descs.iter() {
         let mfs = metric_registry.gather_metrics(&[desc.id]);
         info!("{}: {:#?}", desc.fq_name, mfs);
         assert_eq!(mfs.len(), 1);
     }
 
+    // And each MetricFamily for the above 2 MetricVec(s) will have 2 metrics
     let desc = descs
         .iter()
         .find(|desc| desc.fq_name == metric_id.name())
@@ -876,9 +868,11 @@ fn registry_gather_metrics() {
             .len(),
         4
     );
+    // When metrics are gathered for each desc
     let mfs = metric_registry.gather_metrics(&[desc.id]);
     for mf in mfs {
-        assert_eq!(mf.get_metric().len(), 2);
+        // Then the returned MetricFamily will only contain the metric for that Desc
+        assert_eq!(mf.get_metric().len(), 1);
     }
 }
 
