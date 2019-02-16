@@ -29,7 +29,7 @@ pub struct TestContext {
     pub collector: Option<metrics::ArcCollector>,
     pub collectors: Option<Vec<metrics::ArcCollector>>,
     pub descs: Option<Vec<prometheus::core::Desc>>,
-    pub metric_families: Option<Vec<prometheus::proto::MetricFamily>>
+    pub metric_families: Option<Vec<prometheus::proto::MetricFamily>>,
 }
 
 impl TestContext {

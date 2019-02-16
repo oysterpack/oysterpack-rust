@@ -17,8 +17,10 @@
 use cucumber_rust::*;
 use maplit::*;
 use oysterpack_trust::metrics;
+use oysterpack_trust::metrics::ProcessMetrics;
 use oysterpack_uid::ULID;
 use prometheus::core::Collector;
+use std::io::BufWriter;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 steps!(crate::TestContext => {
@@ -33,6 +35,22 @@ steps!(crate::TestContext => {
 
     then regex "01D3PPPT1ZNXPKKWM29R14V5ZT-3" |world, _matches, _step| {
         check_metric_families_returned_for_registered_descs(world);
+    };
+
+    when regex "01D3PPY3E710BYY8DQDKVQ31KY-2" |world, _matches, _step| {
+        gather_metrics_using_desc_ids(world);
+    };
+
+    then regex "01D3PPY3E710BYY8DQDKVQ31KY-3" |world, _matches, _step| {
+        check_metric_returned_for_specified_desc_ids(world);
+    };
+
+    when regex "01D3PQ2KMBY07K48Q281SMPED6-2" |world, _matches, _step| {
+        gather_metrics_by_name(world);
+    };
+
+    then regex "01D3PQ2KMBY07K48Q281SMPED6-3" |world, _matches, _step| {
+        check_metric_returned_for_specified_desc_fq_names(world);
     };
 
     given regex "01D3PQBDWM4BAJQKXF9R0MQED7" |world, _matches, step| {
@@ -150,14 +168,272 @@ steps!(crate::TestContext => {
         register_metrics(world, step);
     };
 
+    when regex "01D3SF3R0DTBTVRKC9PFHQEEM9-2" |world, _matches, _step| {
+        // gather all descs
+        world.descs = Some(metrics::registry().descs());
+    };
+
+    then regex "01D3SF3R0DTBTVRKC9PFHQEEM9-3" |world, _matches, _step| {
+        check_metrics_gathered_for_all_descs(world);
+    };
+
+    when regex "01D3PSPCNHH6CSW08RTFKZZ8SP-2" |world, _matches, _step| {
+        gather_descs_with_filter(world);
+    };
+
+    then regex "01D3PSPCNHH6CSW08RTFKZZ8SP-3" |world, _matches, _step| {
+        check_descs_returned_match_filter(world);
+    };
+
+    when regex "01D3PSP4TQK6ESKSB6AEFWAAYF-2" |world, _matches, _step| {
+        gather_descs_for_metric_ids(world);
+    };
+
+    then regex "01D3PSP4TQK6ESKSB6AEFWAAYF-3" |world, _matches, _step| {
+        check_descs_returned_match_metric_ids(world);
+    };
+
+    given regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N-1" |world, _matches, step| {
+        world.init();
+        register_metrics(world,step);
+    };
+
+    when regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N-2" |world, _matches, _step| {
+        gather_all_metrics(world);
+    };
+
+    then regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N-3" |world, _matches, _step| {
+        check_text_encoded_metrics(world);
+    };
+
+    given regex "01D3JB9B4NP8T1PQ2Q85HY25FQ-1" |_world, _matches, _step| {
+        // prometheus' ProcessCollector is automatically registered with the global metric registry
+    };
+
+    when regex "01D3JB9B4NP8T1PQ2Q85HY25FQ-2" |world, _matches, _step| {
+        gather_all_metrics(world);
+    };
+
+    then regex "01D3JB9B4NP8T1PQ2Q85HY25FQ-3" |world, _matches, _step| {
+        check_process_metrics_gathered(world);
+    };
+
+    when regex "01D3JB9B4NP8T1PQ2Q85HY25FQ-4" |world, _matches, _step| {
+        gather_process_metric_descs(world);
+    };
+
+    then regex "01D3JB9B4NP8T1PQ2Q85HY25FQ-5" |world, _matches, _step| {
+        check_process_metric_descs_gathered(world);
+    };
+
+    when regex "01D3JBCE21WYX6VMWCM4GW2ZTE-2" |world, _matches, _step| {
+        gather_process_metrics(world)
+    };
+
+    then regex "01D3JBCE21WYX6VMWCM4GW2ZTE-3" |world, _matches, _step| {
+        check_process_metrics_gathered(world);
+    };
 });
+
+fn gather_process_metrics(world: &mut crate::TestContext) {
+    world.metric_families =
+        Some(metrics::registry().gather_metrics_by_name(&metrics::ProcessMetrics::METRIC_NAMES));
+}
+
+fn check_process_metric_descs_gathered(world: &mut crate::TestContext) {
+    if let Some(ref descs) = world.descs {
+        for metric_name in ProcessMetrics::METRIC_NAMES.iter() {
+            assert!(descs.iter().any(|desc| desc.fq_name == *metric_name));
+        }
+    }
+}
+
+fn gather_process_metric_descs(world: &mut crate::TestContext) {
+    world.descs = Some(metrics::registry().filter_descs(|desc| {
+        ProcessMetrics::METRIC_NAMES
+            .iter()
+            .any(|name| *name == desc.fq_name)
+    }));
+}
+
+fn check_process_metrics_gathered(world: &mut crate::TestContext) {
+    if let Some(ref mfs) = world.metric_families {
+        for metric_name in metrics::ProcessMetrics::METRIC_NAMES.iter() {
+            assert!(mfs.iter().any(|mf| mf.get_name() == *metric_name));
+        }
+    }
+    let process_metrics = metrics::registry().gather_process_metrics();
+
+    let mfs = metrics::registry()
+        .gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_CPU_SECONDS_TOTAL]);
+    let value = mfs.first().unwrap().get_metric()[0]
+        .get_counter()
+        .get_value();
+    assert!(process_metrics.cpu_seconds_total() <= value);
+
+    let mfs =
+        metrics::registry().gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_OPEN_FDS]);
+    let value = mfs.first().unwrap().get_metric()[0].get_gauge().get_value();
+    assert!(process_metrics.open_fds() <= value);
+
+    let mfs =
+        metrics::registry().gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_MAX_FDS]);
+    let value = mfs.first().unwrap().get_metric()[0].get_gauge().get_value();
+    assert!(process_metrics.max_fds() <= value);
+
+    let mfs = metrics::registry()
+        .gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_VIRTUAL_MEMORY_BYTES]);
+    let value = mfs.first().unwrap().get_metric()[0].get_gauge().get_value();
+    assert!(process_metrics.virtual_memory_bytes() <= value);
+
+    let mfs = metrics::registry()
+        .gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_RESIDENT_MEMORY_BYTES]);
+    let value = mfs.first().unwrap().get_metric()[0].get_gauge().get_value();
+    assert!(process_metrics.resident_memory_bytes() <= value);
+
+    let mfs = metrics::registry()
+        .gather_metrics_by_name(&[metrics::ProcessMetrics::PROCESS_START_TIME_SECONDS]);
+    let value = mfs.first().unwrap().get_metric()[0].get_gauge().get_value();
+    assert!(process_metrics.start_time_seconds() <= value);
+}
+
+fn check_text_encoded_metrics(world: &mut crate::TestContext) {
+    if let Some(ref mfs) = world.metric_families {
+        let mut buf = BufWriter::new(Vec::<u8>::with_capacity(2048));
+        metrics::registry().text_encode_metrics(&mut buf).unwrap();
+        let buf = buf.into_inner().unwrap();
+        let text = std::str::from_utf8(&buf).unwrap();
+        println!("{}", text);
+        for mf in mfs {
+            let re = regex::RegexBuilder::new(format!("^{}.+$", mf.get_name()).as_str())
+                .multi_line(true)
+                .build()
+                .unwrap();
+            assert!(re.is_match(text));
+        }
+    }
+}
+
+fn check_descs_returned_match_metric_ids(world: &mut crate::TestContext) {
+    let metric_ids = world
+        .metrics
+        .as_ref()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    match world.descs {
+        Some(ref descs) => {
+            for metric_id in metric_ids.iter() {
+                assert!(descs.iter().any(|desc| desc.fq_name == metric_id.name()));
+            }
+            for desc in descs.iter() {
+                assert!(metric_ids
+                    .iter()
+                    .any(|metric_id| metric_id.name() == desc.fq_name));
+            }
+        }
+        None => panic!("no descs were found"),
+    }
+}
+
+fn gather_descs_for_metric_ids(world: &mut crate::TestContext) {
+    let metric_ids = world
+        .metrics
+        .as_ref()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    world.descs = Some(metrics::registry().descs_for_metric_ids(metric_ids.as_slice()));
+}
+
+fn desc_matches(desc: &prometheus::core::Desc) -> bool {
+    desc.help.contains("Histogram")
+}
+
+fn gather_descs_with_filter(world: &mut crate::TestContext) {
+    world.descs = Some(metrics::registry().filter_descs(desc_matches));
+}
+
+fn check_descs_returned_match_filter(world: &mut crate::TestContext) {
+    match world.descs {
+        Some(ref descs) => assert!(descs.iter().all(desc_matches)),
+        None => panic!("descs should have been found"),
+    }
+}
+
+fn check_metrics_gathered_for_all_descs(world: &mut crate::TestContext) {
+    if let Some(ref descs) = world.descs {
+        let mfs = metrics::registry().gather();
+        assert_eq!(
+            mfs.iter().map(|mf| mf.get_metric().len()).sum::<usize>(),
+            descs.len()
+        );
+        for desc in descs.iter() {
+            assert!(mfs.iter().any(|mf| mf.get_name() == desc.fq_name.as_str()));
+        }
+    }
+}
+
+fn check_metric_returned_for_specified_desc_fq_names(world: &mut crate::TestContext) {
+    if let (Some(descs), Some(mfs)) = (world.descs.as_ref(), world.metric_families.as_ref()) {
+        for desc in descs.iter() {
+            assert!(mfs.iter().any(|mf| mf.get_name() == desc.fq_name.as_str()));
+            if !desc.const_label_pairs.is_empty() {
+                assert!(mfs.iter().any(|mf| mf.get_name() == desc.fq_name.as_str()));
+            }
+        }
+    }
+}
+
+fn check_metric_returned_for_specified_desc_ids(world: &mut crate::TestContext) {
+    if let (Some(descs), Some(mfs)) = (world.descs.as_ref(), world.metric_families.as_ref()) {
+        for desc in descs.iter() {
+            assert!(mfs.iter().any(|mf| mf.get_name() == desc.fq_name.as_str()));
+            if !desc.const_label_pairs.is_empty() {
+                let mf = mfs
+                    .iter()
+                    .find(|mf| mf.get_name() == desc.fq_name.as_str())
+                    .unwrap();
+                assert!(desc.const_label_pairs.iter().all(|label_pair| mf
+                    .get_metric()
+                    .iter()
+                    .any(|metric| metric
+                        .get_label()
+                        .iter()
+                        .any(|label_pair_2| label_pair_2 == label_pair))));
+            }
+        }
+    }
+}
 
 fn check_metric_families_returned_for_registered_descs(world: &mut crate::TestContext) {
     if let Some(ref mfs) = world.metric_families {
         let descs = metrics::registry().descs();
-        assert_eq!(mfs.iter().map(|mf| mf.get_metric().len()).sum(), descs.len());
+        assert_eq!(
+            mfs.iter().map(|mf| mf.get_metric().len()).sum::<usize>(),
+            descs.len()
+        );
         for mf in mfs.iter() {
-            // TODO
+            assert!(descs
+                .iter()
+                .any(|desc| if desc.fq_name.as_str() == mf.get_name() {
+                    if !desc.const_label_pairs.is_empty() {
+                        mf.get_metric().iter().any(|metric| {
+                            desc.const_label_pairs.iter().any(|label_pair| {
+                                metric.get_label().iter().any(|label_pair_2| {
+                                    label_pair_2.get_name() == label_pair.get_name()
+                                        && label_pair_2.get_value() == label_pair.get_value()
+                                })
+                            })
+                        })
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                }));
         }
     }
 }
@@ -579,107 +855,25 @@ fn register_duplicate_metric(world: &mut crate::TestContext) {
     }
 }
 
-fn get_metric_descs(world: &mut crate::TestContext) {
-    assert!(world.metrics.is_some());
-    let descs = metrics::registry().descs();
-    if let Some(ref metrics) = world.metrics {
-        for metric_id in metrics.keys() {
-            metrics::registry()
-                .filter_descs(|desc| desc.fq_name == metric_id.name())
-                .first()
-                .unwrap();
-            assert!(descs.iter().any(|desc| desc.fq_name == metric_id.name()));
-        }
-    }
-}
-
 fn gather_all_metrics(world: &mut crate::TestContext) {
     world.metric_families = Some(metrics::registry().gather());
 }
 
-fn gather_metrics(world: &mut crate::TestContext) {
-    let metric_families = metrics::registry().gather();
-    assert!(!metric_families.is_empty());
-    assert!(world.metrics.is_some());
-    if let Some(ref metrics) = world.metrics {
-        assert!(!metrics.is_empty());
-        assert!(metric_families.len() >= metrics.len());
-        for metric_id in metrics.keys() {
-            let metric_name = metric_id.name();
-            assert!(metric_families
-                .iter()
-                .any(|mf| mf.get_name() == metric_name.as_str()));
-        }
-    }
-}
-
 fn gather_metrics_using_desc_ids(world: &mut crate::TestContext) {
-    let metric_families = metrics::registry().gather();
-    assert!(!metric_families.is_empty());
-    assert!(world.metrics.is_some());
-    let registry = metrics::registry();
-    if let Some(ref metrics) = world.metrics {
-        assert!(!metrics.is_empty());
-        assert!(metric_families.len() >= metrics.len());
-        for metric in metrics.values() {
-            for desc in metric.desc() {
-                let metric_families = registry.gather_metrics(&[desc.id]);
-                assert_eq!(metric_families.len(), 1);
-                assert_eq!(
-                    metric_families.first().unwrap().get_name(),
-                    desc.fq_name.as_str()
-                );
-            }
-        }
-    }
+    let mut descs = metrics::registry().descs();
+    let descs = descs.split_off(descs.len() / 2);
+    let desc_ids = descs.iter().map(|desc| desc.id).collect::<Vec<u64>>();
+    world.metric_families = Some(metrics::registry().gather_metrics(desc_ids.as_slice()));
+    world.descs = Some(descs);
 }
 
 fn gather_metrics_by_name(world: &mut crate::TestContext) {
-    let metric_families = metrics::registry().gather();
-    assert!(!metric_families.is_empty());
-    assert!(world.metrics.is_some());
-    let registry = metrics::registry();
-    if let Some(ref metrics) = world.metrics {
-        assert!(!metrics.is_empty());
-        assert!(metric_families.len() >= metrics.len());
-        for metric in metrics.values() {
-            for desc in metric.desc() {
-                let metric_families = registry.gather_metrics_by_name(&[desc.fq_name.as_str()]);
-                assert_eq!(metric_families.len(), 1);
-                assert_eq!(
-                    metric_families.first().unwrap().get_name(),
-                    desc.fq_name.as_str()
-                );
-            }
-        }
-    }
-}
-
-fn check_collectors_contain_metrics(world: &mut crate::TestContext) {
-    let collectors = metrics::registry().collectors();
-    if let Some(ref metrics) = world.metrics {
-        for registered_collector in metrics.values() {
-            let registered_collector_descs = registered_collector.desc();
-            // check if there is a collector with matching descs
-            assert!(collectors.iter().any(|collector| {
-                let descs = collector.desc();
-                let matching_desc_count = descs
-                    .iter()
-                    .filter(|desc1| {
-                        registered_collector_descs
-                            .iter()
-                            .any(|desc2| desc1.id == desc2.id)
-                    })
-                    .count();
-                descs.len() == matching_desc_count
-            }));
-        }
-    }
-}
-
-fn check_metric_family_count() {
-    assert_eq!(
-        metrics::registry().metric_family_count(),
-        metrics::registry().gather().len()
-    );
+    let mut descs = metrics::registry().descs();
+    let descs = descs.split_off(descs.len() / 2);
+    let desc_names = descs
+        .iter()
+        .map(|desc| desc.fq_name.as_str())
+        .collect::<Vec<_>>();
+    world.metric_families = Some(metrics::registry().gather_metrics_by_name(desc_names.as_slice()));
+    world.descs = Some(descs);
 }

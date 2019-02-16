@@ -25,6 +25,7 @@ num_cpus = "1.9.0"
 failure = "0.1.5"
 lazy_static = {version = "1.2.0", features = ["nightly"] }
 maplit = "1.0.1"
+regex = "1.1.0"
 
 url = "1.7.2"
 url_serde = "0.2.0"

@@ -20,8 +20,9 @@
 //! ## Recommendations
 //!
 //! ### Use [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) for metric and label names
-//! - because names change over time, which can break components that depend on metric names and cause name collision
-//! - the prometheus metric `help` attribute can be used to provide a human friendly label and short description
+//! - because naming is hard ...
+//! - because names should be unique and immutable over time
+//!   - the prometheus metric `help` attribute can be used to provide a human friendly label and short description
 //!
 //! ### Use the Int version of the metrics where possible
 //! - because they are more efficient
@@ -954,6 +955,16 @@ impl ProcessMetrics {
     pub const PROCESS_RESIDENT_MEMORY_BYTES: &'static str = "process_resident_memory_bytes";
     /// metric name for: Start time of the process since unix epoch in seconds.
     pub const PROCESS_START_TIME_SECONDS: &'static str = "process_start_time_seconds";
+
+    /// Process metric names
+    pub const METRIC_NAMES: [&'static str; 6] = [
+        Self::PROCESS_CPU_SECONDS_TOTAL,
+        Self::PROCESS_OPEN_FDS,
+        Self::PROCESS_MAX_FDS,
+        Self::PROCESS_VIRTUAL_MEMORY_BYTES,
+        Self::PROCESS_RESIDENT_MEMORY_BYTES,
+        Self::PROCESS_START_TIME_SECONDS,
+    ];
 
     fn collect(process_collector: &ArcCollector) -> Self {
         let mut process_metrics = ProcessMetrics::default();
