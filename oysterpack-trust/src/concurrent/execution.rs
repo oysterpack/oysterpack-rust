@@ -229,11 +229,27 @@ impl ExecutorRegistry {
         self.global_executor.clone()
     }
 
-    /// Returns the total number of tasks spawned across all registered Executor(s)
+    /// Returns the total number of spawned tasks across all registered Executor(s)
     pub fn spawned_task_count(&self) -> u64 {
         self.thread_pools.values().fold(
             self.global_executor.spawned_task_count(),
             |sum, executor| sum + executor.spawned_task_count(),
+        )
+    }
+
+    /// Returns the total number of completed tasks across all registered Executor(s)
+    pub fn completed_task_count(&self) -> u64 {
+        self.thread_pools.values().fold(
+            self.global_executor.completed_task_counter_task_count(),
+            |sum, executor| sum + executor.completed_task_counter_task_count(),
+        )
+    }
+
+    /// Returns the total number of active tasks across all registered Executor(s)
+    pub fn active_task_count(&self) -> u64 {
+        self.thread_pools.values().fold(
+            self.global_executor.active_task_count(),
+            |sum, executor| sum + executor.active_task_count(),
         )
     }
 
@@ -414,10 +430,6 @@ impl Executor {
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
         let completed_task_counter = self.completed_task_counter.clone();
-        //        let future = future.map( move |result| {
-        //            completed_task_counter.inc();
-        //            result
-        //        }).boxed();
         let future = async move {
             await!(future);
             completed_task_counter.inc();
