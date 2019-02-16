@@ -850,7 +850,7 @@ fn registry_gather_metrics() {
     // Then when gathering metrics for each Desc, only 1 MetricFamily will be returned because a Metric
     // can only be part of 1 MetricFamily
     for ref desc in descs.iter() {
-        let mfs = metric_registry.gather_metrics(&[desc.id]);
+        let mfs = metric_registry.gather_for_desc_ids(&[desc.id]);
         info!("{}: {:#?}", desc.fq_name, mfs);
         assert_eq!(mfs.len(), 1);
     }
@@ -869,7 +869,7 @@ fn registry_gather_metrics() {
         4
     );
     // When metrics are gathered for each desc
-    let mfs = metric_registry.gather_metrics(&[desc.id]);
+    let mfs = metric_registry.gather_for_desc_ids(&[desc.id]);
     for mf in mfs {
         // Then the returned MetricFamily will only contain the metric for that Desc
         assert_eq!(mf.get_metric().len(), 1);
@@ -977,7 +977,7 @@ fn registry_gather_metrics_by_name() {
     let mfs = metric_registry.gather();
     info!("{:#?}", mfs);
     for ref desc in descs.iter() {
-        let mfs = metric_registry.gather_metrics_by_name(&[desc.fq_name.as_str()]);
+        let mfs = metric_registry.gather_for_desc_names(&[desc.fq_name.as_str()]);
         info!("{}: {:#?}", desc.fq_name, mfs);
     }
 
@@ -993,7 +993,7 @@ fn registry_gather_metrics_by_name() {
             .count(),
         4
     );
-    let mfs = metric_registry.gather_metrics_by_name(&[histogram_vec_metric_id.name().as_str()]);
+    let mfs = metric_registry.gather_for_desc_names(&[histogram_vec_metric_id.name().as_str()]);
     assert_eq!(mfs.len(), 2);
     for mf in mfs {
         assert_eq!(mf.get_metric().len(), 2);

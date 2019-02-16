@@ -14,11 +14,11 @@
  *    limitations under the License.
  */
 
-//! Exposes lower level primitives for dealing with asynchronous execution:
-//! - async [executors](struct.Executor.html)
-//! - global [executor registry](struct.ExecutorRegistry.html)
+//! Provides support for async execution
+//! - [Executor](struct.Executor.html) is an async executor that schedules Future tasks across a thread pool
+//! - a global [executor registry](struct.ExecutorRegistry.html) is provided
 //!   - executors can be globally registered via [register()](fn.register.html)
-//! - [global executor](fn.global_executor.html)
+//! - a [global executor](fn.global_executor.html) is provided
 //!
 //! ## Config
 //! - [ExecutorBuilder](struct.ExecutorBuilder.html) - is also used to register a new [Executor](struct.Executor.html)
@@ -108,7 +108,7 @@ pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
 
 /// Gathers Executor related metrics
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    metrics::registry().gather_metrics_by_name(&[
+    metrics::registry().gather_for_desc_names(&[
         SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str(),
         COMPLETED_TASK_COUNTER_METRIC_ID.name().as_str(),
         THREADS_STARTED_TOTAL_COUNTER_METRIC_ID.name().as_str(),
@@ -152,7 +152,8 @@ pub fn executor(id: ExecutorId) -> Option<Executor> {
     }
 }
 
-/// Returns the global executor, which is provided by default.
+/// Returns the global executor
+/// - the thread pool size equals the number of CPU cores.
 pub fn global_executor() -> Executor {
     let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.global_executor.clone()
@@ -222,7 +223,8 @@ impl ExecutorRegistry {
         }
     }
 
-    /// Returns the global executor, which is provided by default.
+    /// Returns the global executor
+    /// - the thread pool size equals the number of CPU cores.
     pub fn global_executor(&self) -> Executor {
         self.global_executor.clone()
     }

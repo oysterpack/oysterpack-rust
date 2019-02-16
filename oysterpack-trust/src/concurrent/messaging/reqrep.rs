@@ -122,7 +122,7 @@ pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
     let label_name = REQREPID_LABEL_ID.name();
     let label_value = reqrep_id.to_string();
     metrics::registry()
-        .gather_metrics_by_name(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
+        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
         .iter()
         .filter_map(|mf| {
             mf.get_metric()

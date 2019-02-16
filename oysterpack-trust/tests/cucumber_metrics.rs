@@ -18,7 +18,11 @@ use cucumber_rust::*;
 
 mod steps;
 
+use maplit::*;
 use oysterpack_trust::metrics;
+use oysterpack_trust::metrics::LabelId;
+use oysterpack_trust::metrics::MetricId;
+use oysterpack_uid::ULID;
 use std::{collections::HashMap, sync::Arc, thread};
 
 #[derive(Default)]
@@ -60,7 +64,7 @@ impl TestContext {
                         }
                         Command::CheckMetric(metric_id, reply_chan) => {
                             if metrics::registry()
-                                .gather_metrics_by_name(&[metric_id.name().as_str()])
+                                .gather_for_desc_names(&[metric_id.name().as_str()])
                                 .is_empty()
                             {
                                 reply_chan.send(Err("no metrics gathered")).unwrap();
@@ -153,6 +157,172 @@ impl Default for RequestMetrics {
                 Self::ERR_COUNTER_METRIC_ID,
                 "error counter",
                 None,
+            )
+            .unwrap(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct Metrics {
+    counter: prometheus::Counter,
+    int_counter: prometheus::IntCounter,
+    counter_vec: prometheus::CounterVec,
+    int_counter_vec: prometheus::IntCounterVec,
+
+    gauge: prometheus::Gauge,
+    int_gauge: prometheus::IntGauge,
+    gauge_vec: prometheus::GaugeVec,
+    int_gauge_vec: prometheus::IntGaugeVec,
+
+    histogram: prometheus::Histogram,
+    histogram_vec: prometheus::HistogramVec,
+}
+
+impl prometheus::core::Collector for Metrics {
+    fn desc(&self) -> Vec<&prometheus::core::Desc> {
+        let mut descs = Vec::with_capacity(10);
+        descs.extend(self.counter.desc());
+        descs.extend(self.int_counter.desc());
+        descs.extend(self.counter_vec.desc());
+        descs.extend(self.int_counter_vec.desc());
+
+        descs.extend(self.gauge.desc());
+        descs.extend(self.int_gauge.desc());
+        descs.extend(self.gauge_vec.desc());
+        descs.extend(self.int_gauge_vec.desc());
+
+        descs.extend(self.histogram.desc());
+        descs.extend(self.histogram_vec.desc());
+
+        descs
+    }
+
+    fn collect(&self) -> Vec<prometheus::proto::MetricFamily> {
+        let mut mfs = Vec::with_capacity(15);
+
+        // simulates metrics being collected
+        self.counter_vec.with_label_values(&["a"]).inc();
+        self.int_counter_vec.with_label_values(&["a"]).inc();
+        self.gauge_vec.with_label_values(&["a"]).inc();
+        self.int_gauge_vec.with_label_values(&["a"]).inc();
+        self.histogram_vec.with_label_values(&["a"]).observe(0.5);
+
+        mfs.extend(self.counter.collect());
+        mfs.extend(self.int_counter.collect());
+        mfs.extend(self.counter_vec.collect());
+        mfs.extend(self.int_counter_vec.collect());
+
+        mfs.extend(self.gauge.collect());
+        mfs.extend(self.int_gauge.collect());
+        mfs.extend(self.gauge_vec.collect());
+        mfs.extend(self.int_gauge_vec.collect());
+
+        mfs.extend(self.histogram.collect());
+        mfs.extend(self.histogram_vec.collect());
+
+        mfs
+    }
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            counter: metrics::new_counter(
+                MetricId::generate(),
+                "Metrics::counter",
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            int_counter: metrics::new_int_counter(
+                MetricId::generate(),
+                "Metrics::int_counter",
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            counter_vec: metrics::new_counter_vec(
+                MetricId::generate(),
+                "Metrics::counter_vec",
+                &[LabelId::generate()],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            int_counter_vec: metrics::new_int_counter_vec(
+                MetricId::generate(),
+                "Metrics::int_counter_vec",
+                &[LabelId::generate()],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            gauge: metrics::new_gauge(
+                MetricId::generate(),
+                "Metrics::gauge",
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            int_gauge: metrics::new_int_gauge(
+                MetricId::generate(),
+                "Metrics::int_gauge",
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            gauge_vec: metrics::new_gauge_vec(
+                MetricId::generate(),
+                "Metrics::gauge_vec",
+                &[LabelId::generate()],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            int_gauge_vec: metrics::new_int_gauge_vec(
+                MetricId::generate(),
+                "Metrics::int_gauge_vec",
+                &[LabelId::generate()],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            histogram: metrics::new_histogram(
+                MetricId::generate(),
+                "Metrics::gauge_vec",
+                vec![0.1, 0.5, 1.0],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
+            )
+            .unwrap(),
+            histogram_vec: metrics::new_histogram_vec(
+                MetricId::generate(),
+                "Metrics::int_gauge_vec",
+                &[LabelId::generate()],
+                vec![0.1, 0.5, 1.0],
+                Some(hashmap! {
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                    metrics::LabelId::generate() => ULID::generate().to_string(),
+                }),
             )
             .unwrap(),
         }

@@ -1,4 +1,4 @@
-Feature: [01D3JAHR4Z02XTJGTNE4D63VRT] MetricRegistry supports any metrics Collector
+Feature: [01D3JAHR4Z02XTJGTNE4D63VRT] The metric registry supports any `prometheus::core::Collector`
 
   Scenario: [01D3JAKE384RJA4FM9NJJNDPV6] registering a collector
     When [01D3JAKE384RJA4FM9NJJNDPV6-1] a collector is registered

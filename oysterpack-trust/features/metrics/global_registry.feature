@@ -1,4 +1,4 @@
-Feature: [01D3J441N6BM05NKCBQEVYTZY8] A global prometheus metrics registry will be made available for the application.
+Feature: [01D3J441N6BM05NKCBQEVYTZY8] A global prometheus metrics registry is provided.
 
   Scenario: [01D3J3D7PA4NR9JABZWT635S6B] Using the global registry from multiple threads
     Given [01D3J3D7PA4NR9JABZWT635S6B-1] there are 2 threads using the global registry

@@ -4,6 +4,8 @@ Feature: [01D3J441N6BM05NKCBQEVYTZY8] All prometheus metrics support MetricId an
   - MetricId::name() prefixes the ULID with 'M'
   - LabelId::name() prefixes the ULID with 'L'
 
+  Metric descriptors and collectors can be looked up via MetricId. Metrics can be gathered for MetricId(s).
+
   Scenario: [01D3PB6MDJ85MWP3SQ1H94S6R7] Registering metrics
     Given [01D3PB6MDJ85MWP3SQ1H94S6R7-1] metrics are registered for the following types:
       | MetricType     |
