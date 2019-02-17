@@ -62,6 +62,11 @@
 //!   - histogram constructor functions
 //!     - [new_histogram()](fn.new_histogram.html)
 //!     - [new_histogram_vec()](fn.new_histogram_vec.html)
+//! - *[01D3XX3ZBB7VW0GGRA60PMFC1M]* Functions are provided to help collecting timer based metrics
+//!   - [time](fn.time.html)
+//!   - [time_with_result](fn.time_with_result.html)
+//!   - [as_float_secs](fn.as_float_secs.html)
+//!
 //!
 //! ## Recommendations
 //!
@@ -770,15 +775,7 @@ impl MetricRegistry {
         // the ProcessCollector will always be the first registered collector
         ProcessMetrics::collect(&collectors[0])
     }
-}
 
-impl fmt::Debug for MetricRegistry {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "MetricRegistry")
-    }
-}
-
-impl Default for MetricRegistry {
     fn default() -> Self {
         let registry = Self {
             registry: prometheus::Registry::new(),
@@ -792,6 +789,27 @@ impl Default for MetricRegistry {
         registry
     }
 }
+
+impl fmt::Debug for MetricRegistry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MetricRegistry")
+    }
+}
+
+//impl Default for MetricRegistry {
+//    fn default() -> Self {
+//        let registry = Self {
+//            registry: prometheus::Registry::new(),
+//            metric_collectors: RwLock::new(Vec::new()),
+//        };
+//
+//        registry
+//            .register(prometheus::process_collector::ProcessCollector::for_self())
+//            .unwrap();
+//
+//        registry
+//    }
+//}
 
 /// Label Id
 #[ulid]
@@ -873,8 +891,7 @@ impl From<ULID> for MetricId {
 /// # use oysterpack_trust::metrics::*;
 ///
 /// const METRIC_ID: MetricId = MetricId(1872045779718506837202123142606941790);
-///    let registry = MetricRegistry::default();
-///    let mut reqrep_timer_local = registry
+///    let mut reqrep_timer_local = registry()
 ///        .register_histogram_vec(
 ///            METRIC_ID,
 ///            "ReqRep timer",
@@ -902,6 +919,17 @@ where
     f();
     let end = clock.end();
     clock.delta(start, end)
+}
+
+/// Execute the function and return its result along with how long it took to execute in nanos.
+pub fn time_with_result<F, T>(clock: &quanta::Clock, f: F) -> (u64, T)
+where
+    F: FnOnce() -> T,
+{
+    let start = clock.start();
+    let result = f();
+    let end = clock.end();
+    (clock.delta(start, end), result)
 }
 
 const NANOS_PER_SEC: u32 = 1_000_000_000;

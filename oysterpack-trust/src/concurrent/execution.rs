@@ -50,6 +50,7 @@ use futures::{
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
+use prometheus::core::Collector;
 use serde::{Deserialize, Serialize};
 use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize, sync::RwLock};
 
@@ -108,12 +109,22 @@ pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
 
 /// Gathers Executor related metrics
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    metrics::registry().gather_for_desc_names(&[
-        SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str(),
-        COMPLETED_TASK_COUNTER_METRIC_ID.name().as_str(),
-        THREADS_STARTED_TOTAL_COUNTER_METRIC_ID.name().as_str(),
-        THREADS_POOL_SIZE_GAUGE_METRIC_ID.name().as_str(),
-    ])
+    let mut mfs = Vec::with_capacity(7);
+    mfs.extend(SPAWNED_TASK_COUNTER.collect());
+    mfs.extend(COMPLETED_TASK_COUNTER.collect());
+    mfs.extend(THREAD_POOL_SIZE_GAUGE.collect());
+    mfs.extend(THREADS_STARTED_TOTAL_COUNTER.collect());
+    mfs
+}
+
+/// Returns Executor related metric descriptors
+pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
+    let mut descs = Vec::with_capacity(7);
+    descs.extend(SPAWNED_TASK_COUNTER.desc());
+    descs.extend(COMPLETED_TASK_COUNTER.desc());
+    descs.extend(THREAD_POOL_SIZE_GAUGE.desc());
+    descs.extend(THREADS_STARTED_TOTAL_COUNTER.desc());
+    descs
 }
 
 /// An executor can only be registered once, and once it is registered, it stays registered for the
@@ -360,16 +371,15 @@ impl Executor {
     {
         let (sender, receiver) = crossbeam::channel::bounded(0);
         {
-            self.thread_pool
-                .spawn(
-                    async move {
-                        let result = await!(f);
-                        sender.send(result).unwrap();
-                    },
-                )
-                .map_err(|err| ExecutorError::SpawnError {
-                    is_executor_shutdown: err.is_shutdown(),
-                })?;
+            self.spawn(
+                async move {
+                    let result = await!(f);
+                    sender.send(result).unwrap();
+                },
+            )
+            .map_err(|err| ExecutorError::SpawnError {
+                is_executor_shutdown: err.is_shutdown(),
+            })?;
         }
         receiver
             .recv()
@@ -391,16 +401,15 @@ impl Executor {
     {
         let (sender, receiver) = crossbeam::channel::bounded(1);
         {
-            self.thread_pool
-                .spawn(
-                    async move {
-                        let result = await!(f);
-                        let _ = sender.send(result);
-                    },
-                )
-                .map_err(|err| ExecutorError::SpawnError {
-                    is_executor_shutdown: err.is_shutdown(),
-                })?;
+            self.spawn(
+                async move {
+                    let result = await!(f);
+                    let _ = sender.send(result);
+                },
+            )
+            .map_err(|err| ExecutorError::SpawnError {
+                is_executor_shutdown: err.is_shutdown(),
+            })?;
         }
         Ok(receiver)
     }
@@ -416,6 +425,11 @@ impl Executor {
     }
 
     /// returns the number of active tasks, i.e., the difference between spawned and completed
+    ///
+    /// ## Notes
+    /// If a spawned task panics, then it not get marked as completed.
+    /// Thus, if the active task count drifts upward, it's may be a sign that you have tasks that
+    /// are panicking.
     pub fn active_task_count(&self) -> u64 {
         self.spawned_task_count() - self.completed_task_count()
     }

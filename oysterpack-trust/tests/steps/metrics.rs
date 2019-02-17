@@ -254,7 +254,44 @@ steps!(TestContext => {
     then regex "01D3VGSGCP9ZN9BX3BTB349FRJ-3" |world, _matches, _step| {
         check_collector_descs(world);
     };
+
+    when regex "01D3XX46RZ63QYR0AAWVBCHWGP-1" |_world, _matches, _step| {
+        // when a function that sleeps for 1 ms is timed
+    };
+
+    then regex "01D3XX46RZ63QYR0AAWVBCHWGP-2" |_world, _matches, _step| {
+        check_time_fn();
+    };
+
+    when regex "01D3XZ6GCY1ECSKMBC6870ZBS0-1" |_world, _matches, _step| {
+        // when a function that sleeps for 1 ms is timed
+    };
+
+    then regex "01D3XZ6GCY1ECSKMBC6870ZBS0-2" |_world, _matches, _step| {
+        check_time_with_result_fn();
+    };
 });
+
+fn check_time_with_result_fn() {
+    let clock = quanta::Clock::new();
+    let (time, _result) = metrics::time_with_result(&clock, || {
+        thread::sleep(Duration::from_millis(1));
+        true
+    });
+    let time = metrics::as_float_secs(time);
+    println!("time = {} s", time);
+    const SECS_1MS: f64 = 0.001;
+    assert!(time >= SECS_1MS && time <= SECS_1MS * 1.1);
+}
+
+fn check_time_fn() {
+    let clock = quanta::Clock::new();
+    let time = metrics::time(&clock, || thread::sleep(Duration::from_millis(1)));
+    let time = metrics::as_float_secs(time);
+    println!("time = {} s", time);
+    const SECS_1MS: f64 = 0.001;
+    assert!(time >= SECS_1MS && time <= SECS_1MS * 1.1);
+}
 
 fn get_collector_descs(world: &mut TestContext) {
     if let Some(ref collector) = world.collector {

@@ -14,5 +14,5 @@
  *    limitations under the License.
  */
 
-pub mod metrics;
 pub mod execution;
+pub mod metrics;

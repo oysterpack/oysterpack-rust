@@ -14,6 +14,8 @@
  *    limitations under the License.
  */
 
+#![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+
 use cucumber_rust::*;
 
 mod steps;
