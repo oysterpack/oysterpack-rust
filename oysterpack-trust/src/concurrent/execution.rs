@@ -82,10 +82,12 @@ lazy_static! {
         None
     ).unwrap();
 
-    /// Metric: Total number of Executor threads that have been started
-    static ref THREADS_STARTED_TOTAL_COUNTER: prometheus::IntCounter = metrics::registry().register_int_counter(
-        THREADS_STARTED_TOTAL_COUNTER_METRIC_ID,
-        "Total number of threads that have been started across all Executors",
+    /// Metric: Number of spawned tasks that panicked
+    /// - this is only tracked for Executors that are configured to catch unwinding panics
+    static ref PANICKED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        PANICKED_TASK_COUNTER_METRIC_ID,
+        "Number of unwinding panics that have been caught for spawned tasks",
+        &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
 
@@ -98,7 +100,7 @@ pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
 pub const COMPLETED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1873501394267260593175681052637961393);
 /// MetricId for total number of Executor threads that have been started: `01D3950A0931ESKR66XG7KMD7Z`
-pub const THREADS_STARTED_TOTAL_COUNTER_METRIC_ID: metrics::MetricId =
+pub const PANICKED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1873492525732701726868218222598567167);
 /// MetricId for total number of Executor threads that have been started: `01D395423XG3514YP762RYTDJ1`
 pub const THREADS_POOL_SIZE_GAUGE_METRIC_ID: metrics::MetricId =
@@ -112,8 +114,9 @@ pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
     let mut mfs = Vec::with_capacity(7);
     mfs.extend(SPAWNED_TASK_COUNTER.collect());
     mfs.extend(COMPLETED_TASK_COUNTER.collect());
+    mfs.extend(PANICKED_TASK_COUNTER.collect());
     mfs.extend(THREAD_POOL_SIZE_GAUGE.collect());
-    mfs.extend(THREADS_STARTED_TOTAL_COUNTER.collect());
+
     mfs
 }
 
@@ -122,8 +125,8 @@ pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
     let mut descs = Vec::with_capacity(7);
     descs.extend(SPAWNED_TASK_COUNTER.desc());
     descs.extend(COMPLETED_TASK_COUNTER.desc());
+    descs.extend(PANICKED_TASK_COUNTER.desc());
     descs.extend(THREAD_POOL_SIZE_GAUGE.desc());
-    descs.extend(THREADS_STARTED_TOTAL_COUNTER.desc());
     descs
 }
 
@@ -162,8 +165,14 @@ pub fn spawned_task_count() -> u64 {
 
 /// Returns the total number of threads that have been started across all Executors
 /// - this is not the active count
-pub fn total_threads_started() -> u64 {
-    THREADS_STARTED_TOTAL_COUNTER.get() as u64
+pub fn total_threads() -> u64 {
+    let registry = EXECUTOR_REGISTRY.read().unwrap();
+    registry
+        .thread_pools
+        .values()
+        .map(|executor| executor.thread_pool_size())
+        .sum::<u64>()
+        + registry.global_executor.thread_pool_size()
 }
 
 /// Returns the current thread pool sizes for the currently registered Executors
@@ -297,6 +306,7 @@ pub struct Executor {
     threadpool: ThreadPool,
     spawned_task_counter: prometheus::IntCounter,
     completed_task_counter: prometheus::IntCounter,
+    panicked_task_counter: Option<prometheus::IntCounter>,
     catch_unwind: bool,
 }
 
@@ -321,12 +331,18 @@ impl Executor {
         let threadpool = builder
             .create()
             .map_err(ExecutorRegistryError::ThreadPoolCreateFailed)?;
+        let panicked_task_counter = if catch_unwind {
+            Some(PANICKED_TASK_COUNTER.with_label_values(&labels))
+        } else {
+            None
+        };
         Ok(Self {
             id,
             threadpool,
             spawned_task_counter: SPAWNED_TASK_COUNTER.with_label_values(&labels),
             completed_task_counter: COMPLETED_TASK_COUNTER.with_label_values(&labels),
             catch_unwind,
+            panicked_task_counter,
         })
     }
 
@@ -424,8 +440,11 @@ impl Spawn for Executor {
         let completed_task_counter = self.completed_task_counter.clone();
 
         if self.catch_unwind {
+            let panicked_task_counter = self.panicked_task_counter.as_ref().unwrap().clone();
             let future = async move {
-                let _ = await!(future.catch_unwind()).is_err();
+                if await!(future.catch_unwind()).is_err() {
+                    panicked_task_counter.inc();
+                }
                 completed_task_counter.inc();
             };
             let future = future.boxed();
@@ -548,7 +567,6 @@ impl ExecutorBuilder {
     }
 
     fn builder(&self) -> ThreadPoolBuilder {
-        let threads_started_counter = THREADS_STARTED_TOTAL_COUNTER.clone();
         let executor_thread_gauge_after_start =
             THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
         let executor_thread_gauge_before_stop = executor_thread_gauge_after_start.clone();
@@ -556,7 +574,6 @@ impl ExecutorBuilder {
         builder
             .name_prefix(format!("{}-", self.id))
             .after_start(move |thread_index| {
-                threads_started_counter.inc();
                 executor_thread_gauge_after_start.inc();
                 debug!(
                     "Executer thread has started: {}-{}",
@@ -742,7 +759,8 @@ mod tests {
             async {
                 panic!("spawned task says hello");
                 true
-            }.catch_unwind(),
+            }
+                .catch_unwind(),
         );
         info!("result: {:?}", result);
         match result {

@@ -894,21 +894,20 @@ mod tests {
         // WHEN: the client is dropped
         drop(client);
         const REQUEST_COUNT: usize = 100;
-        let replies: Vec<nng::Message> = executor
-            .run(
-                async move {
-                    // Then: the client can still be retrieved from the global registry
-                    let mut client = super::client(reqrep_id).unwrap();
-                    // AND: the client is still functional
-                    let mut replies = Vec::with_capacity(REQUEST_COUNT);
-                    for _ in 0..REQUEST_COUNT {
-                        let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
-                            await!(client.send(nng::Message::new().unwrap())).unwrap();
-                        replies.push(await!(reply_receiver.recv()).unwrap().unwrap());
-                    }
-                    replies
-                },
-            );
+        let replies: Vec<nng::Message> = executor.run(
+            async move {
+                // Then: the client can still be retrieved from the global registry
+                let mut client = super::client(reqrep_id).unwrap();
+                // AND: the client is still functional
+                let mut replies = Vec::with_capacity(REQUEST_COUNT);
+                for _ in 0..REQUEST_COUNT {
+                    let reply_receiver: ReplyReceiver<Result<nng::Message, RequestError>> =
+                        await!(client.send(nng::Message::new().unwrap())).unwrap();
+                    replies.push(await!(reply_receiver.recv()).unwrap().unwrap());
+                }
+                replies
+            },
+        );
         // THEN: all requests were successfully processed
         assert_eq!(replies.len(), REQUEST_COUNT);
 
@@ -984,15 +983,14 @@ mod tests {
             handles.push(handle);
         }
 
-        executor
-            .run(
-                async move {
-                    for handle in handles {
-                        let replies: Vec<nng::Message> = await!(handle);
-                        assert_eq!(replies.len(), REQUEST_COUNT);
-                    }
-                },
-            );
+        executor.run(
+            async move {
+                for handle in handles {
+                    let replies: Vec<nng::Message> = await!(handle);
+                    assert_eq!(replies.len(), REQUEST_COUNT);
+                }
+            },
+        );
     }
 
     #[test]

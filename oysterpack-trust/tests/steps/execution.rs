@@ -23,25 +23,15 @@ use std::{num::NonZeroUsize, panic, thread, time::Duration};
 steps!(TestContext => {
 
     given regex "01D3W3GDYVS4P2SR0SECVT0JJT-1" |world, _matches, _step| {
-        world.init();
+        world.init_with_new_executor(10);
     };
 
     when regex "01D3W3GDYVS4P2SR0SECVT0JJT-2" |world, _matches, _step| {
-        spawn_tasks(world, 0, 100, false);
-        await_tasks_completed(world);
+        check_exeutor_thread_pool_size(world, 10);
     };
 
     then regex "01D3W3GDYVS4P2SR0SECVT0JJT-3" |world, _matches, _step| {
-        check_thread_pool_size_unchanged(world);
-    };
-
-    then regex "01D3W3GDYVS4P2SR0SECVT0JJT-4" |world, _matches, _step| {
-        check_threads_started_inc(world, 0);
-    };
-
-    then regex "01D3W3GDYVS4P2SR0SECVT0JJT-5" |world, _matches, _step| {
-        check_spawned_task_count(world, 100);
-        check_completed_task_count(world, 100);
+        check_total_threads_count_inc(world, 10);
     };
 
     given regex "01D3Y1CYCKZHY675FKEPPX4JE4-1" |world, _matches, _step| {
@@ -175,14 +165,38 @@ fn await_tasks_completed_while_gt(world: &mut TestContext, count: u64) {
 }
 
 fn check_threads_started_inc(world: &mut TestContext, expected_inc: u64) {
-    println!(
-        "total_threads_started = {}",
-        execution::total_threads_started()
-    );
+    println!("total_threads_started = {}", execution::total_threads());
     assert_eq!(
-        execution::total_threads_started(),
-        world.total_threads_started + expected_inc
+        execution::total_threads(),
+        world.total_threads + expected_inc
     );
+}
+
+fn check_exeutor_thread_pool_size(world: &mut TestContext, expected_count: u64) {
+    for _ in 0..10 {
+        if world.executor.thread_pool_size() < expected_count {
+            println!(
+                "waiting for thread pool to initialize - size = {}",
+                world.executor.thread_pool_size()
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    assert_eq!(world.executor.thread_pool_size(), expected_count);
+}
+
+fn check_total_threads_count_inc(world: &mut TestContext, expected_inc: u64) {
+    let expected_count = world.total_threads + expected_inc;
+    for _ in 0..10 {
+        if total_threads() < expected_count {
+            println!(
+                "waiting for thread pool to initialize - size = {}",
+                world.executor.thread_pool_size()
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    assert_eq!(total_threads(), expected_count);
 }
 
 fn check_thread_pool_size_unchanged(world: &mut TestContext) {
@@ -197,7 +211,7 @@ pub struct TestContext {
     pub executor_spawned_task_count: u64,
     pub executor_completed_task_count: u64,
     pub executor_thread_pool_size: u64,
-    pub total_threads_started: u64,
+    pub total_threads: u64,
 }
 
 impl TestContext {
@@ -218,7 +232,7 @@ impl TestContext {
         self.executor_spawned_task_count = self.executor.spawned_task_count();
         self.executor_completed_task_count = self.executor.completed_task_count();
         self.executor_thread_pool_size = self.executor.thread_pool_size();
-        self.total_threads_started = total_threads_started();
+        self.total_threads = total_threads();
     }
 }
 
@@ -229,7 +243,7 @@ impl Default for TestContext {
             executor_spawned_task_count: 0,
             executor_completed_task_count: 0,
             executor_thread_pool_size: 0,
-            total_threads_started: 0,
+            total_threads: 0,
         }
     }
 }
