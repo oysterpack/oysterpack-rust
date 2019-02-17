@@ -16,9 +16,9 @@
 
 use cucumber_rust::*;
 
-use futures::task::SpawnExt;
+use futures::{prelude::*, task::SpawnExt};
 use oysterpack_trust::concurrent::execution::{self, *};
-use std::{num::NonZeroUsize, thread};
+use std::{num::NonZeroUsize, panic, thread, time::Duration};
 
 steps!(TestContext => {
 
@@ -27,7 +27,8 @@ steps!(TestContext => {
     };
 
     when regex "01D3W3GDYVS4P2SR0SECVT0JJT-2" |world, _matches, _step| {
-        spawn_await_tasks(world, 0, 1);
+        spawn_tasks(world, 0, 100, false);
+        await_tasks_completed(world);
     };
 
     then regex "01D3W3GDYVS4P2SR0SECVT0JJT-3" |world, _matches, _step| {
@@ -35,12 +36,12 @@ steps!(TestContext => {
     };
 
     then regex "01D3W3GDYVS4P2SR0SECVT0JJT-4" |world, _matches, _step| {
-        check_threads_started_inc(world);
+        check_threads_started_inc(world, 0);
     };
 
     then regex "01D3W3GDYVS4P2SR0SECVT0JJT-5" |world, _matches, _step| {
-        check_spawned_task_count(world, 1);
-        check_completed_task_count(world, 0);
+        check_spawned_task_count(world, 100);
+        check_completed_task_count(world, 100);
     };
 
     given regex "01D3Y1CYCKZHY675FKEPPX4JE4-1" |world, _matches, _step| {
@@ -48,7 +49,7 @@ steps!(TestContext => {
     };
 
     when regex "01D3Y1CYCKZHY675FKEPPX4JE4-2" |world, _matches, _step| {
-        spawn_tasks(world, 10, 0);
+        spawn_tasks(world, 10, 0, false);
         await_tasks_completed(world);
     };
 
@@ -69,8 +70,8 @@ steps!(TestContext => {
     };
 
     when regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-2" |world, _matches, _step| {
-        spawn_tasks(world, 5, 5);
-        await_tasks_completed_while_gt(world, 5);
+        spawn_tasks(world, 5, 5, true);
+        await_tasks_completed_while_gt(world, 0);
     };
 
     then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-3" |world, _matches, _step| {
@@ -78,41 +79,54 @@ steps!(TestContext => {
     };
 
     then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-4" |world, _matches, _step| {
-        check_completed_task_count(world, 5);
+        check_completed_task_count(world, 10);
     };
 
     then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-5" |world, _matches, _step| {
-        check_active_task_count(world, 5);
+        check_active_task_count(world, 0);
     };
 
 });
 
-fn spawn_tasks(world: &mut TestContext, success_count: u64, panic_count: u64) {
+fn run_tasks(world: &mut TestContext, success_count: u64, panic_count: u64, catch_unwind: bool) {
+    for _ in 0..success_count {
+        world.executor.run(async {});
+    }
+
+    for i in 0..panic_count {
+        let mut executor = world.executor.clone();
+        let future = async move { panic!("BOOM #{} !!!", i) };
+        if catch_unwind {
+            if executor.run(future.catch_unwind()).is_err() {
+                eprintln!("run_tasks(): task panicked");
+            }
+        } else {
+            if panic::catch_unwind(move || executor.run(future)).is_err() {
+                eprintln!("run_tasks(): task panicked");
+            }
+        }
+    }
+}
+
+fn spawn_tasks(world: &mut TestContext, success_count: u64, panic_count: u64, catch_unwind: bool) {
     for _ in 0..success_count {
         world.executor.spawn(async {}).unwrap();
     }
 
     for i in 0..panic_count {
-        world
-            .executor
-            .spawn(async move { panic!("BOOM #{} !!!", i) })
-            .unwrap();
-    }
-}
-
-fn spawn_await_tasks(world: &mut TestContext, success_count: u64, panic_count: u64) {
-    for i in 0..success_count {
-        println!("spawn_await_tasks() - SPAWNED #{}", i);
-        world.executor.spawn_await(async {}).unwrap();
-        println!("spawn_await_tasks() - DONE #{}", i);
-    }
-
-    for i in 0..panic_count {
-        println!("spawn_await_tasks() - SPAWNED PANIC #{}", i);
-        let _ = world
-            .executor
-            .spawn_await(async move { panic!("BOOM #{} !!!", i) });
-        println!("spawn_await_tasks() - DONE PANIC #{}", i);
+        let future = async move { panic!("BOOM #{} !!!", i) };
+        if catch_unwind {
+            world
+                .executor
+                .spawn(
+                    async {
+                        let _ = await!(future.catch_unwind());
+                    },
+                )
+                .unwrap();
+        } else {
+            world.executor.spawn(future).unwrap();
+        }
     }
 }
 
@@ -160,14 +174,14 @@ fn await_tasks_completed_while_gt(world: &mut TestContext, count: u64) {
     }
 }
 
-fn check_threads_started_inc(world: &mut TestContext) {
+fn check_threads_started_inc(world: &mut TestContext, expected_inc: u64) {
     println!(
         "total_threads_started = {}",
         execution::total_threads_started()
     );
     assert_eq!(
         execution::total_threads_started(),
-        world.total_threads_started
+        world.total_threads_started + expected_inc
     );
 }
 

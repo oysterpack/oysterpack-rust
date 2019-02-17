@@ -127,22 +127,6 @@ pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
     descs
 }
 
-/// An executor can only be registered once, and once it is registered, it stays registered for the
-/// life of the app.
-/// - returns false is an executor with the same ID is already registered
-pub fn register(
-    id: ExecutorId,
-    builder: &mut ThreadPoolBuilder,
-) -> Result<Executor, ExecutorRegistryError> {
-    let mut executors = EXECUTOR_REGISTRY.write().unwrap();
-    if executors.thread_pools.contains_key(&id) {
-        return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
-    }
-    let executor = Executor::new(id, builder)?;
-    executors.thread_pools.insert(id, executor.clone());
-    Ok(executor)
-}
-
 /// Returns the registered executor IDs
 pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
     let executors = EXECUTOR_REGISTRY.read().unwrap();
@@ -198,15 +182,16 @@ impl ExecutorRegistry {
     /// An executor can only be registered once, and once it is registered, it stays registered for the
     /// life of the app.
     /// - returns false is an executor with the same ID is already registered
-    pub fn register(
+    fn register(
         &mut self,
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
+        catch_unwind: bool,
     ) -> Result<Executor, ExecutorRegistryError> {
         if self.thread_pools.contains_key(&id) {
             return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
         }
-        let executor = Executor::new(id, builder)?;
+        let executor = Executor::new(id, builder, catch_unwind)?;
         self.thread_pools.insert(id, executor.clone());
         Ok(executor)
     }
@@ -278,7 +263,7 @@ impl Default for ExecutorRegistry {
     fn default() -> Self {
         fn default_executor() -> Executor {
             let mut builder = ExecutorBuilder::new(Executor::GLOBAL_EXECUTOR_ID).builder();
-            Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder).unwrap()
+            Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder, true).unwrap()
         }
 
         Self {
@@ -309,9 +294,10 @@ impl fmt::Debug for ExecutorRegistry {
 #[derive(Clone)]
 pub struct Executor {
     id: ExecutorId,
-    thread_pool: ThreadPool,
+    threadpool: ThreadPool,
     spawned_task_counter: prometheus::IntCounter,
     completed_task_counter: prometheus::IntCounter,
+    catch_unwind: bool,
 }
 
 impl fmt::Debug for Executor {
@@ -325,16 +311,22 @@ impl Executor {
     pub const GLOBAL_EXECUTOR_ID: ExecutorId = ExecutorId(1871427164235073850597045237139528853);
 
     /// constructor
-    fn new(id: ExecutorId, builder: &mut ThreadPoolBuilder) -> Result<Self, ExecutorRegistryError> {
+    fn new(
+        id: ExecutorId,
+        builder: &mut ThreadPoolBuilder,
+        catch_unwind: bool,
+    ) -> Result<Self, ExecutorRegistryError> {
         let label_name = id.to_string();
         let labels = [label_name.as_str()];
+        let threadpool = builder
+            .create()
+            .map_err(ExecutorRegistryError::ThreadPoolCreateFailed)?;
         Ok(Self {
             id,
-            thread_pool: builder
-                .create()
-                .map_err(ExecutorRegistryError::ThreadPoolCreateFailed)?,
+            threadpool,
             spawned_task_counter: SPAWNED_TASK_COUNTER.with_label_values(&labels),
             completed_task_counter: COMPLETED_TASK_COUNTER.with_label_values(&labels),
+            catch_unwind,
         })
     }
 
@@ -343,47 +335,32 @@ impl Executor {
         self.id
     }
 
+    /// Returns true if the Executor will catch unwinding panics automatically
+    /// - all futures will be wrapped in a `CatchUnwind` future
+    pub const fn catch_unwind(&self) -> bool {
+        self.catch_unwind
+    }
+
     /// Runs the given future with this Executor.
     ///
     /// ## Notes
-    /// - This function will block the calling thread until the given future is complete. This also
-    ///   means that all other threads waiting on this Executor will also be blocked.
+    /// - This function will block the calling thread until the given future is complete.
     /// - The function will return when the provided future completes, even if some of the
     ///   tasks it spawned are still running.
     ///
     /// ## Panics
     /// If the task panics.
     pub fn run<F: Future>(&mut self, f: F) -> F::Output {
-        self.thread_pool.run(f)
-    }
+        let completed_task_counter = self.completed_task_counter.clone();
+        let future = async move {
+            let result = await!(f);
+            completed_task_counter.inc();
+            result
+        };
 
-    /// Spawns the future and awaits until it is done, returning it's result. This enables a future
-    /// to be awaited on outside of an async context.
-    ///
-    /// ## Notes
-    /// - This function will block the calling thread until the given future is complete. However,
-    ///   the executor is released as soon as the future is spawned, making it available for other
-    ///   threads to use the executor.
-    pub fn spawn_await<F>(&mut self, f: F) -> Result<F::Output, ExecutorError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (sender, receiver) = crossbeam::channel::bounded(0);
-        {
-            self.spawn(
-                async move {
-                    let result = await!(f);
-                    sender.send(result).unwrap();
-                },
-            )
-            .map_err(|err| ExecutorError::SpawnError {
-                is_executor_shutdown: err.is_shutdown(),
-            })?;
-        }
-        receiver
-            .recv()
-            .map_err(|_| ExecutorError::SpawnedFuturePanic)
+        let future = future.boxed();
+        self.spawned_task_counter.inc();
+        self.threadpool.run(future)
     }
 
     /// Spawns the future and returns a crossbeam channel Receiver that can be used to retrieve the
@@ -445,18 +422,29 @@ impl Executor {
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
         let completed_task_counter = self.completed_task_counter.clone();
-        let future = async move {
-            await!(future);
-            completed_task_counter.inc();
+
+        if self.catch_unwind {
+            let future = async move {
+                let _ = await!(future.catch_unwind()).is_err();
+                completed_task_counter.inc();
+            };
+            let future = future.boxed();
+            self.threadpool.spawn_obj(FutureObj::new(future))?;
+            self.spawned_task_counter.inc();
+        } else {
+            let future = async move {
+                await!(future);
+                completed_task_counter.inc();
+            };
+            let future = future.boxed();
+            self.threadpool.spawn_obj(FutureObj::new(future))?;
+            self.spawned_task_counter.inc();
         }
-            .boxed();
-        self.thread_pool.spawn_obj(FutureObj::new(future))?;
-        self.spawned_task_counter.inc();
         Ok(())
     }
 
     fn status(&self) -> Result<(), SpawnError> {
-        self.thread_pool.status()
+        self.threadpool.status()
     }
 }
 
@@ -505,15 +493,18 @@ pub struct ExecutorBuilder {
     id: ExecutorId,
     stack_size: Option<NonZeroUsize>,
     pool_size: Option<NonZeroUsize>,
+    catch_unwind: bool,
 }
 
 impl ExecutorBuilder {
     /// constructor
+    /// - with catch_unwind = true
     pub fn new(id: ExecutorId) -> Self {
         Self {
             id,
             stack_size: None,
             pool_size: None,
+            catch_unwind: true,
         }
     }
 
@@ -527,6 +518,18 @@ impl ExecutorBuilder {
     pub fn set_pool_size(mut self, size: NonZeroUsize) -> Self {
         self.pool_size = Some(size);
         self
+    }
+
+    /// Sets the thread pool size
+    pub fn set_catch_unwind(mut self, catch_unwind: bool) -> Self {
+        self.catch_unwind = catch_unwind;
+        self
+    }
+
+    /// Return true if unwinding panics are caught automatically
+    /// - this means all futures will be wrapped in a `CatchUnwind` future
+    pub fn catch_unwind(&self) -> bool {
+        self.catch_unwind
     }
 
     /// Returns the ExecutorId
@@ -578,11 +581,14 @@ impl ExecutorBuilder {
         builder
     }
 
-    /// Tries to build and register the Executor with the global ExecutorRegistry
+    /// Tries to build and register the Executor with the global ExecutorRegistry.
+    ///
+    /// An executor can only be registered once, and once it is registered, it stays registered for
+    /// the life of the app.
     pub fn register(self) -> Result<Executor, ExecutorRegistryError> {
         let mut executors = EXECUTOR_REGISTRY.write().unwrap();
         let mut threadpool_builder = self.builder();
-        executors.register(self.id, &mut threadpool_builder)
+        executors.register(self.id, &mut threadpool_builder, self.catch_unwind)
     }
 }
 
@@ -592,6 +598,7 @@ mod tests {
     use super::*;
     use crate::configure_logging;
     use crate::metrics;
+    use crate::opnng::reqrep::server::SpawnError::ExecutorSpawnError;
     use futures::{future::FutureExt, task::SpawnExt};
     use std::{iter::Iterator, panic::*, thread};
 
@@ -671,9 +678,10 @@ mod tests {
             metric.get_counter().clone()
         };
 
+        const EXPECTED_TASK_COUNT: u64 = 7;
         // THEN: wait until the tasks have completed
         for i in 0..5 {
-            if get_counter().get_value() < 5.0 {
+            if get_counter().get_value() < (EXPECTED_TASK_COUNT as f64) {
                 info!(
                     "yielding to give the spawned tasks a chance to run: ({})",
                     i
@@ -685,7 +693,7 @@ mod tests {
         }
 
         // THEN: the spawned task count should match
-        assert_eq!(get_counter().get_value() as u64, 5);
+        assert_eq!(get_counter().get_value() as u64, EXPECTED_TASK_COUNT);
         assert_eq!(
             executor.spawned_task_count(),
             get_counter().get_value() as u64
@@ -722,25 +730,24 @@ mod tests {
 
         let executors = EXECUTOR_REGISTRY.read().unwrap();
         let mut executor = executors.global_executor();
-        let result = executor.spawn_await(
+        let result = executor.run(
             async {
                 info!("spawned task says hello");
                 true
             },
         );
         info!("result: {:?}", result);
-        assert!(result.unwrap());
-        let result = executor.spawn_await(
+        assert!(result);
+        let result = executor.run(
             async {
                 panic!("spawned task says hello");
                 true
-            },
+            }.catch_unwind(),
         );
         info!("result: {:?}", result);
         match result {
             Ok(_) => panic!("should have returned an ExecutorError::SpawnedFuturePanic"),
-            Err(ExecutorError::SpawnedFuturePanic) => info!("failed as expected"),
-            Err(err) => panic!("failed with unexpected error: {}", err),
+            Err(err) => info!("failed as expected"),
         }
     }
 
@@ -917,9 +924,9 @@ mod tests {
         }
     }
 
-    // threads that panic in the pool do get replaced
+    // wrapping a future in a CatchUnwind halts the unwinding to the future
     #[test]
-    fn spawned_task_panics_all_threads() {
+    fn spawn_panicking_tasks_with_catch_unwind_protection() {
         configure_logging();
 
         let executors = EXECUTOR_REGISTRY.read().unwrap();
@@ -927,18 +934,20 @@ mod tests {
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];
         for i in 0..panic_task_count {
-            let handle = executor.spawn_with_handle(
-                async move {
-                    panic!("BOOM({})!", i);
-                },
-            );
+            let future = async { unimplemented!() };
+            let handle = executor.spawn_with_handle(future);
             handles.push(handle.unwrap());
         }
 
         thread::sleep_ms(10);
 
+        use std::panic;
         executor.run(
             async move {
+                for handle in handles {
+                    let handle = AssertUnwindSafe(handle);
+                    await!(handle.catch_unwind());
+                }
                 info!("this should hang ...");
             },
         );

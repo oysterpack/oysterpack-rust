@@ -96,11 +96,9 @@ fn start_client() -> Client {
         ReqRepConfig::new(REQREP_ID, timer_buckets).set_chan_buf_size(1),
         None,
         DialerConfig::new(URL.clone()),
-        {
-            let client_executor_id = ExecutorId::generate();
-            let mut threadpool_builder = ThreadPoolBuilder::new();
-            execution::register(client_executor_id, &mut threadpool_builder).unwrap()
-        },
+        execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap(),
     )
     .unwrap()
 }
@@ -108,15 +106,16 @@ fn start_client() -> Client {
 /// measures how long a request/reply message flow takes
 fn nng_reqrep_bench(c: &mut Criterion) {
     let server_executor_id = ExecutorId::generate();
-    let mut threadpool_builder = ThreadPoolBuilder::new();
     let mut server_handle = server::spawn(
         None,
         server::ListenerConfig::new(URL.clone()),
         start_server(),
-        execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
+        execution::ExecutorBuilder::new(server_executor_id)
+            .register()
+            .unwrap(),
     )
     .unwrap();
-    assert!(server_handle.ping().unwrap());
+    assert!(server_handle.ping());
 
     c.bench_function("nng_reqrep_bench", move |b| {
         let mut executor = global_executor();

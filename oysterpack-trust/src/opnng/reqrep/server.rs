@@ -434,26 +434,23 @@ impl ServerHandle {
     /// - Internally, the Ping message is sent via an async channel, i.e., Futures based. This requires
     ///   an Executor to spawn the task to send the Ping message. If the Executor fails to spawn the
     ///   task, then a ServerHandleError will be returned. Normally, this should never happen ...
-    pub fn ping(&self) -> Result<bool, ServerHandleError> {
+    pub fn ping(&self) -> bool {
         match self.server_command_channel {
             Some(ref server_command_channel) => {
                 let mut server_command_channel = server_command_channel.clone();
                 let mut executor = self.executor.clone();
-                executor
-                    .spawn_await(
-                        async move {
-                            let (tx, rx) = futures::channel::oneshot::channel();
-                            if await!(server_command_channel.send(ServerCommand::Ping(tx))).is_ok()
-                            {
-                                await!(rx).is_ok()
-                            } else {
-                                false
-                            }
-                        },
-                    )
-                    .map_err(|err| ServerHandleError(err.to_string()))
+                executor.run(
+                    async move {
+                        let (tx, rx) = futures::channel::oneshot::channel();
+                        if await!(server_command_channel.send(ServerCommand::Ping(tx))).is_ok() {
+                            await!(rx).is_ok()
+                        } else {
+                            false
+                        }
+                    },
+                )
             }
-            None => Ok(false),
+            None => false,
         }
     }
 
@@ -484,14 +481,10 @@ impl ServerHandle {
     ///
     /// ## Notes
     /// The server must be signaled to stop in order to shutdown.
-    pub fn await_shutdown(mut self) -> Result<(), ServerHandleError> {
+    pub fn await_shutdown(mut self) {
         if let Some(handle) = self.handle.take() {
-            return self
-                .executor
-                .spawn_await(async { await!(handle) })
-                .map_err(|err| ServerHandleError(err.to_string()));
+            return self.executor.run(async { await!(handle) });
         }
-        Ok(())
     }
 
     /// Returns the ServerHandle - only if the server is still alive
@@ -504,7 +497,7 @@ impl ServerHandle {
 
         // check if the server is still alive
         if let Some(server_handle) = server_handle {
-            if let Ok(true) = server_handle.ping() {
+            if server_handle.ping() {
                 Some(server_handle)
             } else {
                 // unregister the Serverhandle because pinging the server failed
@@ -872,7 +865,7 @@ mod tests {
             global_executor().clone(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // GIVEN: a client that connects to the server
         let mut s = nng::Socket::new(nng::Protocol::Req0).unwrap();
@@ -889,7 +882,7 @@ mod tests {
 
         // THEN: the server handle is registered
         let server_handle_ref = ServerHandle::get(server_handle.id()).unwrap();
-        assert!(server_handle_ref.ping().unwrap());
+        assert!(server_handle_ref.ping());
         assert!(ServerHandle::ids()
             .iter()
             .find(|(id, reqrep_id)| *id == server_handle_ref.id()
@@ -908,7 +901,7 @@ mod tests {
         server_handle.await_shutdown();
 
         // AND: the server handle becomes invalid
-        assert!(!server_handle_ref.ping().unwrap());
+        assert!(!server_handle_ref.ping());
         assert!(ServerHandle::get(server_handle_ref.id()).is_none());
         assert!(ServerHandle::ids()
             .iter()
@@ -947,10 +940,10 @@ mod tests {
             global_executor().clone(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // THEN: the client will be able to connect and be serviced
-        let reply = executor.spawn_await(handle).unwrap();
+        let reply = executor.run(handle);
         info!("Reply was received: {:?}", reply);
 
         let server_handle_id = server_handle.id();
@@ -994,7 +987,7 @@ mod tests {
             global_executor().clone(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         let mut client_task_handles = Vec::new();
 
@@ -1038,7 +1031,7 @@ mod tests {
         let mut executor = global_executor();
         for handle in client_task_handles {
             info!("waiting for client to be done ...");
-            let client_id = executor.spawn_await(handle).unwrap();
+            let client_id = executor.run(handle);
             info!(
                 "client is done: {} : {:?}",
                 client_id,
@@ -1062,8 +1055,9 @@ mod tests {
         // GIVEN: the server is running
         let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let executor_id = ExecutorId::generate();
-        let mut threadpool_builder = futures::executor::ThreadPoolBuilder::new();
-        let executor = execution::register(executor_id, &mut threadpool_builder).unwrap();
+        let executor = execution::ExecutorBuilder::new(executor_id)
+            .register()
+            .unwrap();
         let mut server_handle = super::spawn(
             None,
             ListenerConfig::new(url.clone()),
@@ -1071,7 +1065,7 @@ mod tests {
             executor.clone(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // THEN: we expect the server to have N number of tasks running = 1 Aio worker per logical cpu + 1 controller task + 1 ReqRep backend service task
         let expected_task_count = num_cpus::get() as u64 + 2;

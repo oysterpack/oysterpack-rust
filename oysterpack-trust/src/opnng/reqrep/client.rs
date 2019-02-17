@@ -200,11 +200,9 @@ impl NngClient {
                 {
                     let req_tx = req_tx.clone();
                     let mut aio_context_pool_return = aio_context_pool_return.clone();
-                    let aio_context_pool_return_send_result = executor
-                        .spawn_await(async move { await!(aio_context_pool_return.send(req_tx)) });
-                    if aio_context_pool_return_send_result.is_err() {
-                        return Err(NngClientError::AioContextPoolChannelClosed);
-                    }
+                    executor
+                        .run(async move { await!(aio_context_pool_return.send(req_tx)) })
+                        .map_err(|_err| NngClientError::AioContextPoolChannelClosed)?;
                 }
                 executor.spawn(async move {
                     debug!("[{}-{}] NngClient Aio Context task is running", id, i);
@@ -860,10 +858,9 @@ mod tests {
             ReqRepConfig::new(reqrep_id, timer_buckets),
             None,
             dialer_config,
-            {
-                let mut threadpool_builder = ThreadPoolBuilder::new();
-                execution::register(client_executor_id, &mut threadpool_builder).unwrap()
-            },
+            execution::ExecutorBuilder::new(client_executor_id)
+                .register()
+                .unwrap(),
         )
         .unwrap();
         (client, client_executor_id)
@@ -877,17 +874,18 @@ mod tests {
         // GIVEN: the server is running
         let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
-        let mut threadpool_builder = ThreadPoolBuilder::new();
         let server_reqrep = start_server();
         let reqrep_id = server_reqrep.id();
         let mut server_handle = server::spawn(
             None,
             server::ListenerConfig::new(url.clone()),
             server_reqrep,
-            execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
+            execution::ExecutorBuilder::new(server_executor_id)
+                .register()
+                .unwrap(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // GIVEN: the NngClient is registered
         let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
@@ -897,7 +895,7 @@ mod tests {
         drop(client);
         const REQUEST_COUNT: usize = 100;
         let replies: Vec<nng::Message> = executor
-            .spawn_await(
+            .run(
                 async move {
                     // Then: the client can still be retrieved from the global registry
                     let mut client = super::client(reqrep_id).unwrap();
@@ -910,8 +908,7 @@ mod tests {
                     }
                     replies
                 },
-            )
-            .unwrap();
+            );
         // THEN: all requests were successfully processed
         assert_eq!(replies.len(), REQUEST_COUNT);
 
@@ -941,24 +938,25 @@ mod tests {
     #[test]
     fn nng_client_multithreaded_usage() {
         configure_logging();
-        let mut thread_builder = ThreadPoolBuilder::new();
-        let mut executor =
-            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+        let mut executor = execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap();
 
         // GIVEN: the server is running
         let url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
         let server_executor_id = ExecutorId::generate();
-        let mut threadpool_builder = ThreadPoolBuilder::new();
         let server_reqrep = start_server();
         let reqrep_id = server_reqrep.id();
         let mut server_handle = server::spawn(
             None,
             server::ListenerConfig::new(url.clone()),
             server_reqrep,
-            execution::register(server_executor_id, &mut threadpool_builder).unwrap(),
+            execution::ExecutorBuilder::new(server_executor_id)
+                .register()
+                .unwrap(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // GIVEN: the NngClient is registered
         let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
@@ -987,23 +985,22 @@ mod tests {
         }
 
         executor
-            .spawn_await(
+            .run(
                 async move {
                     for handle in handles {
                         let replies: Vec<nng::Message> = await!(handle);
                         assert_eq!(replies.len(), REQUEST_COUNT);
                     }
                 },
-            )
-            .unwrap();
+            );
     }
 
     #[test]
     fn check_client_internal_task_count() {
         configure_logging();
-        let mut thread_builder = ThreadPoolBuilder::new();
-        let mut executor =
-            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+        let mut executor = execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap();
 
         let reqrep_id = ReqRepId::generate();
         let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
@@ -1026,9 +1023,9 @@ mod tests {
     #[test]
     fn dialer_config_reconnect_time_min_max() {
         configure_logging();
-        let mut thread_builder = ThreadPoolBuilder::new();
-        let mut executor =
-            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+        let mut executor = execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap();
 
         let reqrep_id = ReqRepId::generate();
         let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
@@ -1059,21 +1056,20 @@ mod tests {
             global_executor(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // THEN: the request is processed successfully
-        let reply = executor
-            .spawn_await(async move { await!(client_request_handle) })
-            .unwrap();
+        let reply = executor.run(async move { await!(client_request_handle) });
         info!("reply = {:?}", reply.unwrap().unwrap());
     }
 
     #[test]
     fn dialer_config_reconnect_time_min() {
         configure_logging();
-        let mut thread_builder = ThreadPoolBuilder::new();
-        let mut executor =
-            execution::register(ExecutorId::generate(), &mut thread_builder).unwrap();
+
+        let mut executor = execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap();
 
         let reqrep_id = ReqRepId::generate();
         let url = url::Url::parse(&format!("inproc://{}", reqrep_id)).unwrap();
@@ -1103,12 +1099,12 @@ mod tests {
             global_executor(),
         )
         .unwrap();
-        assert!(server_handle.ping().unwrap());
+        assert!(server_handle.ping());
 
         // THEN: the request is processed successfully
         let reply = executor
-            .spawn_await(async move { await!(client_request_handle) })
+            .run(async move { await!(client_request_handle) })
             .unwrap();
-        info!("reply = {:?}", reply.unwrap().unwrap());
+        info!("reply = {:?}", reply.unwrap());
     }
 }
