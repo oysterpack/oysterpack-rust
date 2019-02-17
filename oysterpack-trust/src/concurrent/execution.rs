@@ -240,17 +240,18 @@ impl ExecutorRegistry {
     /// Returns the total number of completed tasks across all registered Executor(s)
     pub fn completed_task_count(&self) -> u64 {
         self.thread_pools.values().fold(
-            self.global_executor.completed_task_counter_task_count(),
-            |sum, executor| sum + executor.completed_task_counter_task_count(),
+            self.global_executor.completed_task_count(),
+            |sum, executor| sum + executor.completed_task_count(),
         )
     }
 
     /// Returns the total number of active tasks across all registered Executor(s)
     pub fn active_task_count(&self) -> u64 {
-        self.thread_pools.values().fold(
-            self.global_executor.active_task_count(),
-            |sum, executor| sum + executor.active_task_count(),
-        )
+        self.thread_pools
+            .values()
+            .fold(self.global_executor.active_task_count(), |sum, executor| {
+                sum + executor.active_task_count()
+            })
     }
 
     /// Returns the current thread pool sizes for the currently registered Executors

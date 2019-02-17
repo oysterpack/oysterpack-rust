@@ -57,6 +57,10 @@ maintenance = {status = "actively-developed"}
 name = "cucumber_metrics"
 harness = false
 
+[[test]]
+name = "cucumber_execution"
+harness = false
+
 [[bench]]
 name = "reqrep_bench"
 harness = false

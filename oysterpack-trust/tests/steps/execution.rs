@@ -16,12 +16,30 @@
 
 use cucumber_rust::*;
 
-mod steps;
+steps!(TestContext => {
 
-cucumber! {
-    features: "./features/metrics",
-    world: steps::metrics::TestContext,
-    steps: &[
-        steps::metrics::steps
-    ]
+    given regex "01D3J441N6BM05NKCBQEVYTZY8" |world, _matches, step| {
+        world.init();
+
+    };
+
+    when regex "01D3PPPT1ZNXPKKWM29R14V5ZT-2" |world, _matches, _step| {
+
+    };
+
+    then regex "01D3PPPT1ZNXPKKWM29R14V5ZT-3" |world, _matches, _step| {
+
+    };
+
+});
+
+#[derive(Default)]
+pub struct TestContext {
+
+}
+
+impl TestContext {
+    pub fn init(&mut self) {
+
+    }
 }
