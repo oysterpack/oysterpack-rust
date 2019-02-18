@@ -17,4 +17,5 @@ Feature: [01D3W3G8A7H32MVG3WYBER6J13] Spawned tasks are tracked
     Then [01D3Y1D8SJZ8JWPGJKFK4BYHP0-3] the spawned task count will increase by 10
     And [01D3Y1D8SJZ8JWPGJKFK4BYHP0-4] the completed task count will increase by 10
     And [01D3Y1D8SJZ8JWPGJKFK4BYHP0-5] the active task count will be 0
+    And [01D3Y1D8SJZ8JWPGJKFK4BYHP0-6] the panicked task count will increase by 5
 

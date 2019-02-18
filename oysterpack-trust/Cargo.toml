@@ -72,3 +72,7 @@ harness = false
 [[bench]]
 name = "metrics_bench"
 harness = false
+
+[[bench]]
+name = "executor_bench"
+harness = false

@@ -196,11 +196,12 @@ impl ExecutorRegistry {
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
         catch_unwind: bool,
+        stack_size: Option<usize>,
     ) -> Result<Executor, ExecutorRegistryError> {
         if self.thread_pools.contains_key(&id) {
             return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
         }
-        let executor = Executor::new(id, builder, catch_unwind)?;
+        let executor = Executor::new(id, builder, catch_unwind, stack_size)?;
         self.thread_pools.insert(id, executor.clone());
         Ok(executor)
     }
@@ -272,7 +273,7 @@ impl Default for ExecutorRegistry {
     fn default() -> Self {
         fn default_executor() -> Executor {
             let mut builder = ExecutorBuilder::new(Executor::GLOBAL_EXECUTOR_ID).builder();
-            Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder, true).unwrap()
+            Executor::new(Executor::GLOBAL_EXECUTOR_ID, &mut builder, true, None).unwrap()
         }
 
         Self {
@@ -308,6 +309,7 @@ pub struct Executor {
     completed_task_counter: prometheus::IntCounter,
     panicked_task_counter: Option<prometheus::IntCounter>,
     catch_unwind: bool,
+    stack_size: Option<usize>,
 }
 
 impl fmt::Debug for Executor {
@@ -325,6 +327,7 @@ impl Executor {
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
         catch_unwind: bool,
+        stack_size: Option<usize>,
     ) -> Result<Self, ExecutorRegistryError> {
         let label_name = id.to_string();
         let labels = [label_name.as_str()];
@@ -343,6 +346,7 @@ impl Executor {
             completed_task_counter: COMPLETED_TASK_COUNTER.with_label_values(&labels),
             catch_unwind,
             panicked_task_counter,
+            stack_size,
         })
     }
 
@@ -355,6 +359,11 @@ impl Executor {
     /// - all futures will be wrapped in a `CatchUnwind` future
     pub const fn catch_unwind(&self) -> bool {
         self.catch_unwind
+    }
+
+    /// Returns the configured stack size
+    pub const fn stack_size(&self) -> Option<usize> {
+        self.stack_size
     }
 
     /// Runs the given future with this Executor.
@@ -373,8 +382,6 @@ impl Executor {
             completed_task_counter.inc();
             result
         };
-
-        let future = future.boxed();
         self.spawned_task_counter.inc();
         self.threadpool.run(future)
     }
@@ -425,6 +432,14 @@ impl Executor {
     /// are panicking.
     pub fn active_task_count(&self) -> u64 {
         self.spawned_task_count() - self.completed_task_count()
+    }
+
+    /// Returns the number of spawned tasks that have panicked.
+    /// - if the Executor is configured to not catch unwinding panics, then None is returned
+    pub fn panicked_task_count(&self) -> Option<u64> {
+        self.panicked_task_counter
+            .as_ref()
+            .map(|counter| counter.get() as u64)
     }
 
     /// returns the current thread pool size
@@ -540,6 +555,7 @@ impl ExecutorBuilder {
     }
 
     /// Sets the thread pool size
+    /// - based on benchmark tests, enabling catch_unwind adds no performance overhead
     pub fn set_catch_unwind(mut self, catch_unwind: bool) -> Self {
         self.catch_unwind = catch_unwind;
         self
@@ -605,7 +621,12 @@ impl ExecutorBuilder {
     pub fn register(self) -> Result<Executor, ExecutorRegistryError> {
         let mut executors = EXECUTOR_REGISTRY.write().unwrap();
         let mut threadpool_builder = self.builder();
-        executors.register(self.id, &mut threadpool_builder, self.catch_unwind)
+        executors.register(
+            self.id,
+            &mut threadpool_builder,
+            self.catch_unwind,
+            self.stack_size.as_ref().map(|size| size.get()),
+        )
     }
 }
 

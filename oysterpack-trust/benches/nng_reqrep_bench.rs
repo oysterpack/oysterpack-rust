@@ -117,15 +117,12 @@ fn nng_reqrep_bench(c: &mut Criterion) {
     .unwrap();
     assert!(server_handle.ping());
 
+    let mut req_rep = CLIENT.lock().unwrap();
+
     c.bench_function("nng_reqrep_bench", move |b| {
         let mut executor = global_executor();
         b.iter(|| {
-            executor.run(
-                async {
-                    let mut req_rep = CLIENT.lock().unwrap();
-                    await!(req_rep.send(nng::Message::new().unwrap())).unwrap()
-                },
-            );
+            executor.run(async { await!(req_rep.send(nng::Message::new().unwrap())).unwrap() });
         })
     });
 }
