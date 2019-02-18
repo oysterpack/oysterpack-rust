@@ -1,11 +1,11 @@
 Feature: [01D3W0H2B7KNTBJTGDYP3CRB7K] A global Executor registry is provided.
 
-  - `ExecutorBuilder` is used to register new Executor(s) with the global registry
+  - `ExecutorBuilder` is used to construct and register new Executor(s) with the global registry
   - Each Executor is identified by its ExecutorId, which is used as the registry key
   - The following Executor properties are configurable
-    - thread pool size
-    - thread stack size
-    - catching unwinding panics for spawned futures - by default, this is set to true
+    - thread pool size - default = number of cpu cores
+    - thread stack size - default = Rust default
+    - catching unwinding panics for spawned futures - default = true
 
   Scenario: [01D3W0MDTMRJ6GNFCQCPTS55HG] Registering an Executor with default settings
     When [01D3W0MDTMRJ6GNFCQCPTS55HG-1] an Executor is registered with default settings

@@ -175,6 +175,25 @@ steps!(TestContext => {
         assert!(world.executor_ids.iter().all(|id1| executor_ids.iter().any(|id2| *id1 == *id2)));
     };
 
+    given regex "01D3W2RF94W85YGQ49JFDXB3XB-1" |world, _matches, _step| {
+        world.init();
+    };
+
+    when regex "01D3W2RF94W85YGQ49JFDXB3XB-2" |world, _matches, _step| {
+        (0..2).for_each(|_| {
+            thread::spawn(|| {
+                (0..10).for_each(|_| {
+                    execution::global_executor().spawn(async{});
+                });
+            });
+        });
+    };
+
+    then regex "01D3W2RF94W85YGQ49JFDXB3XB-3" |world, _matches, _step| {
+        await_tasks_completed(world);
+        check_completed_task_count(world, 20);
+    };
+
 });
 
 fn run_tasks(
