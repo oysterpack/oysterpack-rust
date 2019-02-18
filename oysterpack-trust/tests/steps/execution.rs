@@ -99,6 +99,82 @@ steps!(TestContext => {
         check_panicked_task_count(world, (num_cpus::get() * 2) as u64);
     };
 
+    when regex "01D3W0MDTMRJ6GNFCQCPTS55HG-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate()));
+    };
+
+    then regex "01D3W0MDTMRJ6GNFCQCPTS55HG-2" |world, _matches, _step| {
+        check_exeutor_thread_pool_size(world, num_cpus::get());
+    };
+
+    then regex "01D3W0MDTMRJ6GNFCQCPTS55HG-3" |world, _matches, _step| {
+        assert!(world.executor.catch_unwind());
+    };
+
+    when regex "01D40G5CFDP2RS7V75WJQCSME4-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate())
+            .set_pool_size(NonZeroUsize::new(20).unwrap())
+        );
+    };
+
+    then regex "01D40G5CFDP2RS7V75WJQCSME4-2" |world, _matches, _step| {
+        check_exeutor_thread_pool_size(world, 20);
+    };
+
+    when regex "01D40G6X1ABZK6532CVE00EWHW-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate())
+            .set_stack_size(NonZeroUsize::new(1024*64).unwrap())
+        );
+    };
+
+    then regex "01D40G6X1ABZK6532CVE00EWHW-2" |world, _matches, _step| {
+        assert_eq!(world.executor.stack_size().unwrap(), 1024*64);
+    };
+
+    when regex "01D40G78JNHX519WEP1A1E5FVT-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate())
+            .set_catch_unwind(false)
+        );
+    };
+
+    then regex "01D40G78JNHX519WEP1A1E5FVT-2" |world, _matches, _step| {
+        assert_eq!(world.executor.catch_unwind(), false);
+    };
+
+    when regex "01D40G7FQDMWEVGSGFH96KQMZ0-1" |world, _matches, _step| {
+        world.init();
+    };
+
+    then regex "01D40G7FQDMWEVGSGFH96KQMZ0-2" |world, _matches, _step| {
+        match ExecutorBuilder::new(world.executor.id()).register() {
+            Err(ExecutorRegistryError::ExecutorAlreadyRegistered(_)) => println!("failed to register Executor because ExecutorAlreadyRegistered"),
+            other => panic!("unexpected result: {:?}", other)
+        }
+    };
+
+    when regex "01D40WTESDPHA8BZVM2VS7VRK2-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate()));
+    };
+
+    then regex "01D40WTESDPHA8BZVM2VS7VRK2-2" |world, _matches, _step| {
+        match ExecutorBuilder::new(world.executor.id()).register() {
+            Err(ExecutorRegistryError::ExecutorAlreadyRegistered(_)) => println!("failed to register Executor because ExecutorAlreadyRegistered"),
+            other => panic!("unexpected result: {:?}", other)
+        }
+    };
+
+    when regex "01D3W1NYG4YT4MM5HDR4YWT7ZD-1" |world, _matches, _step| {
+        world.executor_ids.extend(vec![ExecutorId::generate(), ExecutorId::generate()]);
+        world.executor_ids.iter().for_each(|id| {
+            ExecutorBuilder::new(*id).register().unwrap();
+        });
+    };
+
+    then regex "01D3W1NYG4YT4MM5HDR4YWT7ZD-2" |world, _matches, _step| {
+        let executor_ids = execution::executor_ids();
+        assert!(world.executor_ids.iter().all(|id1| executor_ids.iter().any(|id2| *id1 == *id2)));
+    };
+
 });
 
 fn run_tasks(
@@ -195,7 +271,7 @@ fn await_tasks_completed_while_gt(world: &mut TestContext, count: u64) {
     }
 }
 
-fn check_threads_started_inc(world: &mut TestContext, expected_inc: u64) {
+fn check_threads_started_inc(world: &mut TestContext, expected_inc: usize) {
     println!("total_threads_started = {}", execution::total_threads());
     assert_eq!(
         execution::total_threads(),
@@ -203,7 +279,7 @@ fn check_threads_started_inc(world: &mut TestContext, expected_inc: u64) {
     );
 }
 
-fn check_exeutor_thread_pool_size(world: &mut TestContext, expected_count: u64) {
+fn check_exeutor_thread_pool_size(world: &mut TestContext, expected_count: usize) {
     for _ in 0..10 {
         if world.executor.thread_pool_size() < expected_count {
             println!(
@@ -216,7 +292,7 @@ fn check_exeutor_thread_pool_size(world: &mut TestContext, expected_count: u64) 
     assert_eq!(world.executor.thread_pool_size(), expected_count);
 }
 
-fn check_total_threads_count_inc(world: &mut TestContext, expected_inc: u64) {
+fn check_total_threads_count_inc(world: &mut TestContext, expected_inc: usize) {
     let expected_count = world.total_threads + expected_inc;
     for _ in 0..10 {
         if total_threads() < expected_count {
@@ -241,23 +317,29 @@ pub struct TestContext {
     pub executor: Executor,
     pub executor_spawned_task_count: u64,
     pub executor_completed_task_count: u64,
-    pub executor_thread_pool_size: u64,
+    pub executor_thread_pool_size: usize,
     pub executor_panicked_task_count: Option<u64>,
-    pub total_threads: u64,
+    pub total_threads: usize,
+    pub executor_ids: Vec<ExecutorId>
 }
 
 impl TestContext {
     pub fn init(&mut self) {
+        self.executor_ids.clear();
         self.executor = execution::global_executor();
         self.gather_metrics();
     }
 
     pub fn init_with_new_executor(&mut self, thread_pool_size: usize, catch_unwind: bool) {
-        self.executor = ExecutorBuilder::new(ExecutorId::generate())
-            .set_pool_size(NonZeroUsize::new(thread_pool_size).unwrap())
-            .set_catch_unwind(catch_unwind)
-            .register()
-            .unwrap();
+        self.init_with_executor_builder(
+            ExecutorBuilder::new(ExecutorId::generate())
+                .set_pool_size(NonZeroUsize::new(thread_pool_size).unwrap())
+                .set_catch_unwind(catch_unwind),
+        );
+    }
+
+    pub fn init_with_executor_builder(&mut self, builder: ExecutorBuilder) {
+        self.executor = builder.register().unwrap();
         self.gather_metrics();
     }
 
@@ -279,6 +361,7 @@ impl Default for TestContext {
             executor_thread_pool_size: 0,
             total_threads: 0,
             executor_panicked_task_count: None,
+            executor_ids: Vec::new()
         }
     }
 }

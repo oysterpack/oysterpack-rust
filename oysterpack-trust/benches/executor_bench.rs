@@ -49,11 +49,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-criterion_group!(
-    benches,
-    executor_run_bench,
-    executor_spawn_bench,
-);
+criterion_group!(benches, executor_run_bench, executor_spawn_bench,);
 
 criterion_main!(benches);
 

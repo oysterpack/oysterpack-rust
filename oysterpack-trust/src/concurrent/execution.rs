@@ -165,18 +165,18 @@ pub fn spawned_task_count() -> u64 {
 
 /// Returns the total number of threads that have been started across all Executors
 /// - this is not the active count
-pub fn total_threads() -> u64 {
+pub fn total_threads() -> usize {
     let registry = EXECUTOR_REGISTRY.read().unwrap();
     registry
         .thread_pools
         .values()
         .map(|executor| executor.thread_pool_size())
-        .sum::<u64>()
+        .sum::<usize>()
         + registry.global_executor.thread_pool_size()
 }
 
 /// Returns the current thread pool sizes for the currently registered Executors
-pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, u64)> {
+pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
     let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.executor_thread_pool_sizes()
 }
@@ -198,7 +198,7 @@ impl ExecutorRegistry {
         catch_unwind: bool,
         stack_size: Option<usize>,
     ) -> Result<Executor, ExecutorRegistryError> {
-        if self.thread_pools.contains_key(&id) {
+        if self.thread_pools.contains_key(&id) || id == Executor::GLOBAL_EXECUTOR_ID {
             return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
         }
         let executor = Executor::new(id, builder, catch_unwind, stack_size)?;
@@ -261,7 +261,7 @@ impl ExecutorRegistry {
     }
 
     /// Returns the current thread pool sizes for the currently registered Executors
-    pub fn executor_thread_pool_sizes(&self) -> Vec<(ExecutorId, u64)> {
+    pub fn executor_thread_pool_sizes(&self) -> Vec<(ExecutorId, usize)> {
         self.thread_pools
             .iter()
             .map(|(executor_id, executor)| (*executor_id, executor.thread_pool_size()))
@@ -443,10 +443,10 @@ impl Executor {
     }
 
     /// returns the current thread pool size
-    pub fn thread_pool_size(&self) -> u64 {
+    pub fn thread_pool_size(&self) -> usize {
         let executor_thread_gauge =
             THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
-        executor_thread_gauge.get() as u64
+        executor_thread_gauge.get() as usize
     }
 }
 
