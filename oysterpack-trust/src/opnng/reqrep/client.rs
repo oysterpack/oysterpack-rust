@@ -400,7 +400,7 @@ pub enum ClientRegistrationError {
     ClientAlreadyRegistered(ReqRepId),
     /// nng error
     #[fail(display = "nng error: {}", _0)]
-    NngError(NngClientError),
+    NngError(#[cause] NngClientError),
 }
 
 /// NngClient related errors
@@ -408,16 +408,16 @@ pub enum ClientRegistrationError {
 pub enum NngClientError {
     /// Failed to create Socket
     #[fail(display = "Failed to create Socket: {}", _0)]
-    SocketCreateFailure(SocketConfigError),
+    SocketCreateFailure(#[cause] SocketConfigError),
     /// Failed to start Dialer
     #[fail(display = "Failed to start Dialer: {}", _0)]
-    DialerStartError(DialerConfigError),
+    DialerStartError(#[cause] DialerConfigError),
     /// Failed to create nng::Context
     #[fail(display = "Failed to create nng::Context: {}", _0)]
-    NngContextCreateFailed(nng::Error),
+    NngContextCreateFailed(#[cause] nng::Error),
     /// Failed to create nng::Aio
     #[fail(display = "Failed to create nng::Aio: {}", _0)]
-    NngAioCreateFailed(nng::Error),
+    NngAioCreateFailed(#[cause] nng::Error),
     /// The Aio Context pool channel is closed
     #[fail(display = "The Aio Context pool channel is closed")]
     AioContextPoolChannelClosed,
@@ -443,16 +443,16 @@ pub enum RequestError {
     NngAioContextPoolChannelDisconnected,
     /// The nng Aio Context channel is disconnected
     #[fail(display = "The nng Aio Context channel is disconnected: {}", _0)]
-    AioContextChannelDisconnected(futures::channel::mpsc::SendError),
+    AioContextChannelDisconnected(#[cause] futures::channel::mpsc::SendError),
     /// Reply channel closed
     #[fail(display = "Reply channel closed")]
     ReplyChannelClosed,
     /// Failed to send the request
     #[fail(display = "Failed to send request: {}", _0)]
-    SendFailed(nng::Error),
+    SendFailed(#[cause] nng::Error),
     /// Failed to receive the reply
     #[fail(display = "Failed to receive reply: {}", _0)]
-    RecvFailed(nng::Error),
+    RecvFailed(#[cause] nng::Error),
     /// Empty message
     #[fail(display = "Invalid request: {}", _0)]
     InvalidRequest(String),
@@ -770,25 +770,25 @@ impl DialerConfig {
 pub enum DialerConfigError {
     /// Failed to create DialerOptions
     #[fail(display = "Failed to create DialerOptions: {}", _0)]
-    DialerOptionsCreateFailed(nng::Error),
+    DialerOptionsCreateFailed(#[cause] nng::Error),
     /// Failed to set the RecvMaxSize option
     #[fail(display = "Failed to set the RecvMaxSize option: {}", _0)]
-    RecvMaxSize(nng::Error),
+    RecvMaxSize(#[cause] nng::Error),
     /// Failed to set the TcpNoDelay option
     #[fail(display = "Failed to set the TcpNoDelay option: {}", _0)]
-    TcpNoDelay(nng::Error),
+    TcpNoDelay(#[cause] nng::Error),
     /// Failed to set the TcpKeepAlive option
     #[fail(display = "Failed to set the TcpKeepAlive option: {}", _0)]
-    TcpKeepAlive(nng::Error),
+    TcpKeepAlive(#[cause] nng::Error),
     /// Failed to set the ReconnectMinTime option
     #[fail(display = "Failed to set the ReconnectMinTime option: {}", _0)]
-    ReconnectMinTime(nng::Error),
+    ReconnectMinTime(#[cause] nng::Error),
     /// Failed to set the ReconnectMaxTime option
     #[fail(display = "Failed to set the ReconnectMaxTime option: {}", _0)]
-    ReconnectMaxTime(nng::Error),
+    ReconnectMaxTime(#[cause] nng::Error),
     /// Failed to start Dialer
     #[fail(display = "Failed to start Dialer: {}", _0)]
-    DialerStartError(nng::Error),
+    DialerStartError(#[cause] nng::Error),
 }
 
 #[allow(warnings)]

@@ -264,41 +264,41 @@ impl SocketConfig {
 pub enum SocketConfigError {
     /// Failed to create Socket
     #[fail(display = "Failed to create Socket: {}", _0)]
-    SocketCreateFailed(nng::Error),
+    SocketCreateFailed(#[cause] nng::Error),
     /// Failed to set the RecvBufferSize Socket option
     #[fail(display = "Failed to set the RecvBufferSize Socket option: {}", _0)]
-    RecvBufferSize(nng::Error),
+    RecvBufferSize(#[cause] nng::Error),
     /// Failed to set the SendBufferSize Socket option
     #[fail(display = "Failed to set the SendBufferSize Socket option: {}", _0)]
-    SendBufferSize(nng::Error),
+    SendBufferSize(#[cause] nng::Error),
     /// Failed to set the RecvMaxSize Socket option
     #[fail(display = "Failed to set the RecvMaxSize Socket option: {}", _0)]
-    RecvMaxSize(nng::Error),
+    RecvMaxSize(#[cause] nng::Error),
     /// Failed to set the RecvTimeout Socket option
     #[fail(display = "Failed to set the RecvTimeout Socket option: {}", _0)]
-    RecvTimeout(nng::Error),
+    RecvTimeout(#[cause] nng::Error),
     /// Failed to set the SendTimeout Socket option
     #[fail(display = "Failed to set the SendTimeout Socket option: {}", _0)]
-    SendTimeout(nng::Error),
+    SendTimeout(#[cause] nng::Error),
     /// Failed to set the MaxTtl Socket option
     #[fail(display = "Failed to set the MaxTtl Socket option: {}", _0)]
-    MaxTtl(nng::Error),
+    MaxTtl(#[cause] nng::Error),
     /// Failed to set the SocketName Socket option
     #[fail(display = "Failed to set the SocketName Socket option: {}", _0)]
-    SocketName(nng::Error),
+    SocketName(#[cause] nng::Error),
     /// Failed to set the TcpNoDelay Socket option
     #[fail(display = "Failed to set the TcpNoDelay Socket option: {}", _0)]
-    TcpNoDelay(nng::Error),
+    TcpNoDelay(#[cause] nng::Error),
     /// Failed to set the TcpKeepAlive Socket option
     #[fail(display = "Failed to set the TcpKeepAlive Socket option: {}", _0)]
-    TcpKeepAlive(nng::Error),
+    TcpKeepAlive(#[cause] nng::Error),
     /// Failed to set the ReconnectMinTime Socket option
     #[fail(display = "Failed to set the ReconnectMinTime Socket option: {}", _0)]
-    ReconnectMinTime(nng::Error),
+    ReconnectMinTime(#[cause] nng::Error),
     /// Failed to set the ReconnectMaxTime Socket option
     #[fail(display = "Failed to set the ReconnectMaxTime Socket option: {}", _0)]
-    ReconnectMaxTime(nng::Error),
+    ReconnectMaxTime(#[cause] nng::Error),
     /// Failed to set the ResendTime Socket option
     #[fail(display = "Failed to set the ResendTime Socket option: {}", _0)]
-    ResendTime(nng::Error),
+    ResendTime(#[cause] nng::Error),
 }

@@ -556,16 +556,16 @@ pub enum ServerCommand {
 pub enum SpawnError {
     /// Failed to create Socket
     #[fail(display = "Failed to create Socket: {}", _0)]
-    SocketCreateFailure(nng::Error),
+    SocketCreateFailure(#[cause] nng::Error),
     /// Failed to create ListenerOptions
     #[fail(display = "Failed to create ListenerOptions: {}", _0)]
-    ListenerOptionsCreateFailure(nng::Error),
+    ListenerOptionsCreateFailure(#[cause] nng::Error),
     /// Failed to create Context
     #[fail(display = "Failed to create Context: {}", _0)]
-    ContextCreateFailure(nng::Error),
+    ContextCreateFailure(#[cause] nng::Error),
     /// Failed to create Context
     #[fail(display = "Failed to create Aio with callback: {}", _0)]
-    AioCreateWithCallbackFailure(nng::Error),
+    AioCreateWithCallbackFailure(#[cause] nng::Error),
     /// An error that occurred during spawning.
     #[fail(
         display = "Spawning Future failed: executor shutdown = {}",
@@ -577,10 +577,10 @@ pub enum SpawnError {
     },
     /// Failed to start the listener
     #[fail(display = "{}", _0)]
-    ListenerStartFailure(ListenerConfigError),
+    ListenerStartFailure(#[cause] ListenerConfigError),
     /// Failed to apply SocketConfig options
     #[fail(display = "{}", _0)]
-    SocketConfigApplyFailed(SocketConfigError),
+    SocketConfigApplyFailed(#[cause] SocketConfigError),
 }
 
 /// Aio state for socket context
@@ -797,19 +797,19 @@ impl ListenerConfig {
 pub enum ListenerConfigError {
     /// Failed to create ListenerOpion
     #[fail(display = "Failed to create ListenerOpions: {}", _0)]
-    ListenerOptionsCreateFailed(nng::Error),
+    ListenerOptionsCreateFailed(#[cause] nng::Error),
     /// Failed start the Listener
     #[fail(display = "Failed start the Listener: {}", _0)]
-    ListenerStartFailed(nng::Error),
+    ListenerStartFailed(#[cause] nng::Error),
     ///Failed to set the RecvMaxSize Socket option
     #[fail(display = "Failed to set the RecvMaxSize Socket option: {}", _0)]
-    RecvMaxSize(nng::Error),
+    RecvMaxSize(#[cause] nng::Error),
     /// Failed to set the TcpNoDelay Socket option
     #[fail(display = "Failed to set the TcpNoDelay Socket option: {}", _0)]
-    TcpNoDelay(nng::Error),
+    TcpNoDelay(#[cause] nng::Error),
     /// Failed to set the TcpKeepAlive Socket option
     #[fail(display = "Failed to set the TcpKeepAlive Socket option: {}", _0)]
-    TcpKeepAlive(nng::Error),
+    TcpKeepAlive(#[cause] nng::Error),
 }
 
 #[allow(warnings)]
