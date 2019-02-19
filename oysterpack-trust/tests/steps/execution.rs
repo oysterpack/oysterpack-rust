@@ -17,8 +17,17 @@
 use cucumber_rust::*;
 
 use futures::{prelude::*, task::SpawnExt};
-use oysterpack_trust::concurrent::execution::{self, *};
-use std::{num::NonZeroUsize, panic, thread, time::Duration};
+use maplit::*;
+use oysterpack_trust::{
+    concurrent::execution::{self, *},
+    metrics,
+};
+use std::{
+    collections::{HashSet},
+    num::NonZeroUsize,
+    panic, thread,
+    time::Duration,
+};
 
 steps!(TestContext => {
 
@@ -180,12 +189,17 @@ steps!(TestContext => {
     };
 
     when regex "01D3W2RF94W85YGQ49JFDXB3XB-2" |world, _matches, _step| {
-        (0..2).for_each(|_| {
+        let handles: Vec<_> = (0..2).map(|_| {
             thread::spawn(|| {
                 (0..10).for_each(|_| {
-                    execution::global_executor().spawn(async{});
+                    execution::global_executor().spawn(async{}).unwrap();
                 });
-            });
+            })
+        }).collect();
+
+        handles.into_iter().for_each(|handle| {
+            handle.join().unwrap();
+            thread::sleep(Duration::from_millis(10));
         });
     };
 
@@ -194,7 +208,49 @@ steps!(TestContext => {
         check_completed_task_count(world, 20);
     };
 
+    given regex "01D41EX3HY16EH06RVHAHE2Q0F-1" |world, _matches, _step| {
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate()));
+    };
+
+    when regex "01D41EX3HY16EH06RVHAHE2Q0F-2" |world, _matches, _step| {
+        spawn_tasks(world, 5, 5);
+    };
+
+    then regex "01D41EX3HY16EH06RVHAHE2Q0F-3" |world, _matches, _step| {
+        await_tasks_completed(world);
+        check_completed_task_count(world, 10);
+        check_metrics_against_executor(world);
+    };
+
 });
+
+fn check_metrics_against_executor(world: &mut TestContext) {
+    let mfs = execution::gather_metrics();
+    let executor_id = world.executor.id().to_string();
+    let executor_id = executor_id.as_str();
+    let mfs: Vec<_> = mfs
+        .iter()
+        .filter(|mf| {
+            mf.get_metric().iter().any(|metric| {
+                metric
+                    .get_label()
+                    .iter()
+                    .any(|label_pair| label_pair.get_value() == executor_id)
+            })
+        })
+        .collect();
+    assert_eq!(mfs.len(), 4);
+    let metric_names: HashSet<_> = mfs.iter().map(|mf| mf.get_name().to_string()).collect();
+    let descs = metrics::registry().filter_descs(|desc| metric_names.contains(&desc.fq_name));
+    assert_eq!(descs.len(), 4);
+    let labels = hashmap! {
+        execution::EXECUTOR_ID_LABEL_ID.name() => executor_id.to_string()
+    };
+    let metric_families = metrics::registry().gather_for_labels(labels);
+
+    println!("ExecutorId: {}", executor_id);
+    println!("count = {}\n{:#?}", metric_families.len(), metric_families);
+}
 
 fn run_tasks(
     world: &mut TestContext,
@@ -339,7 +395,7 @@ pub struct TestContext {
     pub executor_thread_pool_size: usize,
     pub executor_panicked_task_count: Option<u64>,
     pub total_threads: usize,
-    pub executor_ids: Vec<ExecutorId>
+    pub executor_ids: Vec<ExecutorId>,
 }
 
 impl TestContext {
@@ -347,6 +403,7 @@ impl TestContext {
         self.executor_ids.clear();
         self.executor = execution::global_executor();
         self.gather_metrics();
+        await_tasks_completed(self);
     }
 
     pub fn init_with_new_executor(&mut self, thread_pool_size: usize, catch_unwind: bool) {
@@ -380,7 +437,7 @@ impl Default for TestContext {
             executor_thread_pool_size: 0,
             total_threads: 0,
             executor_panicked_task_count: None,
-            executor_ids: Vec::new()
+            executor_ids: Vec::new(),
         }
     }
 }

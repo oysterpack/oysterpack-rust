@@ -58,10 +58,10 @@ lazy_static! {
     /// Global Executor registry
     static ref EXECUTOR_REGISTRY: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
 
-    /// Metric: Number of tasks that the Executor has spawned
+    /// Metric: Number of tasks that the Executor has spawned and run
     static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         SPAWNED_TASK_COUNTER_METRIC_ID,
-        "Number of tasks that the Executor has spawned",
+        "Task spawn count",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -69,7 +69,7 @@ lazy_static! {
     /// Metric: Number of tasks that the Executor has completed
     static ref COMPLETED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         COMPLETED_TASK_COUNTER_METRIC_ID,
-        "Number of tasks that the Executor has completed",
+        "Completed task count",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -86,7 +86,7 @@ lazy_static! {
     /// - this is only tracked for Executors that are configured to catch unwinding panics
     static ref PANICKED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
         PANICKED_TASK_COUNTER_METRIC_ID,
-        "Number of unwinding panics that have been caught for spawned tasks",
+        "Task panic count",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -376,14 +376,7 @@ impl Executor {
     /// ## Panics
     /// If the task panics.
     pub fn run<F: Future>(&mut self, f: F) -> F::Output {
-        let completed_task_counter = self.completed_task_counter.clone();
-        let future = async move {
-            let result = await!(f);
-            completed_task_counter.inc();
-            result
-        };
-        self.spawned_task_counter.inc();
-        self.threadpool.run(future)
+        self.threadpool.run(f)
     }
 
     /// Spawns the future and returns a crossbeam channel Receiver that can be used to retrieve the
@@ -414,12 +407,13 @@ impl Executor {
         Ok(receiver)
     }
 
-    /// returns the number of tasks that the Executor has spawned
+    /// returns the number of spawned tasks
+    /// - tasks that are run, i.e., via [Executor::run()](struct.Executor.html#method.run), are not counted
     pub fn spawned_task_count(&self) -> u64 {
         self.spawned_task_counter.get() as u64
     }
 
-    /// retuns the number of tasks that the Executor has completed
+    /// returns the number of competed spawned tasks
     pub fn completed_task_count(&self) -> u64 {
         self.completed_task_counter.get() as u64
     }
@@ -442,7 +436,7 @@ impl Executor {
             .map(|counter| counter.get() as u64)
     }
 
-    /// returns the current thread pool size
+    /// returns the thread pool size
     pub fn thread_pool_size(&self) -> usize {
         let executor_thread_gauge =
             THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
@@ -716,7 +710,7 @@ mod tests {
             metric.get_counter().clone()
         };
 
-        const EXPECTED_TASK_COUNT: u64 = 7;
+        const EXPECTED_TASK_COUNT: u64 = 5;
         // THEN: wait until the tasks have completed
         for i in 0..5 {
             if get_counter().get_value() < (EXPECTED_TASK_COUNT as f64) {

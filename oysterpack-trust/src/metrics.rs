@@ -732,6 +732,48 @@ impl MetricRegistry {
             .collect()
     }
 
+    /// gathers metrics that contain the specified labels
+    pub fn gather_for_labels(
+        &self,
+        labels: HashMap<String, String>,
+    ) -> Vec<prometheus::proto::MetricFamily> {
+        let collectors = self.filter_collectors(|c| {
+            c.desc().iter().any(|d| {
+                d.variable_labels
+                    .iter()
+                    .any(|label| labels.contains_key(label))
+                    || d.const_label_pairs.iter().any(|label_pair| {
+                        match labels.get(label_pair.get_name()) {
+                            Some(value) => label_pair.get_value() == value,
+                            None => false,
+                        }
+                    })
+            })
+        });
+
+        collectors.iter()
+            .flat_map(|c| c.collect())
+            .map(|mut mf| {
+                let metrics = mf.mut_metric();
+                let mut i = 0;
+
+                while i < metrics.len() {
+                    let metric = &metrics[i];
+                    if !metric.get_label().iter().any(|label_pair| {
+                        labels
+                            .get(label_pair.get_name())
+                            .map_or(false, |value| label_pair.get_value() == value.as_str())
+                    }) {
+                        metrics.remove(i);
+                    } else {
+                        println!("{:#?}", metric)
+                    }
+                    i += 1
+                }
+                mf
+            }).collect()
+    }
+
     /// gather metrics for collectors for the specified metric fully qualified names
     pub fn gather_for_desc_names(
         &self,
