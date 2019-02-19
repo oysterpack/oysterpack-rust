@@ -78,6 +78,7 @@ use lazy_static::lazy_static;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::{
     collections::HashMap,
     fmt,
@@ -679,8 +680,8 @@ impl MetricRegistry {
     /// - the returned MetricFamily will contain only the requested metrics
     pub fn gather_for_desc_ids(&self, desc_ids: &[u64]) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
-        //BUG: a collector may have more than 1 matching desc
 
+        // find descs that match any of the specified desc_ids
         let descs = self.filter_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
 
         collectors
@@ -693,7 +694,7 @@ impl MetricRegistry {
                     .any(|desc| desc_ids.iter().any(|desc_id| *desc_id == desc.id))
             })
             .flat_map(|collector| collector.collect())
-            .filter_map(|mut mf| {
+            .filter_map(|mf| {
                 // filter out MetricFamily that does not match any Desc
                 // a collector may return multiple MetricFamily
                 match descs
@@ -702,30 +703,43 @@ impl MetricRegistry {
                 {
                     None => None,
                     Some(desc) => {
-                        // A MetricFamily may consist of more than 1 metric
                         let metrics = mf.get_metric();
-                        if metrics.len() > 1 && !desc.const_label_pairs.is_empty() {
-                            // filter out metrics that do not match const label values
-                            let metrics = mf.mut_metric();
-                            let mut i = 0;
-                            while i < metrics.len() {
-                                let metric = &metrics[i];
-                                for label_pair in metric.get_label() {
-                                    let value = label_pair.get_value();
-                                    if desc
-                                        .const_label_pairs
-                                        .iter()
-                                        .find(|label_pair| value == label_pair.get_value())
-                                        .is_none()
-                                    {
-                                        metrics.remove(i);
-                                        break;
-                                    }
+                        if desc.const_label_pairs.is_empty() {
+                            Some(mf)
+                        } else if metrics.is_empty() {
+                            Some(mf)
+                        } else {
+                            let metric = &metrics[0];
+                            // check that the number of metric labels matches the sum(desc const labels + variable labels)
+                            if metric.get_label().len()
+                                != (desc.const_label_pairs.len() + desc.variable_labels.len())
+                            {
+                                None
+                            } else if !desc.const_label_pairs.iter().any(|desc_label_pair| {
+                                metric
+                                    .get_label()
+                                    .iter()
+                                    .any(|metric_label_pair| metric_label_pair != desc_label_pair)
+                            }) {
+                                None
+                            } else {
+                                // check that all label names match
+                                let metric_label_names: HashSet<_> = metric
+                                    .get_label()
+                                    .iter()
+                                    .map(|label_pair| label_pair.get_name())
+                                    .collect();
+                                if desc
+                                    .variable_labels
+                                    .iter()
+                                    .any(|label| !metric_label_names.contains(label.as_str()))
+                                {
+                                    None
+                                } else {
+                                    Some(mf)
                                 }
-                                i += 1
                             }
                         }
-                        Some(mf)
                     }
                 }
             })
@@ -751,12 +765,12 @@ impl MetricRegistry {
             })
         });
 
-        collectors.iter()
+        collectors
+            .iter()
             .flat_map(|c| c.collect())
             .map(|mut mf| {
                 let metrics = mf.mut_metric();
                 let mut i = 0;
-
                 while i < metrics.len() {
                     let metric = &metrics[i];
                     if !metric.get_label().iter().any(|label_pair| {
@@ -766,12 +780,12 @@ impl MetricRegistry {
                     }) {
                         metrics.remove(i);
                     } else {
-                        println!("{:#?}", metric)
+                        i += 1
                     }
-                    i += 1
                 }
                 mf
-            }).collect()
+            })
+            .collect()
     }
 
     /// gather metrics for collectors for the specified metric fully qualified names

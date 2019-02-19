@@ -805,23 +805,7 @@ fn registry_gather_metrics() {
     configure_logging();
     let metric_registry = MetricRegistry::default();
 
-    // Given a metric is registered with a random MetricId
-    let timer = metric_registry
-        .register_histogram_vec(
-            MetricId::generate(),
-            "ReqRep processor timer",
-            &[LabelId::generate()],
-            vec![0.0, 1.0, 5.0],
-            Some({
-                let mut labels = HashMap::new();
-                labels.insert(LabelId::generate(), "A".to_string());
-                labels
-            }),
-        )
-        .unwrap();
-    timer.with_label_values(&["1"]).observe(0.2);
-
-    // And 2 metrics are registered with the same MetricId and LabelId, but different const label values
+    // Given 2 metrics are registered with the same MetricId and LabelId, but different const label values
     let metric_id = MetricId::generate();
     let label_id = LabelId::generate();
     let var_label_id = LabelId::generate();
@@ -855,25 +839,56 @@ fn registry_gather_metrics() {
         assert_eq!(mfs.len(), 1);
     }
 
-    // And each MetricFamily for the above 2 MetricVec(s) will have 2 metrics
     let desc = descs
         .iter()
         .find(|desc| desc.fq_name == metric_id.name())
         .unwrap();
-    assert_eq!(
-        mfs.iter()
-            .find(|mf| mf.get_name() == desc.fq_name.as_str())
-            .unwrap()
-            .get_metric()
-            .len(),
-        4
-    );
-    // When metrics are gathered for each desc
+    // And each MetricFamily will have 4 metrics (1 for each variable label value) for a total of 4 metrics for the same MetricId
+    assert!(mfs
+        .iter()
+        .filter(|mf| mf.get_name() == desc.fq_name.as_str())
+        .all(|mf| mf.get_metric().len() == 4));
+    // When metrics are gathered for desc,id
     let mfs = metric_registry.gather_for_desc_ids(&[desc.id]);
+    info!("{:#?}", mfs);
     for mf in mfs {
-        // Then the returned MetricFamily will only contain the metric for that Desc
-        assert_eq!(mf.get_metric().len(), 1);
+        // Then the returned MetricFamily will only contain the metrics for that Desc
+        assert_eq!(mf.get_metric().len(), 2);
     }
+}
+
+#[test]
+fn registry_gather_metrics_for_labels() {
+    configure_logging();
+    let metric_registry = MetricRegistry::default();
+
+    // Given 2 metrics are registered with the same MetricId and LabelId, but different const label values
+    let metric_id = MetricId::generate();
+    let label_id = LabelId::generate();
+    let var_label_id = LabelId::generate();
+    for i in 0..2 {
+        let timer = metric_registry
+            .register_histogram_vec(
+                metric_id,
+                "ReqRep processor timer",
+                &[var_label_id],
+                vec![0.0, 1.0, 5.0],
+                Some(hashmap! {
+                    label_id => format!("{}",i)
+                }),
+            )
+            .unwrap();
+        // And metrics are observed across 2 dimensions
+        timer.with_label_values(&["1"]).observe(1.2);
+        timer.with_label_values(&["2"]).observe(2.2);
+    }
+
+    let mfs = metric_registry.gather_for_labels(hashmap! {
+        var_label_id.name() => "1".to_string()
+    });
+    info!("{:#?}", mfs);
+    assert_eq!(mfs.len(), 2);
+    assert!(mfs.iter().all(|mf| mf.get_metric().len() == 1));
 }
 
 #[test]

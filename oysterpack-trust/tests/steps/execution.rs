@@ -22,12 +22,7 @@ use oysterpack_trust::{
     concurrent::execution::{self, *},
     metrics,
 };
-use std::{
-    collections::{HashSet},
-    num::NonZeroUsize,
-    panic, thread,
-    time::Duration,
-};
+use std::{collections::HashSet, num::NonZeroUsize, panic, thread, time::Duration};
 
 steps!(TestContext => {
 
@@ -250,6 +245,10 @@ fn check_metrics_against_executor(world: &mut TestContext) {
 
     println!("ExecutorId: {}", executor_id);
     println!("count = {}\n{:#?}", metric_families.len(), metric_families);
+    assert!(
+        metric_families.iter().all(|mf| mf.get_metric().len() == 1),
+        "Each MetricFamily should return the metric for the specified Executor"
+    );
 }
 
 fn run_tasks(
@@ -332,7 +331,7 @@ fn await_tasks_completed(world: &mut TestContext) {
             "await_tasks_completed(): {}",
             world.executor.active_task_count()
         );
-        thread::yield_now();
+        thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -342,7 +341,7 @@ fn await_tasks_completed_while_gt(world: &mut TestContext, count: u64) {
             "await_tasks_completed_while_gt(): {}",
             world.executor.active_task_count()
         );
-        thread::yield_now();
+        thread::sleep(Duration::from_millis(1));
     }
 }
 
