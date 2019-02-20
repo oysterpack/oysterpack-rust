@@ -363,12 +363,12 @@ impl MetricRegistry {
     /// Returns collectors that match against the specified filter
     pub fn filter_collectors<F>(&self, mut filter: F) -> Vec<ArcCollector>
     where
-        F: FnMut(&ArcCollector) -> bool,
+        F: FnMut(&Collector) -> bool,
     {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .filter(|collector| filter(collector))
+            .filter(|collector| filter(*collector))
             .cloned()
             .collect()
     }
@@ -409,7 +409,7 @@ impl MetricRegistry {
     }
 
     /// Returns collectors that contain metric descriptors for the specified MetricId
-    pub fn collectors_for_desc_id(&self, desc_id: u64) -> Option<ArcCollector> {
+    pub fn collectors_for_desc_id(&self, desc_id: DescId) -> Option<ArcCollector> {
         let collectors = self.filter_collectors(|c| c.desc().iter().any(|desc| desc.id == desc_id));
         collectors.first().cloned()
     }
@@ -704,7 +704,7 @@ impl MetricRegistry {
     ///   i.e., it enables you to gather metrics with specific constant label values
     ///   - if metrics do not have constant labels, then the id maps to `Desc.fq_name`
     /// - the returned MetricFamily will contain only the requested metrics
-    pub fn gather_for_desc_ids(&self, desc_ids: &[u64]) -> Vec<prometheus::proto::MetricFamily> {
+    pub fn gather_for_desc_ids(&self, desc_ids: &[DescId]) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
 
         // find descs that match any of the specified desc_ids
