@@ -16,6 +16,8 @@
 
 //TODO: refactor to make it cleaner
 
+pub mod collectors;
+
 use cucumber_rust::*;
 use maplit::*;
 use oysterpack_trust::metrics::{self, *};
@@ -272,6 +274,15 @@ steps!(TestContext => {
     then regex "01D3XZ6GCY1ECSKMBC6870ZBS0-2" |_world, _matches, _step| {
         check_time_with_result_fn();
     };
+
+    when regex "01D43MQQ1H59ZGJ9G2AMEJB5RF-2" |world, _matches, _step| {
+        world.init();
+        gather_metrics_for_labels(world)
+    };
+
+    then regex "01D43MQQ1H59ZGJ9G2AMEJB5RF-3" |world, _matches, _step| {
+        check_metrics_for_labels(world);
+    };
 });
 
 fn check_time_with_result_fn() {
@@ -292,7 +303,7 @@ fn check_time_fn() {
     let time = metrics::as_float_secs(time);
     println!("time = {} s", time);
     const SECS_1MS: f64 = 0.001;
-    assert!(time >= SECS_1MS && time <= SECS_1MS * 1.1);
+    assert!(time >= SECS_1MS && time <= SECS_1MS * 1.2);
 }
 
 fn get_collector_descs(world: &mut TestContext) {
@@ -313,6 +324,80 @@ fn gather_metrics_for_metric_ids(world: &mut TestContext) {
         .cloned()
         .collect::<Vec<_>>();
     world.metric_families = Some(metrics::registry().gather_for_metric_ids(&metric_ids));
+}
+
+fn register_metrics_with_labels(world: &mut TestContext) {
+    let mut metrics = HashMap::<metrics::MetricId, Arc<dyn prometheus::core::Collector>>::new();
+    let metric_id = metrics::MetricId::generate();
+    let metric = metrics::registry()
+        .register_int_counter(
+            metric_id,
+            "IntCounter with label",
+            Some(hashmap! {
+                metrics::LabelId::generate() => "A".to_string(),
+                metrics::LabelId::generate() => "B".to_string()
+            }),
+        )
+        .unwrap();
+    metrics.insert(metric_id, Arc::new(metric));
+    let metric_id = metrics::MetricId::generate();
+    let metric = metrics::registry()
+        .register_int_counter_vec(
+            metric_id,
+            "IntCounterVec with label",
+            &[metrics::LabelId::generate(), metrics::LabelId::generate()],
+            Some(hashmap! {
+                metrics::LabelId::generate() => "C".to_string(),
+                metrics::LabelId::generate() => "D".to_string()
+            }),
+        )
+        .unwrap();
+    metrics.insert(metric_id, Arc::new(metric));
+    world.metrics = Some(metrics);
+}
+
+fn gather_metrics_for_labels(world: &mut TestContext) {
+    register_metrics_with_labels(world);
+
+    let label_pairs = world
+        .metrics
+        .iter()
+        .map(|metrics| {
+            metrics.values().fold(HashMap::new(), |mut map, collector| {
+                collector
+                    .desc()
+                    .iter()
+                    .flat_map(|desc| desc.const_label_pairs.clone())
+                    .for_each(|label_pair| {
+                        map.insert(
+                            label_pair.get_name().to_string(),
+                            label_pair.get_value().to_string(),
+                        );
+                    });
+                map
+            })
+        })
+        .collect::<Vec<_>>();
+    let label_pairs = label_pairs.first().unwrap();
+
+    let mfs = metrics::registry().gather_for_labels(label_pairs.clone());
+    println!("{:#?}", world.metric_families);
+    assert_eq!(mfs.len(), 2);
+
+    let label_pairs: HashMap<_, _> = label_pairs
+        .iter()
+        .filter(|(_k, v)| v.as_str() == "A".to_string())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let mfs = metrics::registry().gather_for_labels(label_pairs.clone());
+    world.metric_families = Some(mfs);
+}
+
+fn check_metrics_for_labels(world: &mut TestContext) {
+    for mfs in world.metric_families.iter() {
+        assert_eq!(mfs.len(), 1);
+        assert_eq!(mfs.first().unwrap().get_metric().len(), 1);
+    }
 }
 
 fn check_metrics_gathered_for_metric_ids(world: &mut TestContext) {
@@ -575,7 +660,6 @@ fn get_some_metric_collectors(world: &mut TestContext) {
 fn get_metric_collectors_for_metric_ids(world: &mut TestContext) {
     if let Some(ref metrics) = world.metrics {
         let metric_ids = metrics.keys().cloned().collect::<Vec<_>>();
-        world.collectors = Some(metrics::registry().collectors_for_metric_ids(&metric_ids));
     }
 }
 

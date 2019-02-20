@@ -58,6 +58,10 @@ name = "cucumber_metrics"
 harness = false
 
 [[test]]
+name = "cucumber_metrics_collectors"
+harness = false
+
+[[test]]
 name = "cucumber_execution"
 harness = false
 

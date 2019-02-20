@@ -17,7 +17,7 @@
 //! Provides metrics support for [prometheus](https://prometheus.io/).
 //!
 //! ## Features
-//! - *[01D3J441N6BM05NKCBQEVYTZY8]* A global prometheus metrics registry is provided.
+//! - *[01D43V1W2BHDR5MK08D1HFSFZX]* A global prometheus metrics registry is provided.
 //!   - [MetricRegistry](struct.MetricRegistry.html) via [registry()](fn.registry.html)
 //! - *[01D3JAHR4Z02XTJGTNE4D63VRT]* The metric registry supports any `prometheus::core::Collector`
 //!   - any Collector can be [registered](struct.MetricRegistry.html#method.register)
@@ -26,17 +26,18 @@
 //!   - [MetricRegistry::filter_collectors()](struct.MetricRegistry.html#method.filter_collectors)
 //!   - [MetricRegistry::collectors_for_metric_id()](struct.MetricRegistry.html#method.collectors_for_metric_id)
 //!   - [MetricRegistry::collectors_for_metric_ids()](struct.MetricRegistry.html#method.collectors_for_metric_ids)
-//! - *[01D3J441N6BM05NKCBQEVYTZY8]* All prometheus metrics support [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) ULID based names.
+//! - *[01D43V2S6HBV642EKK5YGJNH32]* All prometheus metrics support [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) ULID based names.
 //!   - because naming is hard ...
 //!   -  names should be unique and immutable over time
 //!     - the prometheus metric `help` attribute can be used to provide a human friendly label and short description
 //!   - assigning unique numeric identifiers enables new possibilities, e.g.,
 //!     - enabling metrics to be defined in a database. This enables metrics to be linked and reused across
 //!       applications.
-//! - *[01D3J441N6BM05NKCBQEVYTZY8]* Gathering metrics
-//!   - Metrics can be gathered for all metric collectors.
-//!   - Metrics can be gathered for specified descriptors via the descriptor ID ([MetricRegistry::gather_for_desc_ids()](struct.MetricRegistry.html#method.gather_for_desc_ids)) or name ([MetricRegistry::gather_for_desc_names()](struct.MetricRegistry.html#method.gather_for_desc_names)).
-//!   - Metrics can be gathered for specified MetricId(s) ([MetricRegistry::gather_for_metric_ids()](struct.MetricRegistry.html#method.gather_for_metric_ids)).
+//! - *[01D43V3KAZ276MQZY1TZG793EQ]* Gathering metrics for:
+//!   - all metric collectors
+//!   - descriptors via the descriptor ([MetricRegistry::gather_for_desc_ids()](struct.MetricRegistry.html#method.gather_for_desc_ids)) or name ([MetricRegistry::gather_for_desc_names()](struct.MetricRegistry.html#method.gather_for_desc_names))
+//!   - MetricId(s) ([MetricRegistry::gather_for_metric_ids()](struct.MetricRegistry.html#method.gather_for_metric_ids))
+//!   - labels ([MetricRegistry::gather_for_labels()](struct.MetricRegistry.html#method.gather_for_labels))
 //! - *[01D3JB8ZGW3KJ3VT44VBCZM3HA]* A process metrics Collector is automatically registered with the global metrics registry
 //!   - The prometheus "process" feature provides `prometheus::process_collector::ProcessCollector`.
 //!   - [MetricRegistry::gather_process_metrics()](/struct.MetricRegistry.html#method.gather_process_metrics)
@@ -94,6 +95,9 @@ lazy_static! {
     /// Global metrics registry
     static ref METRIC_REGISTRY: MetricRegistry = MetricRegistry::default();
 }
+
+/// Metric Desc ID
+pub type DescId = u64;
 
 /// Returns the global metric registry
 pub fn registry() -> &'static MetricRegistry {
@@ -370,15 +374,17 @@ impl MetricRegistry {
     }
 
     /// Returns collectors that contain metric descriptors for the specified MetricId(s)
-    pub fn collectors_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<ArcCollector> {
-        let metric_names = metric_ids
-            .iter()
-            .map(|id| id.name())
-            .collect::<fnv::FnvHashSet<_>>();
-        self.filter_collectors(|c| {
-            c.desc()
-                .iter()
-                .any(|desc| metric_names.contains(&desc.fq_name))
+    pub fn collectors_for_metric_ids(
+        &self,
+        metric_ids: &[MetricId],
+    ) -> fnv::FnvHashMap<MetricId, Vec<ArcCollector>> {
+        let map = fnv::FnvHashMap::with_capacity_and_hasher(metric_ids.len(), Default::default());
+        metric_ids.iter().fold(map, |mut map, metric_id| {
+            let collectors = self.collectors_for_metric_id(*metric_id);
+            if !collectors.is_empty() {
+                map.insert(*metric_id, collectors);
+            }
+            map
         })
     }
 
@@ -388,10 +394,36 @@ impl MetricRegistry {
         self.filter_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
     }
 
+    /// Returns collectors that contain metric descriptors for the specified Desc IDs
+    pub fn collectors_for_desc_ids(
+        &self,
+        desc_ids: &[DescId],
+    ) -> fnv::FnvHashMap<DescId, ArcCollector> {
+        let map = fnv::FnvHashMap::with_capacity_and_hasher(desc_ids.len(), Default::default());
+        desc_ids.iter().fold(map, |mut map, desc_id| {
+            if let Some(collector) = self.collectors_for_desc_id(*desc_id) {
+                map.insert(*desc_id, collector);
+            }
+            map
+        })
+    }
+
+    /// Returns collectors that contain metric descriptors for the specified MetricId
+    pub fn collectors_for_desc_id(&self, desc_id: u64) -> Option<ArcCollector> {
+        let collectors = self.filter_collectors(|c| c.desc().iter().any(|desc| desc.id == desc_id));
+        collectors.first().cloned()
+    }
+
     /// Returns the registered collectors
     pub fn collectors(&self) -> Vec<ArcCollector> {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors.iter().cloned().collect()
+    }
+
+    /// Returns the number of registered collectors
+    pub fn collector_count(&self) -> usize {
+        let metric_collectors = self.metric_collectors.read().unwrap();
+        metric_collectors.len()
     }
 
     /// Returns the number of metric families that would be gathered without gathering metrics.
@@ -408,12 +440,6 @@ impl MetricRegistry {
             .collect::<Vec<_>>();
         desc_names.dedup_by(|desc1, desc2| desc1.fq_name == desc2.fq_name);
         desc_names.len()
-    }
-
-    /// Returns the number of registered collectors
-    pub fn collector_count(&self) -> usize {
-        let metric_collectors = self.metric_collectors.read().unwrap();
-        metric_collectors.len()
     }
 
     /// Tries to register an IntGauge metric
@@ -694,34 +720,34 @@ impl MetricRegistry {
                     .any(|desc| desc_ids.iter().any(|desc_id| *desc_id == desc.id))
             })
             .flat_map(|collector| collector.collect())
-            .filter_map(|mf| {
-                // filter out MetricFamily that does not match any Desc
-                // a collector may return multiple MetricFamily
-                match descs
-                    .iter()
-                    .find(|desc| desc.fq_name.as_str() == mf.get_name())
-                {
-                    None => None,
-                    Some(desc) => {
+            .filter(|mf| {
+                // filter out MetricFamily that do not match any Desc
+                // - a collector may return more than 1 MetricFamily because it has multiple Desc(s)
+                descs.iter().any(|desc| {
+                    if desc.fq_name.as_str() == mf.get_name() {
                         let metrics = mf.get_metric();
-                        if desc.const_label_pairs.is_empty() {
-                            Some(mf)
-                        } else if metrics.is_empty() {
-                            Some(mf)
+
+                        if desc.const_label_pairs.is_empty() || metrics.is_empty() {
+                            true
                         } else {
                             let metric = &metrics[0];
                             // check that the number of metric labels matches the sum(desc const labels + variable labels)
-                            if metric.get_label().len()
-                                != (desc.const_label_pairs.len() + desc.variable_labels.len())
-                            {
-                                None
-                            } else if !desc.const_label_pairs.iter().any(|desc_label_pair| {
-                                metric
-                                    .get_label()
-                                    .iter()
-                                    .any(|metric_label_pair| metric_label_pair != desc_label_pair)
-                            }) {
-                                None
+
+                            let label_count_matches = || {
+                                metric.get_label().len()
+                                    != (desc.const_label_pairs.len() + desc.variable_labels.len())
+                            };
+
+                            let const_labels_match = || {
+                                desc.const_label_pairs.iter().any(|desc_label_pair| {
+                                    metric.get_label().iter().any(|metric_label_pair| {
+                                        metric_label_pair != desc_label_pair
+                                    })
+                                })
+                            };
+
+                            if label_count_matches() || !const_labels_match() {
+                                false
                             } else {
                                 // check that all label names match
                                 let metric_label_names: HashSet<_> = metric
@@ -729,19 +755,15 @@ impl MetricRegistry {
                                     .iter()
                                     .map(|label_pair| label_pair.get_name())
                                     .collect();
-                                if desc
-                                    .variable_labels
+                                desc.variable_labels
                                     .iter()
-                                    .any(|label| !metric_label_names.contains(label.as_str()))
-                                {
-                                    None
-                                } else {
-                                    Some(mf)
-                                }
+                                    .all(|label| metric_label_names.contains(label.as_str()))
                             }
                         }
+                    } else {
+                        false
                     }
-                }
+                })
             })
             .collect()
     }
@@ -773,11 +795,14 @@ impl MetricRegistry {
                 let mut i = 0;
                 while i < metrics.len() {
                     let metric = &metrics[i];
-                    if !metric.get_label().iter().any(|label_pair| {
-                        labels
-                            .get(label_pair.get_name())
-                            .map_or(false, |value| label_pair.get_value() == value.as_str())
-                    }) {
+                    let contains_label = || {
+                        metric.get_label().iter().any(|label_pair| {
+                            labels
+                                .get(label_pair.get_name())
+                                .map_or(false, |value| label_pair.get_value() == value.as_str())
+                        })
+                    };
+                    if !contains_label() {
                         metrics.remove(i);
                     } else {
                         i += 1

@@ -1,8 +1,10 @@
-Feature: [01D3J441N6BM05NKCBQEVYTZY8] Gathering metrics
+Feature: [01D43V3KAZ276MQZY1TZG793EQ] Gathering metrics
 
-  Metrics can be gathered for all metric collectors.
-  Metrics can be gathered for specified descriptors via the descriptor ID or name.
-  Metrics can be gathered for specified MetricId(s).
+  Metrics can be gathered for:
+  - all metric collectors.
+  - descriptors via the descriptor ID or name.
+  - MetricId(s)
+  - labels
 
   Background:
     Given [01D3J441N6BM05NKCBQEVYTZY8] metrics are registered for the following types:
@@ -32,3 +34,7 @@ Feature: [01D3J441N6BM05NKCBQEVYTZY8] Gathering metrics
   Scenario: [01D3VC85Q8MVBJ543SHZ4RE9T2] Gather metrics for specified MetricId(s)
     When [01D3VC85Q8MVBJ543SHZ4RE9T2-2] metrics are gathered
     Then [01D3VC85Q8MVBJ543SHZ4RE9T2-3] metrics are returned for specified MetricId(s)
+
+  Scenario: [01D43MQQ1H59ZGJ9G2AMEJB5RF] Gather metrics for specified labels
+    When [01D43MQQ1H59ZGJ9G2AMEJB5RF-2] metrics are gathered
+    Then [01D43MQQ1H59ZGJ9G2AMEJB5RF-3] metrics are returned for specified labels
