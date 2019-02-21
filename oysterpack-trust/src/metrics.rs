@@ -332,9 +332,9 @@ impl MetricRegistry {
     }
 
     /// Collects descriptors for registered metrics that match the specified filter
-    pub fn filter_descs<F>(&self, mut filter: F) -> Vec<prometheus::core::Desc>
+    pub fn filter_descs<F>(&self, filter: F) -> Vec<prometheus::core::Desc>
     where
-        F: FnMut(&prometheus::core::Desc) -> bool,
+        F: Fn(&prometheus::core::Desc) -> bool,
     {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
@@ -361,9 +361,9 @@ impl MetricRegistry {
     }
 
     /// Returns collectors that match against the specified filter
-    pub fn filter_collectors<F>(&self, mut filter: F) -> Vec<ArcCollector>
+    pub fn filter_collectors<F>(&self, filter: F) -> Vec<ArcCollector>
     where
-        F: FnMut(&Collector) -> bool,
+        F: Fn(&Collector) -> bool,
     {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
