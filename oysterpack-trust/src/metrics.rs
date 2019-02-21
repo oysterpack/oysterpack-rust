@@ -293,6 +293,16 @@ pub fn new_histogram_vec<S: BuildHasher>(
     prometheus::HistogramVec::new(opts, &label_names)
 }
 
+/// Tries to parse the descriptor name into a MetricId.
+/// - expected format: `M{ULID}`, e.g, `M01D3SF3R0DTBTVRKC9PFHQEEM9`
+/// - returns None, if the descriptor name is not a valid MetricId
+pub fn parse_desc_metric_id(desc: &prometheus::core::Desc) -> Option<MetricId> {
+    if desc.fq_name.len() == 27 {
+        desc.fq_name.as_str().parse().ok()
+    } else {
+        None
+    }
+}
 /// Metric Registry
 /// - process metrics collector is automatically added
 pub struct MetricRegistry {
@@ -332,7 +342,7 @@ impl MetricRegistry {
     }
 
     /// Collects descriptors for registered metrics that match the specified filter
-    pub fn filter_descs<F>(&self, filter: F) -> Vec<prometheus::core::Desc>
+    pub fn find_descs<F>(&self, filter: F) -> Vec<prometheus::core::Desc>
     where
         F: Fn(&prometheus::core::Desc) -> bool,
     {
@@ -351,17 +361,28 @@ impl MetricRegistry {
             .iter()
             .map(|id| id.name())
             .collect::<fnv::FnvHashSet<_>>();
-        self.filter_descs(|desc| metric_names.contains(&desc.fq_name))
+        self.find_descs(|desc| metric_names.contains(&desc.fq_name))
     }
 
     /// Returns descriptors for the specified MetricId
     pub fn descs_for_metric_id(&self, metric_id: MetricId) -> Vec<prometheus::core::Desc> {
         let metric_name = metric_id.name();
-        self.filter_descs(|desc| desc.fq_name == metric_name)
+        self.find_descs(|desc| desc.fq_name == metric_name)
+    }
+
+    /// Returns metric descriptors that match the specified const labels
+    pub fn descs_for_labels(&self, labels: HashMap<String, String>) -> Vec<prometheus::core::Desc> {
+        self.find_descs(|desc| {
+            desc.const_label_pairs.iter().any(|label_pair| {
+                labels
+                    .get(label_pair.get_name())
+                    .map_or(false, |value| value == label_pair.get_value())
+            })
+        })
     }
 
     /// Returns collectors that match against the specified filter
-    pub fn filter_collectors<F>(&self, filter: F) -> Vec<ArcCollector>
+    pub fn find_collectors<F>(&self, filter: F) -> Vec<ArcCollector>
     where
         F: Fn(&Collector) -> bool,
     {
@@ -391,7 +412,7 @@ impl MetricRegistry {
     /// Returns collectors that contain metric descriptors for the specified MetricId
     pub fn collectors_for_metric_id(&self, metric_id: MetricId) -> Vec<ArcCollector> {
         let metric_name = metric_id.name();
-        self.filter_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
+        self.find_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
     }
 
     /// Returns collectors that contain metric descriptors for the specified Desc IDs
@@ -410,7 +431,7 @@ impl MetricRegistry {
 
     /// Returns collectors that contain metric descriptors for the specified MetricId
     pub fn collectors_for_desc_id(&self, desc_id: DescId) -> Option<ArcCollector> {
-        let collectors = self.filter_collectors(|c| c.desc().iter().any(|desc| desc.id == desc_id));
+        let collectors = self.find_collectors(|c| c.desc().iter().any(|desc| desc.id == desc_id));
         collectors.first().cloned()
     }
 
@@ -708,7 +729,7 @@ impl MetricRegistry {
         let collectors = self.metric_collectors.read().unwrap();
 
         // find descs that match any of the specified desc_ids
-        let descs = self.filter_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
+        let descs = self.find_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
 
         collectors
             .iter()
@@ -773,7 +794,7 @@ impl MetricRegistry {
         &self,
         labels: HashMap<String, String>,
     ) -> Vec<prometheus::proto::MetricFamily> {
-        let collectors = self.filter_collectors(|c| {
+        let collectors = self.find_collectors(|c| {
             c.desc().iter().any(|d| {
                 d.variable_labels
                     .iter()

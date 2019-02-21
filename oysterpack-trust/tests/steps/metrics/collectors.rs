@@ -70,7 +70,7 @@ steps!(World => {
     // Feature: [01D3SF69J8P9T9PSKEXKQJV1ME] Collectors can be retrieved selectively by applying filters
 
     when regex "01D3PX3BGCMV2PS6FDXHH0ZEB1" |world, _matches, step| {
-        world.collectors = metrics::registry().filter_collectors(|collector| collector.desc().len() == world.desc().len());
+        world.collectors = metrics::registry().find_collectors(|collector| collector.desc().len() == world.desc().len());
     };
 
     then regex "01D3PX3BGCMV2PS6FDXHH0ZEB1" |world, _matches, step| {
@@ -212,7 +212,7 @@ fn check_all_descs_match(world: &mut World) {
 
 fn check_collector_is_registered(world: &mut World) {
     let desc_ids: HashSet<_> = world.desc().iter().map(|desc| desc.id).collect();
-    let collectors = metrics::registry().filter_collectors(|collector| {
+    let collectors = metrics::registry().find_collectors(|collector| {
         let descs = collector.desc();
         descs.len() == desc_ids.len() && descs.iter().all(|desc| desc_ids.contains(&desc.id))
     });
@@ -221,7 +221,7 @@ fn check_collector_is_registered(world: &mut World) {
 
 fn check_collector_descs_from_registry(world: &mut World) {
     let desc_ids: HashSet<_> = world.desc().iter().map(|desc| desc.id).collect();
-    let descs = metrics::registry().filter_descs(|desc| desc_ids.contains(&desc.id));
+    let descs = metrics::registry().find_descs(|desc| desc_ids.contains(&desc.id));
     assert_eq!(descs.len(), desc_ids.len());
 }
 

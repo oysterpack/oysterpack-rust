@@ -1014,7 +1014,7 @@ fn registry_gather_metrics_by_name() {
         assert_eq!(mf.get_metric().len(), 2);
     }
 
-    let collectors = metric_registry.filter_collectors(|collector| {
+    let collectors = metric_registry.find_collectors(|collector| {
         collector
             .desc()
             .iter()
@@ -1022,7 +1022,7 @@ fn registry_gather_metrics_by_name() {
     });
     assert_eq!(collectors.len(), 2);
 
-    let collectors = metric_registry.filter_collectors(|collector| {
+    let collectors = metric_registry.find_collectors(|collector| {
         collector
             .desc()
             .iter()

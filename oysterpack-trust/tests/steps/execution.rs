@@ -236,7 +236,7 @@ fn check_metrics_against_executor(world: &mut TestContext) {
         .collect();
     assert_eq!(mfs.len(), 4);
     let metric_names: HashSet<_> = mfs.iter().map(|mf| mf.get_name().to_string()).collect();
-    let descs = metrics::registry().filter_descs(|desc| metric_names.contains(&desc.fq_name));
+    let descs = metrics::registry().find_descs(|desc| metric_names.contains(&desc.fq_name));
     assert_eq!(descs.len(), 4);
     let labels = hashmap! {
         execution::EXECUTOR_ID_LABEL_ID.name() => executor_id.to_string()

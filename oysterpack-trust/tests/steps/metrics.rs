@@ -17,6 +17,7 @@
 //TODO: refactor to make it cleaner
 
 pub mod collectors;
+pub mod descriptors;
 
 use cucumber_rust::*;
 use maplit::*;
@@ -433,7 +434,7 @@ fn check_process_metric_descs_gathered(world: &mut TestContext) {
 }
 
 fn gather_process_metric_descs(world: &mut TestContext) {
-    world.descs = Some(metrics::registry().filter_descs(|desc| {
+    world.descs = Some(metrics::registry().find_descs(|desc| {
         ProcessMetrics::METRIC_NAMES
             .iter()
             .any(|name| *name == desc.fq_name)
@@ -537,7 +538,7 @@ fn desc_matches(desc: &prometheus::core::Desc) -> bool {
 }
 
 fn gather_descs_with_filter(world: &mut TestContext) {
-    world.descs = Some(metrics::registry().filter_descs(desc_matches));
+    world.descs = Some(metrics::registry().find_descs(desc_matches));
 }
 
 fn check_descs_returned_match_filter(world: &mut TestContext) {
@@ -649,7 +650,7 @@ fn get_all_metric_collectors(world: &mut TestContext) {
 fn get_some_metric_collectors(world: &mut TestContext) {
     let mut descs = metrics::registry().descs();
     let descs = descs.split_off(descs.len() / 2);
-    world.collectors = Some(metrics::registry().filter_collectors(|c| {
+    world.collectors = Some(metrics::registry().find_collectors(|c| {
         c.desc()
             .iter()
             .any(|desc| descs.iter().any(|desc2| desc.id == desc2.id))
@@ -684,7 +685,7 @@ fn check_collector_descs_match_metric_ids(world: &mut TestContext) {
 fn check_collector_is_registered(world: &mut TestContext) {
     if let Some(ref collector) = world.collector {
         metrics::registry()
-            .filter_collectors(|registered_collector| {
+            .find_collectors(|registered_collector| {
                 let registered_descs = registered_collector.desc();
                 let descs = collector.desc();
                 if registered_descs.len() == descs.len() {
@@ -721,7 +722,7 @@ fn check_collector_descs(world: &mut TestContext) {
 
         let expected_desc_count = desc_ids.len();
         let actual_desc_count = metrics::registry()
-            .filter_descs(|desc| desc_ids.contains(&desc.id))
+            .find_descs(|desc| desc_ids.contains(&desc.id))
             .len();
         assert_eq!(actual_desc_count, expected_desc_count);
     }
@@ -765,7 +766,7 @@ fn check_metric_names_are_metric_ids(world: &mut TestContext) {
             let metric_name = metric_id.name();
             let metric_name = metric_name.as_str();
             assert!(!registry
-                .filter_descs(|desc| desc.fq_name == metric_name)
+                .find_descs(|desc| desc.fq_name == metric_name)
                 .is_empty());
             // ensure collectors can be looked via MetricId
             assert!(!registry.collectors_for_metric_id(metric_id).is_empty());
@@ -780,7 +781,7 @@ fn check_label_names_are_label_ids(world: &mut TestContext) {
             let metric_name = metric_id.name();
             let metric_name = metric_name.as_str();
             let all_label_names_can_be_parsed_into_label_ids = registry
-                .filter_descs(|desc| {
+                .find_descs(|desc| {
                     !desc.const_label_pairs.is_empty() && desc.fq_name == metric_name
                 })
                 .iter()
@@ -806,7 +807,7 @@ fn register_counter_with_const_labels(world: &mut TestContext) {
 
 fn register_gauge_with_dup_desc(world: &mut TestContext) {
     let metric_id = world.metric_id.unwrap();
-    let desc = metrics::registry().filter_descs(|desc| desc.fq_name == metric_id.name().as_str());
+    let desc = metrics::registry().find_descs(|desc| desc.fq_name == metric_id.name().as_str());
     let desc = desc.first().unwrap();
     let labels = desc
         .const_label_pairs
@@ -825,7 +826,7 @@ fn register_gauge_with_dup_desc(world: &mut TestContext) {
 
 fn register_gauge_with_different_const_label_values(world: &mut TestContext) {
     let metric_id = world.metric_id.unwrap();
-    let desc = metrics::registry().filter_descs(|desc| desc.fq_name == metric_id.name().as_str());
+    let desc = metrics::registry().find_descs(|desc| desc.fq_name == metric_id.name().as_str());
     let desc = desc.first().unwrap();
     let labels = desc
         .const_label_pairs
@@ -851,7 +852,7 @@ fn check_metric_id_desc_count(world: &mut TestContext, expected_count: usize) {
             let name = metric_id.name();
             assert_eq!(
                 metrics::registry()
-                    .filter_descs(|desc| desc.fq_name == name.as_str())
+                    .find_descs(|desc| desc.fq_name == name.as_str())
                     .len(),
                 expected_count
             )
