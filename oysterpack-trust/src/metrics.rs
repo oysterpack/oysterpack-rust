@@ -371,7 +371,7 @@ impl MetricRegistry {
     }
 
     /// Returns metric descriptors that match the specified const labels
-    pub fn descs_for_labels(&self, labels: HashMap<String, String>) -> Vec<prometheus::core::Desc> {
+    pub fn descs_for_labels(&self, labels: &HashMap<String, String>) -> Vec<prometheus::core::Desc> {
         self.find_descs(|desc| {
             desc.const_label_pairs.iter().any(|label_pair| {
                 labels
@@ -613,16 +613,30 @@ impl MetricRegistry {
         self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
+    /// Descriptor `help` max length
+    pub const DESC_HELP_MAX_LEN: usize = 250;
+
     fn check_help(help: &str) -> Result<String, prometheus::Error> {
         let help = help.trim();
         if help.is_empty() {
-            Err(prometheus::Error::Msg(
-                "help is required and cannot be blank".to_string(),
-            ))
-        } else {
-            Ok(help.to_string())
+            return Err(prometheus::Error::Msg(
+                "`help` is required and cannot be blank".to_string(),
+            ));
         }
+
+        if help.len() > Self::DESC_HELP_MAX_LEN {
+            return Err(prometheus::Error::Msg(
+                format!("`help` max length is {}, but length was {}", Self::DESC_HELP_MAX_LEN, help.len()),
+            ));
+        }
+
+        Ok(help.to_string())
     }
+
+    /// Descriptor `label name` max length
+    pub const DESC_LABEL_NAME_LEN: usize = 120;
+    /// Descriptor `label value` max length
+    pub const DESC_LABEL_VALUE_LEN: usize = 120;
 
     fn check_const_labels<S: BuildHasher>(
         const_labels: Option<HashMap<LabelId, String, S>>,
@@ -639,6 +653,12 @@ impl MetricRegistry {
                             "Const label value cannot be blank".to_string(),
                         ));
                     }
+                    if value.len() > Self::DESC_LABEL_VALUE_LEN {
+                        return Err(prometheus::Error::Msg(
+                            format!("`label value` max length is {}, but length was {}", Self::DESC_LABEL_VALUE_LEN, value.len()),
+                        ));
+                    }
+
                     trimmed_const_labels.insert(key, value);
                 }
                 Ok(Some(trimmed_const_labels))

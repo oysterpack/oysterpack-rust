@@ -35,6 +35,6 @@ Feature: [01D3SF7KGJZZM50TXXW5HX4N99] Find descriptors matching filters
     When [01D48TKY8GJJ56Z14NAX000DPZ] retrieving descriptors
     Then [01D48TKY8GJJ56Z14NAX000DPZ] no descriptors are returned
 
-  Scenario: [01D48TK6AMZCQ5CNYMJC0NVR37] Find descriptors against an empty label
+  Scenario: [01D48TK6AMZCQ5CNYMJC0NVR37] Find descriptors against an empty labels HashMap
     When [01D48TK6AMZCQ5CNYMJC0NVR37] retrieving descriptors
     Then [01D48TK6AMZCQ5CNYMJC0NVR37] no descriptors are returned
