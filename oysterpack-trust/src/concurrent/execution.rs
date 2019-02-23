@@ -170,7 +170,7 @@ pub fn total_threads() -> usize {
     registry
         .thread_pools
         .values()
-        .map(|executor| executor.thread_pool_size())
+        .map(Executor::thread_pool_size)
         .sum::<usize>()
         + registry.global_executor.thread_pool_size()
 }
@@ -568,12 +568,12 @@ impl ExecutorBuilder {
 
     /// Returns the thread stack size
     pub fn stack_size(&self) -> Option<usize> {
-        self.stack_size.map(|size| size.get())
+        self.stack_size.map(NonZeroUsize::get)
     }
 
     /// Returns the thread stack size
     pub fn pool_size(&self) -> Option<usize> {
-        self.pool_size.map(|size| size.get())
+        self.pool_size.map(NonZeroUsize::get)
     }
 
     fn builder(&self) -> ThreadPoolBuilder {

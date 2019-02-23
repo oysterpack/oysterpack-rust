@@ -39,15 +39,15 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
 
   Rule: descriptor `help` max length is 250
 
-  Scenario: [01D4B0S8QW63C6YFCB83CQZXA7] Register metrics with a help message length of 120
+  Scenario: [01D4B0S8QW63C6YFCB83CQZXA7] Register metrics with a help message length of 250
     When [01D4B0S8QW63C6YFCB83CQZXA7] registering metrics for each of the MetricId supported types
     Then [01D4B0S8QW63C6YFCB83CQZXA7] the metrics will succeed to register
 
-  Scenario: [01D4B0RS3V7NHCPDSPQTJDNB6C] Register metrics with a help message length of 121
+  Scenario: [01D4B0RS3V7NHCPDSPQTJDNB6C] Register metrics with a help message length of 251
     When [01D4B0RS3V7NHCPDSPQTJDNB6C] registering metrics for each of the MetricId supported types
     Then [01D4B0RS3V7NHCPDSPQTJDNB6C] the metrics will fail to register
 
-  Scenario: [01D4B0S1J3XV06GEZJGA9Q5F8V] Register a collector containing multiple descriptors where 1 descriptor has a help message length of 121
+  Scenario: [01D4B0S1J3XV06GEZJGA9Q5F8V] Register a collector containing multiple descriptors where 1 descriptor has a help message length of 251
     When [01D4B0S1J3XV06GEZJGA9Q5F8V] registering the collector
     Then [01D4B0S1J3XV06GEZJGA9Q5F8V] the collector will fail to register
 
@@ -65,37 +65,37 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
     When [01D4B0JCKY2ZQNXD0A0CQA89WK] registering the collector
     Then [01D4B0JCKY2ZQNXD0A0CQA89WK] the collector will fail to register
 
-  Rule: descriptor label name or value max length is 120
+  Rule: descriptor label name or value max length is 30
 
-  Scenario: [01D4B0W77XVHM7BP2PJ5M33HK7] Register metrics containing a descriptor with a const label name and value length of 120
+  Scenario: [01D4B0W77XVHM7BP2PJ5M33HK7] Register metrics containing a descriptor with a const label name and value length of 30
     When [01D4B0W77XVHM7BP2PJ5M33HK7] registering metrics for each of the MetricId supported types
     Then [01D4B0W77XVHM7BP2PJ5M33HK7] the metric will succeed to register
 
-  Scenario: [01D4B1TXRQSNKJNGBZ84XBAS55] Register metric vector containing a descriptor with a variable label name length of 120
+  Scenario: [01D4B1TXRQSNKJNGBZ84XBAS55] Register metric vector containing a descriptor with a variable label name length of 30
     When [01D4B1TXRQSNKJNGBZ84XBAS55] registering metric vectors for each of the MetricId supported types
     Then [01D4B1TXRQSNKJNGBZ84XBAS55] the metric will succeed to register
 
-  Scenario: [01D4B0XMQ2ZR2FHZHYM5KSBH90] Register metrics containing a descriptor with a label name and value length of 121
+  Scenario: [01D4B0XMQ2ZR2FHZHYM5KSBH90] Register metrics containing a descriptor with a label name and value length of 31
     When [01D4B0XMQ2ZR2FHZHYM5KSBH90] registering metrics for each of the MetricId supported types
     Then [01D4B0XMQ2ZR2FHZHYM5KSBH90] the metric will fail to register
 
-  Scenario: [01D4B1XP3V78X2HG3Z8NA1H0KH] Register metric vector containing a descriptor with a variable label name length of 121
+  Scenario: [01D4B1XP3V78X2HG3Z8NA1H0KH] Register metric vector containing a descriptor with a variable label name length of 31
     When [01D4B1XP3V78X2HG3Z8NA1H0KH] registering metric vectors for each of the MetricId supported types
     Then [01D4B1XP3V78X2HG3Z8NA1H0KH] the metric will fail to register
 
-  Scenario: [01D4B0YGEN4XF275ZE660W1PRC] Register a collector containing a descriptor with a const label name length of 121
+  Scenario: [01D4B0YGEN4XF275ZE660W1PRC] Register a collector containing a descriptor with a const label name length of 31
     When [01D4B0YGEN4XF275ZE660W1PRC] registering metrics
     Then [01D4B0YGEN4XF275ZE660W1PRC] the metric will fail to register
 
-  Scenario: [01D4B0Y6Y494DYFVE3YVQYXPPR] Register a collector containing a descriptor with a const label value length of 121
+  Scenario: [01D4B0Y6Y494DYFVE3YVQYXPPR] Register a collector containing a descriptor with a const label value length of 31
     When [01D4B0Y6Y494DYFVE3YVQYXPPR] registering metrics
     Then [01D4B0Y6Y494DYFVE3YVQYXPPR] the metric will fail to register
 
-  Scenario: [01D4B1WB02B15YY1MP4BW24Q1P] Register a collector containing a descriptor with a variable label name length of 121
+  Scenario: [01D4B1WB02B15YY1MP4BW24Q1P] Register a collector containing a descriptor with a variable label name length of 31
     When [01D4B1WB02B15YY1MP4BW24Q1P] registering metrics
     Then [01D4B1WB02B15YY1MP4BW24Q1P] the metric will fail to register
 
-  Scenario: [01D4B0Y0GKYDGCB572SKR72H7J] Register a collector containing a descriptor with a help label name length of 121
+  Scenario: [01D4B0Y0GKYDGCB572SKR72H7J] Register a collector containing a descriptor with a help label name length of 31
     When [01D4B0Y0GKYDGCB572SKR72H7J] registering metrics
     Then [01D4B0Y0GKYDGCB572SKR72H7J] the metric will fail to register
 

@@ -32,8 +32,7 @@
 //! services for testing purposes.
 //!
 //! ```rust
-//! # #![feature(async_await)]
-//! # #![feature(await_macro)]
+//! # #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 //! # use oysterpack_trust::concurrent::messaging::reqrep::{self, *};
 //! # use oysterpack_trust::concurrent::execution::*;
 //! # use oysterpack_trust::metrics;

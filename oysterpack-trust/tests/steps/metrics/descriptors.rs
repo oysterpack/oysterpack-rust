@@ -23,9 +23,7 @@ use prometheus::{
     proto::MetricFamily,
     IntCounter, IntGauge,
 };
-use std::collections::{
-    HashSet, HashMap
-};
+use std::collections::{HashMap, HashSet};
 
 steps!(World => {
     // Feature: [01D3SF7KGJZZM50TXXW5HX4N99] All metric descriptors can be retrieved from the metric registry.
@@ -150,7 +148,6 @@ steps!(World => {
     };
 });
 
-
 #[derive(Clone)]
 pub struct World {
     counter: IntCounter,
@@ -159,11 +156,13 @@ pub struct World {
 }
 
 impl World {
-
     fn all_desc_const_labels(&self) -> HashMap<String, String> {
         self.desc().iter().fold(HashMap::new(), |mut map, desc| {
             for label_pair in &desc.const_label_pairs {
-                map.insert(label_pair.get_name().to_string(), label_pair.get_value().to_string());
+                map.insert(
+                    label_pair.get_name().to_string(),
+                    label_pair.get_value().to_string(),
+                );
             }
             map
         })
@@ -189,7 +188,6 @@ impl Collector for World {
             .chain(self.gauge.collect().iter().cloned())
             .collect()
     }
-
 }
 
 impl Default for World {

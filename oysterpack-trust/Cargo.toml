@@ -54,15 +54,15 @@ serde_json = "1.0.37"
 maintenance = {status = "actively-developed"}
 
 [[test]]
-name = "cucumber_metrics"
-harness = false
-
-[[test]]
 name = "cucumber_metrics_collectors"
 harness = false
 
 [[test]]
 name = "cucumber_metrics_descriptors"
+harness = false
+
+[[test]]
+name = "cucumber_metrics_gathering"
 harness = false
 
 [[test]]

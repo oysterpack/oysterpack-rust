@@ -157,7 +157,7 @@ impl SocketConfig {
     /// This option exists to prevent certain kinds of denial-of-service attacks, where a malicious
     /// agent can claim to want to send an extraordinarily large message, without sending any data.
     pub fn recv_max_size(&self) -> Option<usize> {
-        self.recv_max_size.map(|n| n.get())
+        self.recv_max_size.map(NonZeroUsize::get)
     }
 
     /// configures the maximum message size that the will be accepted from a remote peer.
@@ -170,7 +170,7 @@ impl SocketConfig {
     /// The depth of the socket's receive buffer as a number of messages.
     /// Messages received by the transport may be buffered until the application has accepted them for delivery.
     pub fn recv_buffer_size(&self) -> Option<u16> {
-        self.recv_buffer_size.map(|n| n.get())
+        self.recv_buffer_size.map(NonZeroU16::get)
     }
 
     /// configures the depth of the socket's receive buffer as a number of messages.
@@ -185,7 +185,7 @@ impl SocketConfig {
     /// Messages sent by an application may be buffered by the socket until a transport is ready to
     /// accept them for delivery. This value must be an integer between 1 and 8192, inclusive.
     pub fn send_buffer_size(&self) -> Option<u16> {
-        self.send_buffer_size.map(|n| n.get())
+        self.send_buffer_size.map(NonZeroU16::get)
     }
 
     /// maximum allowed setting for send buffer size

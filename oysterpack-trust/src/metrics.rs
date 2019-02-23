@@ -76,6 +76,7 @@
 //! - IntCounter, IntCounterVec, IntGauge, IntGaugeVec
 
 use lazy_static::lazy_static;
+use oysterpack_log::*;
 use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
@@ -171,7 +172,7 @@ pub fn new_gauge_vec<S: BuildHasher>(
         opts = opts.const_labels(const_labels);
     }
 
-    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::GaugeVec::new(opts, &label_names)
 }
 
@@ -191,7 +192,7 @@ pub fn new_int_gauge_vec<S: BuildHasher>(
         opts = opts.const_labels(const_labels);
     }
 
-    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::IntGaugeVec::new(opts, &label_names)
 }
 
@@ -228,7 +229,7 @@ pub fn new_int_counter_vec<S: BuildHasher>(
         opts = opts.const_labels(const_labels);
     }
 
-    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::IntCounterVec::new(opts, &label_names)
 }
 
@@ -248,7 +249,7 @@ pub fn new_counter_vec<S: BuildHasher>(
         opts = opts.const_labels(const_labels);
     }
 
-    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::CounterVec::new(opts, &label_names)
 }
 
@@ -289,7 +290,7 @@ pub fn new_histogram_vec<S: BuildHasher>(
         opts = opts.const_labels(const_labels);
     }
 
-    let label_names: Vec<&str> = label_names.iter().map(|label| label.as_str()).collect();
+    let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::HistogramVec::new(opts, &label_names)
 }
 
@@ -311,6 +312,15 @@ pub struct MetricRegistry {
 }
 
 impl MetricRegistry {
+    /// Descriptor `help` max length
+    pub const DESC_HELP_MAX_LEN: usize = 250;
+    /// Descriptor `label name` max length
+    pub const DESC_METRIC_FQ_NAME_LEN: usize = 30;
+    /// Descriptor `label name` max length
+    pub const DESC_LABEL_NAME_LEN: usize = 30;
+    /// Descriptor `label value` max length
+    pub const DESC_LABEL_VALUE_LEN: usize = 120;
+
     /// Registers a new metrics Collector.
     /// It returns an error if the descriptors provided by the Collector are invalid or if they —
     /// in combination with descriptors of already registered Collectors — do not fulfill the consistency
@@ -336,7 +346,7 @@ impl MetricRegistry {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .flat_map(|collector| collector.desc())
+            .flat_map(prometheus::core::Collector::desc)
             .cloned()
             .collect()
     }
@@ -349,7 +359,7 @@ impl MetricRegistry {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .flat_map(|collector| collector.desc())
+            .flat_map(prometheus::core::Collector::desc)
             .filter(|desc| filter(desc))
             .cloned()
             .collect()
@@ -359,7 +369,7 @@ impl MetricRegistry {
     pub fn descs_for_metric_ids(&self, metric_ids: &[MetricId]) -> Vec<prometheus::core::Desc> {
         let metric_names = metric_ids
             .iter()
-            .map(|id| id.name())
+            .map(MetricId::name)
             .collect::<fnv::FnvHashSet<_>>();
         self.find_descs(|desc| metric_names.contains(&desc.fq_name))
     }
@@ -371,7 +381,10 @@ impl MetricRegistry {
     }
 
     /// Returns metric descriptors that match the specified const labels
-    pub fn descs_for_labels(&self, labels: &HashMap<String, String>) -> Vec<prometheus::core::Desc> {
+    pub fn descs_for_labels(
+        &self,
+        labels: &HashMap<String, String>,
+    ) -> Vec<prometheus::core::Desc> {
         self.find_descs(|desc| {
             desc.const_label_pairs.iter().any(|label_pair| {
                 labels
@@ -457,7 +470,7 @@ impl MetricRegistry {
         let metric_collectors = self.metric_collectors.read().unwrap();
         let mut desc_names = metric_collectors
             .iter()
-            .flat_map(|collector| collector.desc())
+            .flat_map(prometheus::core::Collector::desc)
             .collect::<Vec<_>>();
         desc_names.dedup_by(|desc1, desc2| desc1.fq_name == desc2.fq_name);
         desc_names.len()
@@ -613,9 +626,6 @@ impl MetricRegistry {
         self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
-    /// Descriptor `help` max length
-    pub const DESC_HELP_MAX_LEN: usize = 250;
-
     fn check_help(help: &str) -> Result<String, prometheus::Error> {
         let help = help.trim();
         if help.is_empty() {
@@ -625,18 +635,15 @@ impl MetricRegistry {
         }
 
         if help.len() > Self::DESC_HELP_MAX_LEN {
-            return Err(prometheus::Error::Msg(
-                format!("`help` max length is {}, but length was {}", Self::DESC_HELP_MAX_LEN, help.len()),
-            ));
+            return Err(prometheus::Error::Msg(format!(
+                "`help` max length is {}, but length was {}",
+                Self::DESC_HELP_MAX_LEN,
+                help.len()
+            )));
         }
 
         Ok(help.to_string())
     }
-
-    /// Descriptor `label name` max length
-    pub const DESC_LABEL_NAME_LEN: usize = 120;
-    /// Descriptor `label value` max length
-    pub const DESC_LABEL_VALUE_LEN: usize = 120;
 
     fn check_const_labels<S: BuildHasher>(
         const_labels: Option<HashMap<LabelId, String, S>>,
@@ -654,9 +661,11 @@ impl MetricRegistry {
                         ));
                     }
                     if value.len() > Self::DESC_LABEL_VALUE_LEN {
-                        return Err(prometheus::Error::Msg(
-                            format!("`label value` max length is {}, but length was {}", Self::DESC_LABEL_VALUE_LEN, value.len()),
-                        ));
+                        return Err(prometheus::Error::Msg(format!(
+                            "`label value` max length is {}, but length was {}",
+                            Self::DESC_LABEL_VALUE_LEN,
+                            value.len()
+                        )));
                     }
 
                     trimmed_const_labels.insert(key, value);
@@ -673,7 +682,7 @@ impl MetricRegistry {
                 "At least one label name must be provided".to_string(),
             ));
         }
-        Ok(label_names.iter().map(|label| label.name()).collect())
+        Ok(label_names.iter().map(LabelId::name).collect())
     }
 
     fn check_buckets(buckets: Vec<f64>) -> Result<Vec<f64>, prometheus::Error> {
@@ -750,6 +759,9 @@ impl MetricRegistry {
 
         // find descs that match any of the specified desc_ids
         let descs = self.find_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
+        if descs.is_empty() {
+            return vec![];
+        }
 
         collectors
             .iter()
@@ -760,7 +772,7 @@ impl MetricRegistry {
                     .iter()
                     .any(|desc| desc_ids.iter().any(|desc_id| *desc_id == desc.id))
             })
-            .flat_map(|collector| collector.collect())
+            .flat_map(prometheus::core::Collector::collect)
             .filter(|mf| {
                 // filter out MetricFamily that do not match any Desc
                 // - a collector may return more than 1 MetricFamily because it has multiple Desc(s)
@@ -772,33 +784,33 @@ impl MetricRegistry {
                             true
                         } else {
                             let metric = &metrics[0];
-                            // check that the number of metric labels matches the sum(desc const labels + variable labels)
 
+                            // check that the number of metric labels matches the sum(desc const labels + variable labels)
                             let label_count_matches = || {
                                 metric.get_label().len()
-                                    != (desc.const_label_pairs.len() + desc.variable_labels.len())
+                                    == (desc.const_label_pairs.len() + desc.variable_labels.len())
                             };
 
                             let const_labels_match = || {
-                                desc.const_label_pairs.iter().any(|desc_label_pair| {
+                                desc.const_label_pairs.iter().all(|desc_label_pair| {
                                     metric.get_label().iter().any(|metric_label_pair| {
-                                        metric_label_pair != desc_label_pair
+                                        metric_label_pair == desc_label_pair
                                     })
                                 })
                             };
 
-                            if label_count_matches() || !const_labels_match() {
-                                false
-                            } else {
+                            if label_count_matches() && const_labels_match() {
                                 // check that all label names match
                                 let metric_label_names: HashSet<_> = metric
                                     .get_label()
                                     .iter()
-                                    .map(|label_pair| label_pair.get_name())
+                                    .map(prometheus::proto::LabelPair::get_name)
                                     .collect();
                                 desc.variable_labels
                                     .iter()
                                     .all(|label| metric_label_names.contains(label.as_str()))
+                            } else {
+                                false
                             }
                         }
                     } else {
@@ -830,7 +842,7 @@ impl MetricRegistry {
 
         collectors
             .iter()
-            .flat_map(|c| c.collect())
+            .flat_map(prometheus::core::Collector::collect)
             .map(|mut mf| {
                 let metrics = mf.mut_metric();
                 let mut i = 0;
@@ -883,11 +895,8 @@ impl MetricRegistry {
         &self,
         metric_ids: &[MetricId],
     ) -> Vec<prometheus::proto::MetricFamily> {
-        let metric_names = metric_ids.iter().map(|id| id.name()).collect::<Vec<_>>();
-        let metric_names = metric_names
-            .iter()
-            .map(|id| id.as_str())
-            .collect::<Vec<_>>();
+        let metric_names = metric_ids.iter().map(MetricId::name).collect::<Vec<_>>();
+        let metric_names = metric_names.iter().map(String::as_str).collect::<Vec<_>>();
         self.gather_for_desc_names(&metric_names)
     }
 
@@ -1197,7 +1206,7 @@ impl ProcessMetrics {
                     process_metrics.start_time_seconds =
                         metric_family.get_metric()[0].get_gauge().get_value();
                 }
-                unknown => debug_assert!(false, "unknown process metric: {}", unknown),
+                unknown => warn!("unknown process metric: {}", unknown),
             }
         }
         process_metrics
