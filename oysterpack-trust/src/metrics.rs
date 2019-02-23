@@ -757,6 +757,10 @@ impl MetricRegistry {
     pub fn gather_for_desc_ids(&self, desc_ids: &[DescId]) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
 
+        if desc_ids.is_empty() {
+            return vec![];
+        }
+
         // find descs that match any of the specified desc_ids
         let descs = self.find_descs(|desc| desc_ids.iter().any(|id| *id == desc.id));
         if descs.is_empty() {
@@ -826,6 +830,10 @@ impl MetricRegistry {
         &self,
         labels: &HashMap<String, String>,
     ) -> Vec<prometheus::proto::MetricFamily> {
+        if labels.is_empty() {
+            return vec![];
+        }
+
         let collectors = self.find_collectors(|c| {
             c.desc().iter().any(|d| {
                 d.variable_labels
@@ -840,6 +848,12 @@ impl MetricRegistry {
             })
         });
 
+        let contains_label_pair = |label_pair: &prometheus::proto::LabelPair| {
+            labels
+                .get(label_pair.get_name())
+                .map_or(false, |value| label_pair.get_value() == value.as_str())
+        };
+
         collectors
             .iter()
             .flat_map(prometheus::core::Collector::collect)
@@ -849,11 +863,7 @@ impl MetricRegistry {
                 while i < metrics.len() {
                     let metric = &metrics[i];
                     let contains_label = || {
-                        metric.get_label().iter().any(|label_pair| {
-                            labels
-                                .get(label_pair.get_name())
-                                .map_or(false, |value| label_pair.get_value() == value.as_str())
-                        })
+                        metric.get_label().iter().any(contains_label_pair)
                     };
                     if !contains_label() {
                         metrics.remove(i);
@@ -872,21 +882,27 @@ impl MetricRegistry {
         &self,
         desc_names: &[Name],
     ) -> Vec<prometheus::proto::MetricFamily> {
+        if desc_names.is_empty() {
+            return vec![];
+        }
+
+        let contains_name =
+            |desc_name: &str| desc_names.iter().any(|name| name.as_ref() == desc_name);
+
         let collectors = self.metric_collectors.read().unwrap();
         collectors
             .iter()
             .filter(|collector| {
-                collector.desc().iter().any(|desc| {
-                    desc_names
-                        .iter()
-                        .any(|name| name.as_ref() == desc.fq_name.as_str())
-                })
+                collector
+                    .desc()
+                    .iter()
+                    .any(|desc| contains_name(desc.fq_name.as_str()))
             })
             .flat_map(|collector| {
                 collector
                     .collect()
                     .into_iter()
-                    .filter(|mf| desc_names.iter().any(|name| name.as_ref() == mf.get_name()))
+                    .filter(|mf| contains_name(mf.get_name()))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -897,6 +913,9 @@ impl MetricRegistry {
         &self,
         metric_ids: &[MetricId],
     ) -> Vec<prometheus::proto::MetricFamily> {
+        if metric_ids.is_empty() {
+            return vec![];
+        }
         let metric_names = metric_ids.iter().map(MetricId::name).collect::<Vec<_>>();
         let metric_names = metric_names.iter().map(String::as_str).collect::<Vec<_>>();
         self.gather_for_desc_names(&metric_names)
