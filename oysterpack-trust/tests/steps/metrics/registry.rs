@@ -208,6 +208,20 @@ steps!(World => {
 
     // Rule: descriptor `help` max length is 250
 
+    // Scenario: [01D4B0S8QW63C6YFCB83CQZXA7] Register metrics with a help message length of 250
+    when regex "01D4B0S8QW63C6YFCB83CQZXA7" | world, _matches, _step | {
+        world.metric_id = metrics::MetricId::generate();
+        let mut help = world.metric_id.to_string();
+        while help.len() <  metrics::MetricRegistry::DESC_HELP_MAX_LEN {
+            help.extend(world.metric_id.to_string().chars());
+        }
+        let help = &help[..metrics::MetricRegistry::DESC_HELP_MAX_LEN];
+        metrics::registry().register_counter(world.metric_id, help, None).unwrap();
+    };
+
+    then regex "01D4B0S8QW63C6YFCB83CQZXA7" | world, _matches, _step| {
+        assert_eq!(metrics::registry().descs_for_metric_id(world.metric_id).len(), 1);
+    };
 });
 
 #[derive(Clone)]
