@@ -90,6 +90,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
     time::Duration,
+    iter::Extend
 };
 
 lazy_static! {
@@ -332,16 +333,48 @@ impl MetricRegistry {
         &self,
         collector: impl prometheus::core::Collector + 'static,
     ) -> prometheus::Result<ArcCollector> {
-        // check help is not blank for any Descs
-        let mut help_validation_err: Vec<_> = collector
-            .desc()
-            .iter()
-            .filter_map(|desc| Self::check_help(desc.help.as_str()).err())
-            .take(1)
-            .collect();
-        if let Some(err) = help_validation_err.pop() {
-            return Err(err);
-        }
+        let validate_help = || {
+            let mut help_validation_err: Vec<_> = collector
+                .desc()
+                .iter()
+                .filter_map(|desc| Self::check_help(desc.help.as_str()).err())
+                .take(1)
+                .collect();
+            match help_validation_err.pop() {
+                Some(err) => Err(err),
+                None => Ok(()),
+            }
+        };
+        let validate_labels = || {
+            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
+                let blank_label_values: Vec<_> = desc.const_label_pairs.iter().filter_map(|label_pair| {
+                    let value = label_pair.get_value().trim();
+                    if value.is_empty() {
+                        Some(label_pair.get_name().to_string())
+                    } else {
+                        None
+                    }
+                }).collect();
+                if blank_label_values.is_empty() {
+                    None
+                } else {
+                    Some(format!("Label value must not be blank for: metric name = {}, label names = {:?}", desc.fq_name, blank_label_values))
+                }
+            }).collect();
+            if invalid_descs.is_empty() {
+                Ok(())
+            } else {
+                let mut errs = invalid_descs.iter().fold("".to_string(), |mut errs, err| {
+                    errs.extend(format!("{}\n", err).chars());
+                    errs
+                });
+                errs.pop();
+                Err(prometheus::Error::Msg(errs))
+            }
+        };
+
+        validate_help()?;
+        validate_labels()?;
 
         let collector = ArcCollector::new(collector);
         self.registry.register(Box::new(collector.clone()))?;

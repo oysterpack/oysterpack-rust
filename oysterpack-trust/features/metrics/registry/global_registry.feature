@@ -56,25 +56,20 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
     Then [01D4B0S8QW63C6YFCB83CQZXA7] the metrics will succeed to register
 
   Scenario: [01D4B0RS3V7NHCPDSPQTJDNB6C] Register metrics with a help message length 1 char bigger then the max allowed length
-    When [01D4B0RS3V7NHCPDSPQTJDNB6C] registering metrics for each of the MetricId supported types
     Then [01D4B0RS3V7NHCPDSPQTJDNB6C] the metrics will fail to register
 
   Scenario: [01D4B0S1J3XV06GEZJGA9Q5F8V] Register a collector containing multiple descriptors where 1 descriptor has a help message length 1 char bigger then the max allowed length
-    When [01D4B0S1J3XV06GEZJGA9Q5F8V] registering the collector
     Then [01D4B0S1J3XV06GEZJGA9Q5F8V] the collector will fail to register
 
   Rule: descriptor constant label name or value must not be blank
 
-  Scenario: [01D4B0K42BC2TB0TAA2QP6BRWZ] Register metrics containing a descriptor with a blank label name
-    When [01D4B0K42BC2TB0TAA2QP6BRWZ] registering metrics for each of the MetricId supported types
+  Scenario: [01D4B0K42BC2TB0TAA2QP6BRWZ] Register metrics containing a descriptor with a blank label value
     Then [01D4B0K42BC2TB0TAA2QP6BRWZ] the metric will fail to register
 
-  Scenario: [01D4B0KBWVFHEAVJSRD41TBJ6Z] Register a collector containing a descriptor with a blank label name
-    When [01D4B0KBWVFHEAVJSRD41TBJ6Z] registering the collector
+  Scenario: [01D4B0KBWVFHEAVJSRD41TBJ6Z] Create a new Desc with a blank const label name
     Then [01D4B0KBWVFHEAVJSRD41TBJ6Z] the collector will fail to register
 
   Scenario: [01D4B0JCKY2ZQNXD0A0CQA89WK] Register a collector containing a descriptor with a blank label value
-    When [01D4B0JCKY2ZQNXD0A0CQA89WK] registering the collector
     Then [01D4B0JCKY2ZQNXD0A0CQA89WK] the collector will fail to register
 
   Rule: descriptor label name or value max length is 30
