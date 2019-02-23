@@ -25,6 +25,7 @@ use prometheus::{
     Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, IntCounter, IntCounterVec,
     IntGauge, IntGaugeVec,
 };
+use std::collections::HashMap;
 use std::{collections::HashSet, sync::Arc};
 
 steps!(World => {
@@ -68,6 +69,117 @@ steps!(World => {
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
+    // Scenario: [01D4BXN2ZMYRHNGRRCSTKVN0AP] Gather metrics for DescId(s) containing dups
+    when regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, step| {
+        world.desc_ids = vec![
+            world.counter.desc()[0].id,
+            world.int_counter.desc()[0].id,
+            world.counter_vec.desc()[0].id,
+            world.int_counter_vec.desc()[0].id,
+        ];
+        let mut desc_ids = world.desc_ids.clone();
+        desc_ids.extend(world.desc_ids.clone());
+        metrics::registry().gather();
+        world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
+    };
+
+    then regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, step| {
+        let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
+        assert_eq!(world.metric_families.len(), desc_ids.len());
+    };
+
+    // Scenario: [01D3PQ2KMBY07K48Q281SMPED6] Gather metrics for descriptor names
+    when regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, step| {
+        world.desc_names = vec![
+            world.counter.desc()[0].fq_name.clone(),
+            world.int_counter.desc()[0].fq_name.clone(),
+            world.counter_vec.desc()[0].fq_name.clone(),
+            world.int_counter_vec.desc()[0].fq_name.clone(),
+        ];
+        metrics::registry().gather();
+        world.metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
+    };
+
+    then regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, step| {
+        assert_eq!(world.metric_families.len(), world.desc_names.len());
+    };
+
+    // Scenario: [01D4BXX8A1SY3CYA8V9330F7QM] Gather metrics for descriptor names with dup names
+    when regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, step| {
+        world.desc_names = vec![
+            world.counter.desc()[0].fq_name.clone(),
+            world.int_counter.desc()[0].fq_name.clone(),
+            world.counter_vec.desc()[0].fq_name.clone(),
+            world.int_counter_vec.desc()[0].fq_name.clone(),
+        ];
+        let mut desc_names = world.desc_names.clone();
+        desc_names.extend(world.desc_names.clone());
+        metrics::registry().gather();
+        world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
+    };
+
+    then regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, step| {
+        assert_eq!(world.metric_families.len(), world.desc_names.len());
+    };
+
+    // Scenario: [01D3VC85Q8MVBJ543SHZ4RE9T2] Gather metrics for MetricId(s)
+    when regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, step| {
+        world.desc_names = vec![
+            world.counter.desc()[0].fq_name.clone(),
+            world.int_counter.desc()[0].fq_name.clone(),
+            world.counter_vec.desc()[0].fq_name.clone(),
+            world.int_counter_vec.desc()[0].fq_name.clone(),
+        ];
+        let metric_ids: Vec<metrics::MetricId> = world.desc_names.iter().map(|name| name.as_str().parse().unwrap()).collect();
+        metrics::registry().gather();
+        world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
+    };
+
+    then regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, step| {
+        let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
+        assert_eq!(world.metric_families.len(), metric_families.len());
+    };
+
+    // Scenario: [01D43MQQ1H59ZGJ9G2AMEJB5RF] Gather metrics for labels
+    when regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, step| {
+        world.desc_names = vec![
+            world.counter.desc()[0].fq_name.clone(),
+            world.int_counter.desc()[0].fq_name.clone(),
+            world.counter_vec.desc()[0].fq_name.clone(),
+            world.int_counter_vec.desc()[0].fq_name.clone(),
+        ];
+        for label_pair in &world.counter.desc()[0].const_label_pairs {
+            world.labels.insert(label_pair.get_name().to_string(), label_pair.get_value().to_string());
+        }
+        for label_pair in &world.int_counter.desc()[0].const_label_pairs {
+            world.labels.insert(label_pair.get_name().to_string(), label_pair.get_value().to_string());
+        }
+        for label_pair in &world.counter_vec.desc()[0].const_label_pairs {
+            world.labels.insert(label_pair.get_name().to_string(), label_pair.get_value().to_string());
+        }
+        for label_pair in &world.int_counter_vec.desc()[0].const_label_pairs {
+            world.labels.insert(label_pair.get_name().to_string(), label_pair.get_value().to_string());
+        }
+        metrics::registry().gather();
+        world.metric_families = metrics::registry().gather_for_labels(&world.labels);
+    };
+
+    then regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, step| {
+        let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
+        println!("{:#?}",world.metric_families);
+        println!("===\n{:#?}",metric_families);
+        assert_eq!(world.metric_families.len(), metric_families.len());
+        assert!(world.metric_families.iter().all(|mf| metric_families.iter().any(|mf2| mf2.get_name() == mf.get_name())));
+        assert!(world.metric_families.iter().all(|mf| {
+            mf.get_metric().iter().any(|m| m.get_label().iter().any(|label|{
+                match world.labels.get(label.get_name()) {
+                    Some(value) => value.as_str() == label.get_value(),
+                    None => false
+                }
+            }))
+        }));
+    };
+
 });
 
 #[derive(Clone)]
@@ -88,6 +200,8 @@ pub struct World {
     world2: Option<Arc<World>>,
     metric_families: Vec<prometheus::proto::MetricFamily>,
     desc_ids: Vec<metrics::DescId>,
+    desc_names: Vec<String>,
+    labels: HashMap<String, String>,
 }
 
 impl World {
@@ -306,6 +420,8 @@ impl Default for World {
             world2: None,
             metric_families: Vec::new(),
             desc_ids: Vec::new(),
+            desc_names: Vec::new(),
+            labels: HashMap::new(),
         }
     }
 }

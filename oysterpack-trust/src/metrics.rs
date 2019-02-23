@@ -824,7 +824,7 @@ impl MetricRegistry {
     /// gathers metrics that contain the specified labels
     pub fn gather_for_labels(
         &self,
-        labels: HashMap<String, String>,
+        labels: &HashMap<String, String>,
     ) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.find_collectors(|c| {
             c.desc().iter().any(|d| {
@@ -833,7 +833,7 @@ impl MetricRegistry {
                     .any(|label| labels.contains_key(label))
                     || d.const_label_pairs.iter().any(|label_pair| {
                         match labels.get(label_pair.get_name()) {
-                            Some(value) => label_pair.get_value() == value,
+                            Some(value) => label_pair.get_value() == value.as_str(),
                             None => false,
                         }
                     })
@@ -863,28 +863,30 @@ impl MetricRegistry {
                 }
                 mf
             })
+            .filter(|mf| !mf.get_metric().is_empty())
             .collect()
     }
 
     /// gather metrics for collectors for the specified metric fully qualified names
-    pub fn gather_for_desc_names(
+    pub fn gather_for_desc_names<Name: AsRef<str>>(
         &self,
-        desc_names: &[&str],
+        desc_names: &[Name],
     ) -> Vec<prometheus::proto::MetricFamily> {
         let collectors = self.metric_collectors.read().unwrap();
         collectors
             .iter()
             .filter(|collector| {
-                collector
-                    .desc()
-                    .iter()
-                    .any(|desc| desc_names.iter().any(|name| *name == desc.fq_name.as_str()))
+                collector.desc().iter().any(|desc| {
+                    desc_names
+                        .iter()
+                        .any(|name| name.as_ref() == desc.fq_name.as_str())
+                })
             })
             .flat_map(|collector| {
                 collector
                     .collect()
                     .into_iter()
-                    .filter(|mf| desc_names.iter().any(|name| *name == mf.get_name()))
+                    .filter(|mf| desc_names.iter().any(|name| name.as_ref() == mf.get_name()))
                     .collect::<Vec<_>>()
             })
             .collect()

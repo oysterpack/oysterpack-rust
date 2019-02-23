@@ -241,7 +241,7 @@ fn check_metrics_against_executor(world: &mut TestContext) {
     let labels = hashmap! {
         execution::EXECUTOR_ID_LABEL_ID.name() => executor_id.to_string()
     };
-    let metric_families = metrics::registry().gather_for_labels(labels);
+    let metric_families = metrics::registry().gather_for_labels(&labels);
 
     println!("ExecutorId: {}", executor_id);
     println!("count = {}\n{:#?}", metric_families.len(), metric_families);
