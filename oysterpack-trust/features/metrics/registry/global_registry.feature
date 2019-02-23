@@ -1,6 +1,8 @@
 Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is provided.
 
-  Scenario: [01D3J3D7PA4NR9JABZWT635S6B] Using the global registry from multiple threads
+  The global metrics registry can be safely accessed from anywhere in the application as a global static.
+
+  Scenario: [01D3J3D7PA4NR9JABZWT635S6B] Accessing the global registry from any where
     Given [01D3J3D7PA4NR9JABZWT635S6B] there are 2 threads using the global registry
     When [01D3J3D7PA4NR9JABZWT635S6B] 1 thread registers a metric
     Then [01D3J3D7PA4NR9JABZWT635S6B] the other thread will be able to see that the metric was registered via the global registry
@@ -26,6 +28,16 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
     Given [01D3MT8KDP434DKZ6Y54C80BB0] a Counter is already registered with the global registry
     When [01D3MT8KDP434DKZ6Y54C80BB0] a Gauge is registered using the same MetricId and const label names but different label values
     Then [01D3MT8KDP434DKZ6Y54C80BB0] the Gauge will successfully register
+
+  Scenario: [01D4D8W99GP21E6MZHAQXEHTE3] Register 2 metrics using the same MetricId and same const label values but different label names
+    Given [01D4D8W99GP21E6MZHAQXEHTE3] a Counter is already registered with the global registry
+    When [01D4D8W99GP21E6MZHAQXEHTE3] a Gauge is registered using the same MetricId and const label values but different label names
+    Then [01D4D8W99GP21E6MZHAQXEHTE3] the Gauge will fail to register
+
+  Scenario: [01D4D68AW6FYYESQZQCZH8JGCG] Register 2 metrics using the same MetricId and same const label names but different label values and different help
+    Given [01D4D68AW6FYYESQZQCZH8JGCG] a Counter is already registered with the global registry
+    When [01D4D68AW6FYYESQZQCZH8JGCG] a Gauge is registered using the same MetricId and const label names but different label values
+    Then [01D4D68AW6FYYESQZQCZH8JGCG] the Gauge will fail to register
 
   Rule: descriptor `help` must not be blank
 

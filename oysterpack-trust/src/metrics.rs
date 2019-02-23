@@ -106,9 +106,9 @@ pub fn registry() -> &'static MetricRegistry {
 }
 
 /// IntCounter constructor using MetricId and LabelId
-pub fn new_int_counter<S: BuildHasher>(
+pub fn new_int_counter<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntCounter> {
     let help = MetricRegistry::check_help(help)?;
@@ -123,9 +123,9 @@ pub fn new_int_counter<S: BuildHasher>(
 }
 
 /// IntGauge constructor using MetricId and LabelId
-pub fn new_int_gauge<S: BuildHasher>(
+pub fn new_int_gauge<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntGauge> {
     let help = MetricRegistry::check_help(help)?;
@@ -140,9 +140,9 @@ pub fn new_int_gauge<S: BuildHasher>(
 }
 
 /// Gauge constructor using MetricId and LabelId
-pub fn new_gauge<S: BuildHasher>(
+pub fn new_gauge<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::Gauge> {
     let help = MetricRegistry::check_help(help)?;
@@ -157,9 +157,9 @@ pub fn new_gauge<S: BuildHasher>(
 }
 
 /// GaugeVec constructor using MetricId and LabelId
-pub fn new_gauge_vec<S: BuildHasher>(
+pub fn new_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::GaugeVec> {
@@ -177,9 +177,9 @@ pub fn new_gauge_vec<S: BuildHasher>(
 }
 
 /// IntGaugeVec constructor using MetricId and LabelId
-pub fn new_int_gauge_vec<S: BuildHasher>(
+pub fn new_int_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntGaugeVec> {
@@ -197,9 +197,9 @@ pub fn new_int_gauge_vec<S: BuildHasher>(
 }
 
 /// Counter constructor using MetricId and LabelId
-pub fn new_counter<S: BuildHasher>(
+pub fn new_counter<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::Counter> {
     let help = MetricRegistry::check_help(help)?;
@@ -214,9 +214,9 @@ pub fn new_counter<S: BuildHasher>(
 }
 
 /// IntCounterVec constructor using MetricId and LabelId
-pub fn new_int_counter_vec<S: BuildHasher>(
+pub fn new_int_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntCounterVec> {
@@ -234,9 +234,9 @@ pub fn new_int_counter_vec<S: BuildHasher>(
 }
 
 /// CounterVec constructor using MetricId and LabelId
-pub fn new_counter_vec<S: BuildHasher>(
+pub fn new_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::CounterVec> {
@@ -254,9 +254,9 @@ pub fn new_counter_vec<S: BuildHasher>(
 }
 
 /// Histogram constructor using MetricId and LabelId
-pub fn new_histogram<S: BuildHasher>(
+pub fn new_histogram<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     buckets: Vec<f64>,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::Histogram> {
@@ -273,9 +273,9 @@ pub fn new_histogram<S: BuildHasher>(
 }
 
 /// HistogramVec constructor using MetricId and LabelId
-pub fn new_histogram_vec<S: BuildHasher>(
+pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
-    help: &str,
+    help: Help,
     label_ids: &[LabelId],
     buckets: Vec<f64>,
     const_labels: Option<HashMap<LabelId, String, S>>,
@@ -332,6 +332,17 @@ impl MetricRegistry {
         &self,
         collector: impl prometheus::core::Collector + 'static,
     ) -> prometheus::Result<ArcCollector> {
+        // check help is not blank for any Descs
+        let mut help_validation_err: Vec<_> = collector
+            .desc()
+            .iter()
+            .filter_map(|desc| Self::check_help(desc.help.as_str()).err())
+            .take(1)
+            .collect();
+        if let Some(err) = help_validation_err.pop() {
+            return Err(err);
+        }
+
         let collector = ArcCollector::new(collector);
         self.registry.register(Box::new(collector.clone()))?;
         {
@@ -477,10 +488,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register an IntGauge metric
-    pub fn register_int_gauge(
+    pub fn register_int_gauge<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGauge> {
         let metric = new_int_gauge(metric_id, help, const_labels)?;
@@ -489,10 +500,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register an Gauge metric
-    pub fn register_gauge(
+    pub fn register_gauge<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Gauge> {
         let metric = new_gauge(metric_id, help, const_labels)?;
@@ -501,10 +512,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a GaugeVec metric
-    pub fn register_gauge_vec(
+    pub fn register_gauge_vec<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::GaugeVec> {
@@ -514,10 +525,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a IntGaugeVec metric
-    pub fn register_int_gauge_vec(
+    pub fn register_int_gauge_vec<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntGaugeVec> {
@@ -527,10 +538,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register an IntCounter metric
-    pub fn register_int_counter(
+    pub fn register_int_counter<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounter> {
         let metric = new_int_counter(metric_id, help, const_labels)?;
@@ -539,10 +550,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a Counter metric
-    pub fn register_counter(
+    pub fn register_counter<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Counter> {
         let metric = new_counter(metric_id, help, const_labels)?;
@@ -551,10 +562,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register an IntCounterVec metric
-    pub fn register_int_counter_vec(
+    pub fn register_int_counter_vec<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::IntCounterVec> {
@@ -564,10 +575,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a CounterVec metric
-    pub fn register_counter_vec(
+    pub fn register_counter_vec<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::CounterVec> {
@@ -577,10 +588,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a Histogram metric
-    pub fn register_histogram(
+    pub fn register_histogram<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Histogram> {
@@ -590,10 +601,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a Histogram metric that is meant to be used as timer metric
-    pub fn register_histogram_timer(
+    pub fn register_histogram_timer<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         buckets: TimerBuckets,
         const_labels: Option<HashMap<LabelId, String>>,
     ) -> prometheus::Result<prometheus::Histogram> {
@@ -601,10 +612,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a HistogramVec metric
-    pub fn register_histogram_vec(
+    pub fn register_histogram_vec<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         buckets: Vec<f64>,
         const_labels: Option<HashMap<LabelId, String>>,
@@ -615,10 +626,10 @@ impl MetricRegistry {
     }
 
     /// Tries to register a HistogramVec metric that is meant to be used as timer metric
-    pub fn register_histogram_vec_timer(
+    pub fn register_histogram_vec_timer<Help: AsRef<str>>(
         &self,
         metric_id: MetricId,
-        help: &str,
+        help: Help,
         label_ids: &[LabelId],
         buckets: TimerBuckets,
         const_labels: Option<HashMap<LabelId, String>>,
@@ -626,8 +637,8 @@ impl MetricRegistry {
         self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
-    fn check_help(help: &str) -> Result<String, prometheus::Error> {
-        let help = help.trim();
+    fn check_help<Help: AsRef<str>>(help: Help) -> Result<String, prometheus::Error> {
+        let help = help.as_ref().trim();
         if help.is_empty() {
             return Err(prometheus::Error::Msg(
                 "`help` is required and cannot be blank".to_string(),
@@ -862,9 +873,7 @@ impl MetricRegistry {
                 let mut i = 0;
                 while i < metrics.len() {
                     let metric = &metrics[i];
-                    let contains_label = || {
-                        metric.get_label().iter().any(contains_label_pair)
-                    };
+                    let contains_label = || metric.get_label().iter().any(contains_label_pair);
                     if !contains_label() {
                         metrics.remove(i);
                     } else {

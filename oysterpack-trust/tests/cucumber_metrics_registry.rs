@@ -14,7 +14,16 @@
  *    limitations under the License.
  */
 
-pub mod collectors;
-pub mod descriptors;
-pub mod gathering;
-pub mod registry;
+#![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+
+use cucumber_rust::*;
+
+mod steps;
+
+cucumber! {
+    features: "./features/metrics/registry",
+    world: steps::metrics::registry::World,
+    steps: &[
+        steps::metrics::registry::steps
+    ]
+}
