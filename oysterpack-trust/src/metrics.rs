@@ -1588,9 +1588,9 @@ impl LabelId {
         ULID::from(self.0)
     }
 
-    /// returns the metric name
-    /// - the LabelId ULID is prefixedwith 'L' to ensure it does not start with a number because
-    ///   prometheus metric names must match the following pattern `[a-zA-Z_:][a-zA-Z0-9_:]*`
+    /// returns the label name
+    /// - name pattern is `L{ULID}`
+    /// - NOTE: Legal label names must match the regex [a-zA-Z_][a-zA-Z0-9_]*
     pub fn name(&self) -> String {
         self.to_string()
     }
@@ -1600,8 +1600,15 @@ impl FromStr for LabelId {
     type Err = oysterpack_uid::DecodingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let id: ULID = s[1..].parse()?;
-        Ok(Self(id.into()))
+        if s.len() != 27 {
+            return Err(oysterpack_uid::DecodingError::InvalidLength)
+        }
+        if Some('L') == s.chars().next() {
+            let id: ULID = s[1..].parse()?;
+            Ok(Self(id.into()))
+        } else {
+            Err(oysterpack_uid::DecodingError::InvalidChar(s.chars().next().unwrap()))
+        }
     }
 }
 
@@ -1633,6 +1640,7 @@ impl MetricId {
 
     /// The fully qualified metric name that is registered with prometheus
     /// - name pattern is `M{ULID}`
+    /// - NOTE: legal metric names must match the following pattern `[a-zA-Z_:][a-zA-Z0-9_:]*`
     pub fn name(&self) -> String {
         self.to_string()
     }
@@ -1648,8 +1656,15 @@ impl FromStr for MetricId {
     type Err = oysterpack_uid::DecodingError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let id: ULID = s[1..].parse()?;
-        Ok(Self(id.into()))
+        if s.len() != 27 {
+            return Err(oysterpack_uid::DecodingError::InvalidLength)
+        }
+        if Some('M') == s.chars().next() {
+            let id: ULID = s[1..].parse()?;
+            Ok(Self(id.into()))
+        } else {
+            Err(oysterpack_uid::DecodingError::InvalidChar(s.chars().next().unwrap()))
+        }
     }
 }
 
