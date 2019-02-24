@@ -86,11 +86,11 @@ use std::{
     fmt,
     hash::BuildHasher,
     io::Write,
+    iter::Extend,
     iter::Iterator,
     str::FromStr,
     sync::{Arc, RwLock},
     time::Duration,
-    iter::Extend
 };
 
 lazy_static! {
@@ -164,7 +164,7 @@ pub fn new_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::GaugeVec> {
-    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let label_names = MetricRegistry::check_variable_labels(label_ids)?;
     let help = MetricRegistry::check_help(help)?;
     let const_labels = MetricRegistry::check_const_labels(const_labels)?;
 
@@ -184,7 +184,7 @@ pub fn new_int_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntGaugeVec> {
-    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let label_names = MetricRegistry::check_variable_labels(label_ids)?;
     let help = MetricRegistry::check_help(help)?;
     let const_labels = MetricRegistry::check_const_labels(const_labels)?;
 
@@ -221,7 +221,7 @@ pub fn new_int_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::IntCounterVec> {
-    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let label_names = MetricRegistry::check_variable_labels(label_ids)?;
     let help = MetricRegistry::check_help(help)?;
     let const_labels = MetricRegistry::check_const_labels(const_labels)?;
 
@@ -241,7 +241,7 @@ pub fn new_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     label_ids: &[LabelId],
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::CounterVec> {
-    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let label_names = MetricRegistry::check_variable_labels(label_ids)?;
     let help = MetricRegistry::check_help(help)?;
     let const_labels = MetricRegistry::check_const_labels(const_labels)?;
 
@@ -281,7 +281,7 @@ pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
     buckets: Vec<f64>,
     const_labels: Option<HashMap<LabelId, String, S>>,
 ) -> prometheus::Result<prometheus::HistogramVec> {
-    let label_names = MetricRegistry::check_labels(label_ids)?;
+    let label_names = MetricRegistry::check_variable_labels(label_ids)?;
     let help = MetricRegistry::check_help(help)?;
     let buckets = MetricRegistry::check_buckets(buckets)?;
     let const_labels = MetricRegistry::check_const_labels(const_labels)?;
@@ -345,26 +345,12 @@ impl MetricRegistry {
                 None => Ok(()),
             }
         };
-        let validate_labels = || {
-            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
-                let blank_label_values: Vec<_> = desc.const_label_pairs.iter().filter_map(|label_pair| {
-                    let value = label_pair.get_value().trim();
-                    if value.is_empty() {
-                        Some(label_pair.get_name().to_string())
-                    } else {
-                        None
-                    }
-                }).collect();
-                if blank_label_values.is_empty() {
-                    None
-                } else {
-                    Some(format!("Label value must not be blank for: metric name = {}, label names = {:?}", desc.fq_name, blank_label_values))
-                }
-            }).collect();
-            if invalid_descs.is_empty() {
+
+        let to_result = |errors: Vec<String>| {
+            if errors.is_empty() {
                 Ok(())
             } else {
-                let mut errs = invalid_descs.iter().fold("".to_string(), |mut errs, err| {
+                let mut errs = errors.iter().fold("".to_string(), |mut errs, err| {
                     errs.extend(format!("{}\n", err).chars());
                     errs
                 });
@@ -373,8 +359,81 @@ impl MetricRegistry {
             }
         };
 
+        let check_label_values_not_blank = || {
+            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
+                let invalid_label_names: Vec<_> = desc.const_label_pairs.iter().filter_map(|label_pair| {
+                    let value = label_pair.get_value().trim();
+                    if value.is_empty() {
+                        Some(label_pair.get_name().to_string())
+                    } else {
+                        None
+                    }
+                }).collect();
+                if invalid_label_names.is_empty() {
+                    None
+                } else {
+                    Some(format!("Label value must not be blank for: metric name = {}, label names = {:?}", desc.fq_name, invalid_label_names))
+                }
+            }).collect();
+            to_result(invalid_descs)
+        };
+        let check_const_label_name_length = || {
+            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
+                let invalid_label_names: Vec<_> = desc.const_label_pairs.iter().filter_map(|label_pair| {
+                    if label_pair.get_name().len() > Self::DESC_LABEL_NAME_LEN {
+                        Some(label_pair.get_name())
+                    } else {
+                        None
+                    }
+                }).collect();
+                if invalid_label_names.is_empty() {
+                    None
+                } else {
+                    Some(format!("Constant label name max length ({}) exceeded for: metric name = {}, label names = {:?}",Self::DESC_LABEL_NAME_LEN, desc.fq_name, invalid_label_names))
+                }
+            }).collect();
+            to_result(invalid_descs)
+        };
+        let check_variable_label_name_length = || {
+            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
+                let invalid_label_names: Vec<_> = desc.variable_labels.iter().filter_map(|label| {
+                    if label.len() > Self::DESC_LABEL_NAME_LEN {
+                        Some(label)
+                    } else {
+                        None
+                    }
+                }).collect();
+                if invalid_label_names.is_empty() {
+                    None
+                } else {
+                    Some(format!("Variable label name max length ({}) exceeded for: metric name = {}, label names = {:?}",Self::DESC_LABEL_NAME_LEN, desc.fq_name, invalid_label_names))
+                }
+            }).collect();
+            to_result(invalid_descs)
+        };
+        let check_variable_label_value_length = || {
+            let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
+                let invalid_label_names: Vec<_> = desc.const_label_pairs.iter().filter_map(|label_pair| {
+                    if label_pair.get_value().len() > Self::DESC_LABEL_VALUE_LEN {
+                        Some(label_pair.get_name())
+                    } else {
+                        None
+                    }
+                }).collect();
+                if invalid_label_names.is_empty() {
+                    None
+                } else {
+                    Some(format!("Constant label value max length ({}) exceeded for: metric name = {}, label names = {:?}",Self::DESC_LABEL_VALUE_LEN, desc.fq_name, invalid_label_names))
+                }
+            }).collect();
+            to_result(invalid_descs)
+        };
+
         validate_help()?;
-        validate_labels()?;
+        check_label_values_not_blank()?;
+        check_const_label_name_length()?;
+        check_variable_label_name_length()?;
+        check_variable_label_value_length()?;
 
         let collector = ArcCollector::new(collector);
         self.registry.register(Box::new(collector.clone()))?;
@@ -720,10 +779,10 @@ impl MetricRegistry {
         }
     }
 
-    fn check_labels(label_names: &[LabelId]) -> Result<Vec<String>, prometheus::Error> {
+    fn check_variable_labels(label_names: &[LabelId]) -> Result<Vec<String>, prometheus::Error> {
         if label_names.is_empty() {
             return Err(prometheus::Error::Msg(
-                "At least one label name must be provided".to_string(),
+                "At least one variable label name must be provided".to_string(),
             ));
         }
         Ok(label_names.iter().map(LabelId::name).collect())
@@ -989,21 +1048,6 @@ impl fmt::Debug for MetricRegistry {
         write!(f, "MetricRegistry")
     }
 }
-
-//impl Default for MetricRegistry {
-//    fn default() -> Self {
-//        let registry = Self {
-//            registry: prometheus::Registry::new(),
-//            metric_collectors: RwLock::new(Vec::new()),
-//        };
-//
-//        registry
-//            .register(prometheus::process_collector::ProcessCollector::for_self())
-//            .unwrap();
-//
-//        registry
-//    }
-//}
 
 /// Label Id
 #[ulid]

@@ -159,20 +159,44 @@ steps!(World => {
     // Rule: descriptor `help` must not be blank
 
     // Scenario: [01D4B036AWCJD6GCDNVGA5YVBB] Register metrics with a blank help message on the descriptor
-    when regex "01D4B036AWCJD6GCDNVGA5YVBB" | world, _matches, _step | {
+    then regex "01D4B036AWCJD6GCDNVGA5YVBB" | world, _matches, _step | {
         world.metric_id = metrics::MetricId::generate();
         match metrics::registry().register_counter(world.metric_id, "  ", None) {
             Err(err) => println!("{}", err),
             Ok(_) => panic!("should have failed to register")
         }
-    };
+        match metrics::registry().register_int_counter(world.metric_id, "  ", None) {
+            Err(err) => println!("{}", err),
+            Ok(_) => panic!("should have failed to register")
+        }
+        match metrics::registry().register_gauge(world.metric_id, "  ", None) {
+            Err(err) => println!("{}", err),
+            Ok(_) => panic!("should have failed to register")
+        }
+        match metrics::registry().register_int_gauge(world.metric_id, "  ", None) {
+            Err(err) => println!("{}", err),
+            Ok(_) => panic!("should have failed to register")
+        }
 
-    then regex "01D4B036AWCJD6GCDNVGA5YVBB" | world, _matches, _step| {
-        assert!(metrics::registry().descs_for_metric_id(world.metric_id).is_empty());
+        let labels = hashmap! {
+            metrics::LabelId::generate() => "A".to_string()
+        };
+
+        let help = " ".to_string();
+
+        let label_ids = vec![metrics::LabelId::generate()];
+        let buckets = vec![0.1,0.2];
+
+        assert!(metrics::registry().register_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_int_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+
+        assert!(metrics::registry().register_histogram(world.metric_id, help.clone(), buckets.clone(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_histogram_timer(world.metric_id, help.clone(), vec![Duration::from_millis(1)].into(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_histogram_vec(world.metric_id, help.clone(), &label_ids, buckets.clone(), Some(labels.clone())).is_err());
     };
 
     // Scenario: [01D4B08N90FM8EZTT3X5Y72D3M] Register a collector containing multiple descriptors where 1 descriptor has a blank help message
-    when regex "01D4B08N90FM8EZTT3X5Y72D3M" | world, _matches, _step | {
+    then regex "01D4B08N90FM8EZTT3X5Y72D3M" | world, _matches, _step | {
         world.metric_id = metrics::MetricId::generate();
 
         struct Foo {
@@ -201,10 +225,6 @@ steps!(World => {
             Err(err) => println!("{}", err),
             Ok(_) => panic!("should have failed to register")
         }
-    };
-
-    then regex "01D4B08N90FM8EZTT3X5Y72D3M" | world, _matches, _step| {
-        assert!(metrics::registry().descs_for_metric_id(world.metric_id).is_empty());
     };
 
     // Rule: descriptor `help` max length is 250
@@ -347,6 +367,297 @@ steps!(World => {
             Ok(_) => panic!("should have failed to register")
         }
     };
+
+    // Rule: descriptor label name max length is 30 and label value max length is 150
+
+    // Scenario: [01D4ED3RW0MP6SRH0T169YSP0J] Register collector using the max allowed length for the const label name
+    then regex "01D4ED3RW0MP6SRH0T169YSP0J" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let label_id = metrics::LabelId::generate();
+        let mut label_name = label_id.name();
+        while label_name.len() <  metrics::MetricRegistry::DESC_LABEL_NAME_LEN {
+            label_name.extend(label_id.to_string().chars());
+        }
+        let label_name = &label_name[..metrics::MetricRegistry::DESC_LABEL_NAME_LEN];
+        assert_eq!(label_name.len(), metrics::MetricRegistry::DESC_LABEL_NAME_LEN);
+
+        let labels = hashmap! {
+            label_name.to_string() => "A".to_string()
+        };
+
+        let foo = Foo{
+            world: world.clone(),
+            desc: prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![], labels).unwrap(),
+        };
+
+        metrics::registry().register(foo).unwrap();
+    };
+
+    // Scenario: [01D4B0W77XVHM7BP2PJ5M33HK7] Register collector using the max allowed length for the const label value
+    then regex "01D4B0W77XVHM7BP2PJ5M33HK7" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let ulid = ULID::generate();
+        let mut label_value = ulid.to_string();
+        while label_value.len() <  metrics::MetricRegistry::DESC_LABEL_VALUE_LEN {
+            label_value.extend(ulid.to_string().chars());
+        }
+        let label_value = &label_value[..metrics::MetricRegistry::DESC_LABEL_VALUE_LEN];
+        assert_eq!(label_value.len(), metrics::MetricRegistry::DESC_LABEL_VALUE_LEN);
+
+        let labels = hashmap! {
+            "A".to_string() => label_value.to_string()
+        };
+
+        let foo = Foo{
+            world: world.clone(),
+            desc: prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![], labels).unwrap(),
+        };
+
+        metrics::registry().register(foo).unwrap();
+    };
+
+    // Scenario: [01D4ECRFSTXAW3RHQ0C2D6J2GZ] Register collector using the max allowed length for the variable label name
+    then regex "01D4ECRFSTXAW3RHQ0C2D6J2GZ" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let label_id = metrics::LabelId::generate();
+        let mut label_name = label_id.name();
+        while label_name.len() <  metrics::MetricRegistry::DESC_LABEL_NAME_LEN {
+            label_name.extend(label_id.to_string().chars());
+        }
+        let label_name = &label_name[..metrics::MetricRegistry::DESC_LABEL_NAME_LEN];
+        assert_eq!(label_name.len(), metrics::MetricRegistry::DESC_LABEL_NAME_LEN);
+
+        let foo = Foo{
+            world: world.clone(),
+            desc:  prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![label_name.to_string()], HashMap::new()).unwrap()
+        };
+
+        metrics::registry().register(foo).unwrap();
+    };
+
+    // Scenario: [01D4B0XMQ2ZR2FHZHYM5KSBH90] Register metrics with a const label value whose length is 1 greater than the max length
+    then regex "01D4B0XMQ2ZR2FHZHYM5KSBH90" | world, _matches, _step | {
+        world.metric_id = metrics::MetricId::generate();
+
+        let mut label_value = world.metric_id.to_string();
+        while label_value.len() <  metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1 {
+            label_value.extend(world.metric_id.to_string().chars());
+        }
+        let label_value = &label_value[..metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1];
+        assert_eq!(label_value.len(), metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1);
+
+        let labels = hashmap! {
+            metrics::LabelId::generate() => label_value.to_string()
+        };
+
+        let help = "help".to_string();
+
+        let label_ids = vec![metrics::LabelId::generate()];
+        let buckets = vec![0.1,0.2];
+
+        assert!(metrics::registry().register_counter(world.metric_id, help.clone(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_int_counter(world.metric_id, help.clone(), Some(labels.clone())).is_err());
+
+        assert!(metrics::registry().register_counter_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_int_counter_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+
+        assert!(metrics::registry().register_gauge(world.metric_id, help.clone(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_int_gauge(world.metric_id, help.clone(), Some(labels.clone())).is_err());
+
+        assert!(metrics::registry().register_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_int_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
+
+        assert!(metrics::registry().register_histogram(world.metric_id, help.clone(), buckets.clone(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_histogram_timer(world.metric_id, help.clone(), vec![Duration::from_millis(1)].into(), Some(labels.clone())).is_err());
+        assert!(metrics::registry().register_histogram_vec(world.metric_id, help.clone(), &label_ids, buckets.clone(), Some(labels.clone())).is_err());
+    };
+
+    // Scenario: [01D4B1XP3V78X2HG3Z8NA1H0KH] Register collector with a variable name whose length is 1 greater than the max length
+    then regex "01D4B1XP3V78X2HG3Z8NA1H0KH" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let label_id = metrics::LabelId::generate();
+        let mut label_name = label_id.name();
+        while label_name.len() <  metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1 {
+            label_name.extend(label_id.to_string().chars());
+        }
+        let label_name = &label_name[..metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1];
+        assert_eq!(label_name.len(), metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1);
+
+        let foo = Foo{
+            world: world.clone(),
+            desc:  prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![label_name.to_string()], HashMap::new()).unwrap()
+        };
+
+        match metrics::registry().register(foo) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Scenario: [01D4B0YGEN4XF275ZE660W1PRC] Register a collector containing a const label name whose length is 1 greater than the max length
+    then regex "01D4B0YGEN4XF275ZE660W1PRC" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let label_id = metrics::LabelId::generate();
+        let mut label_name = label_id.name();
+        while label_name.len() <  metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1{
+            label_name.extend(label_id.to_string().chars());
+        }
+        let label_name = &label_name[..metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1];
+        assert_eq!(label_name.len(), metrics::MetricRegistry::DESC_LABEL_NAME_LEN + 1);
+
+        let labels = hashmap! {
+            label_name.to_string() => "A".to_string()
+        };
+
+        let foo = Foo{
+            world: world.clone(),
+            desc:  prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![], labels).unwrap()
+        };
+
+        match metrics::registry().register(foo) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Scenario: [01D4B0Y6Y494DYFVE3YVQYXPPR] Register a collector containing a const label value whose length is 1 greater than the max length
+    then regex "01D4B0Y6Y494DYFVE3YVQYXPPR" | world, _matches, _step | {
+        struct Foo {
+            world: World,
+            desc: prometheus::core::Desc,
+        };
+
+        impl Collector for Foo {
+            fn desc(&self) -> Vec<&Desc> {
+                vec![&self.desc]
+            }
+
+            fn collect(&self) -> Vec<MetricFamily> {
+                vec![]
+            }
+        }
+
+        let label_id = metrics::LabelId::generate();
+        let mut label_value = label_id.name();
+        while label_value.len() <  metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1{
+            label_value.extend(label_id.to_string().chars());
+        }
+        let label_value = &label_value[..metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1];
+        assert_eq!(label_value.len(), metrics::MetricRegistry::DESC_LABEL_VALUE_LEN + 1);
+
+        let labels = hashmap! {
+            "A".to_string() => label_value.to_string()
+        };
+
+        let foo = Foo{
+            world: world.clone(),
+            desc:  prometheus::core::Desc::new(metrics::MetricId::generate().name(), "help".to_string(), vec![], labels).unwrap()
+        };
+
+        match metrics::registry().register(foo) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Rule: for metric vectors, at least 1 variable label must be defined on the descriptor
+
+    // Scenario: [01D4B1F6AXH4DHBXC42756CVNZ] Register a metric vectors with no variable labels
+    then regex "01D4B1F6AXH4DHBXC42756CVNZ" | world, _matches, _step | {
+        let metric_id = metrics::MetricId::generate();
+        match metrics::registry().register_counter_vec(metric_id,"help", &vec![], None) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+        match metrics::registry().register_int_counter_vec(metric_id,"help", &vec![], None) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+        match metrics::registry().register_gauge_vec(metric_id,"help", &vec![], None) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+        match metrics::registry().register_int_gauge_vec(metric_id,"help", &vec![], None) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+        match metrics::registry().register_histogram_vec(metric_id,"help", &vec![],vec![0.1], None) {
+            Ok(_) => panic!("should have failed to register"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Rule: for metric vectors, variable labels must not be blank
 });
 
 #[derive(Clone)]
