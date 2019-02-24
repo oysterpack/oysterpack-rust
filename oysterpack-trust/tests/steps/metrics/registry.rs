@@ -633,7 +633,7 @@ steps!(World => {
     // Rule: for metric vectors, at least 1 variable label must be defined on the descriptor
 
     // Scenario: [01D4B1F6AXH4DHBXC42756CVNZ] Register a metric vectors with no variable labels
-    then regex "01D4B1F6AXH4DHBXC42756CVNZ" | world, _matches, _step | {
+    then regex "01D4B1F6AXH4DHBXC42756CVNZ" | _world, _matches, _step | {
         let metric_id = metrics::MetricId::generate();
         match metrics::registry().register_counter_vec(metric_id,"help", &vec![], None) {
             Ok(_) => panic!("should have failed to register"),
@@ -659,9 +659,90 @@ steps!(World => {
 
     // Rule: for metric vectors, variable labels must not be blank
 
-    // Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Register metric collectors containing descriptors with blank labels
-    then regex "01D4B1KQZ9F4FMKF51FHF84D72" | world, _matches, _step | {
-        unimplemented!();
+    // Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Construct a Desc with blank variable labels
+    then regex "01D4B1KQZ9F4FMKF51FHF84D72" | _world, _matches, _step | {
+        // prometheus enforces this rule at the Desc level
+        match prometheus::core::Desc::new("name".to_string(), "help".to_string(), vec!["".to_string()],HashMap::new()) {
+            Ok(_) => panic!("Desc constructor should have failed"),
+            Err(err) => println!("{}", err)
+        }
+        match prometheus::core::Desc::new("name".to_string(), "help".to_string(), vec!["  ".to_string()],HashMap::new()) {
+            Ok(_) => panic!("Desc constructor should have failed"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Rule: for metric vectors, variable labels must be unique
+
+    // Scenario: [01D4B1ZKJ821A86MX88PPS05RY] Register a metric vectors with duplicate labels
+    then regex "01D4B1ZKJ821A86MX88PPS05RY" | _world, _matches, _step | {
+        // prometheus enforces this rule at the Desc level
+        match prometheus::core::Desc::new("name".to_string(), "help".to_string(), vec!["A".to_string(), "A".to_string()],HashMap::new()) {
+            Ok(_) => panic!("Desc constructor should have failed"),
+            Err(err) => println!("{}", err)
+        }
+    };
+
+    // Feature: [01D3JB8ZGW3KJ3VT44VBCZM3HA] A process metrics Collector is automatically registered with the global metrics registry
+
+    // Scenario: [01D3JB9B4NP8T1PQ2Q85HY25FQ] gathering all metrics
+    then regex "01D3JB9B4NP8T1PQ2Q85HY25FQ" | _world, _matches, _step | {
+        let metric_families = metrics::registry().gather();
+        assert!(metrics::ProcessMetrics::METRIC_NAMES.iter().all(|name| metric_families.iter().any(|mf| mf.get_name() == *name)));
+    };
+
+    // Scenario: [01D4FTH1WN3WWZZZH2HN66Y1YK] All metrics descriptors are retrieved
+    then regex "01D4FTH1WN3WWZZZH2HN66Y1YK" | _world, _matches, _step | {
+        let descs = metrics::registry().find_descs(|desc| metrics::ProcessMetrics::METRIC_NAMES.iter().any(|name| desc.fq_name.as_str() == *name));
+        println!("{:#?}", descs);
+        assert_eq!(descs.len(), metrics::ProcessMetrics::METRIC_NAMES.len());
+        assert!(metrics::ProcessMetrics::METRIC_NAMES.iter().all(|name| descs.iter().any(|desc| desc.fq_name.as_str() == *name)));
+    };
+
+    // Scenario: [01D3JBCE21WYX6VMWCM4GW2ZTE] gathering process metrics
+    then regex "01D3JBCE21WYX6VMWCM4GW2ZTE" | _world, _matches, _step | {
+        let process_metrics = metrics::registry().gather_process_metrics();
+        let metric_families = metrics::registry().gather_for_desc_names(&metrics::ProcessMetrics::METRIC_NAMES);
+        println!("{}", serde_json::to_string_pretty(&process_metrics).unwrap());
+        println!("{:#?}", metric_families);
+
+        // based on timing, the numbers might not exactly match - the comparisons may need to be adjusted to be approximate
+        let process_cpu_seconds_total = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_CPU_SECONDS_TOTAL)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_counter()
+            .get_value();
+        assert_eq!(process_metrics.cpu_seconds_total() as u64, process_cpu_seconds_total as u64);
+        let process_open_fds = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_OPEN_FDS)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_gauge()
+            .get_value();
+        assert_eq!(process_metrics.open_fds() as u64, process_open_fds as u64);
+        let process_max_fds = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_MAX_FDS)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_gauge()
+            .get_value();
+        assert_eq!(process_metrics.max_fds() as u64, process_max_fds as u64);
+        let process_virtual_memory_bytes = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_VIRTUAL_MEMORY_BYTES)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_gauge()
+            .get_value();
+        assert_eq!(process_metrics.virtual_memory_bytes() as u64, process_virtual_memory_bytes as u64);
+        let process_resident_memory_bytes = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_RESIDENT_MEMORY_BYTES)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_gauge()
+            .get_value();
+        assert_eq!(process_metrics.resident_memory_bytes() as u64, process_resident_memory_bytes as u64);
+        let process_start_time_seconds = metric_families.iter().find(|mf| mf.get_name() == metrics::ProcessMetrics::PROCESS_START_TIME_SECONDS)
+            .unwrap()
+            .get_metric().iter().next().unwrap()
+            .get_gauge()
+            .get_value();
+        assert_eq!(process_metrics.start_time_seconds() as u64, process_start_time_seconds as u64);
     };
 });
 

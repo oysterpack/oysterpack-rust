@@ -82,9 +82,9 @@ use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::{
-    collections::HashMap,
+    collections::{hash_map::DefaultHasher, HashMap},
     fmt,
-    hash::BuildHasher,
+    hash::{BuildHasher, BuildHasherDefault},
     io::Write,
     iter::Extend,
     iter::Iterator,
@@ -104,6 +104,529 @@ pub type DescId = u64;
 /// Returns the global metric registry
 pub fn registry() -> &'static MetricRegistry {
     &METRIC_REGISTRY
+}
+
+/// Counter builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl CounterBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(metric_id: MetricId, help: Help) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::Counter> {
+        match self.const_labels.take() {
+            Some(labels) => new_counter(self.metric_id, self.help.as_str(), Some(labels)),
+            None => new_counter::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                None,
+            ),
+        }
+    }
+}
+
+/// IntCounter builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntCounterBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl IntCounterBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(metric_id: MetricId, help: Help) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new IntCounter
+    pub fn build(mut self) -> prometheus::Result<prometheus::IntCounter> {
+        match self.const_labels.take() {
+            Some(labels) => new_int_counter(self.metric_id, self.help.as_str(), Some(labels)),
+            None => new_int_counter::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                None,
+            ),
+        }
+    }
+}
+
+/// CounterVec builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CounterVecBuilder {
+    metric_id: MetricId,
+    help: String,
+    variable_label_ids: Vec<LabelId>,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl CounterVecBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            variable_label_ids,
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::CounterVec> {
+        match self.const_labels.take() {
+            Some(labels) => new_counter_vec(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                Some(labels),
+            ),
+            None => new_counter_vec::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                None,
+            ),
+        }
+    }
+}
+
+/// IntCounterVec builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntCounterVecBuilder {
+    metric_id: MetricId,
+    help: String,
+    variable_label_ids: Vec<LabelId>,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl IntCounterVecBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            variable_label_ids,
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::IntCounterVec> {
+        match self.const_labels.take() {
+            Some(labels) => new_int_counter_vec(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                Some(labels),
+            ),
+            None => new_int_counter_vec::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                None,
+            ),
+        }
+    }
+}
+
+/// Gauge builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GaugeBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl GaugeBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(metric_id: MetricId, help: Help) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::Gauge> {
+        match self.const_labels.take() {
+            Some(labels) => new_gauge(self.metric_id, self.help.as_str(), Some(labels)),
+            None => new_gauge::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                None,
+            ),
+        }
+    }
+}
+
+/// IntGauge builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntGaugeBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl IntGaugeBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(metric_id: MetricId, help: Help) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::IntGauge> {
+        match self.const_labels.take() {
+            Some(labels) => new_int_gauge(self.metric_id, self.help.as_str(), Some(labels)),
+            None => new_int_gauge::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                None,
+            ),
+        }
+    }
+}
+
+/// IntGaugeVec builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntGaugeVecBuilder {
+    metric_id: MetricId,
+    help: String,
+    variable_label_ids: Vec<LabelId>,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl IntGaugeVecBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            variable_label_ids,
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::IntGaugeVec> {
+        match self.const_labels.take() {
+            Some(labels) => new_int_gauge_vec(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                Some(labels),
+            ),
+            None => new_int_gauge_vec::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                None,
+            ),
+        }
+    }
+}
+
+/// Counter builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GaugeVecBuilder {
+    metric_id: MetricId,
+    help: String,
+    variable_label_ids: Vec<LabelId>,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+}
+
+impl GaugeVecBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            variable_label_ids,
+            const_labels: None,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::GaugeVec> {
+        match self.const_labels.take() {
+            Some(labels) => new_gauge_vec(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                Some(labels),
+            ),
+            None => new_gauge_vec::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                self.variable_label_ids.as_slice(),
+                None,
+            ),
+        }
+    }
+}
+
+/// Histogram builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    buckets: Vec<f64>,
+}
+
+impl HistogramBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(metric_id: MetricId, help: Help, buckets: Vec<f64>) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+            buckets,
+        }
+    }
+
+    /// constructor
+    pub fn new_timer<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        buckets: TimerBuckets,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+            buckets: buckets.into(),
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::Histogram> {
+        match self.const_labels.take() {
+            Some(labels) => new_histogram(
+                self.metric_id,
+                self.help.as_str(),
+                self.buckets,
+                Some(labels),
+            ),
+            None => new_histogram::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                self.buckets,
+                None,
+            ),
+        }
+    }
+}
+
+/// Histogram builder
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistogramVecBuilder {
+    metric_id: MetricId,
+    help: String,
+    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    buckets: Vec<f64>,
+    variable_label_ids: Vec<LabelId>,
+}
+
+impl HistogramVecBuilder {
+    /// constructor
+    pub fn new<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        buckets: Vec<f64>,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+            buckets,
+            variable_label_ids,
+        }
+    }
+
+    /// constructor
+    pub fn new_timer<Help: AsRef<str>>(
+        metric_id: MetricId,
+        help: Help,
+        buckets: TimerBuckets,
+        variable_label_ids: Vec<LabelId>,
+    ) -> Self {
+        Self {
+            metric_id,
+            help: help.as_ref().to_string(),
+            const_labels: None,
+            buckets: buckets.into(),
+            variable_label_ids,
+        }
+    }
+
+    /// add a constant label pair
+    pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
+        let mut labels = self
+            .const_labels
+            .take()
+            .unwrap_or_else(fnv::FnvHashMap::default);
+        labels.insert(id, value.as_ref().to_string());
+        self.const_labels = Some(labels);
+        self
+    }
+
+    /// build the new Counter
+    pub fn build(mut self) -> prometheus::Result<prometheus::HistogramVec> {
+        match self.const_labels.take() {
+            Some(labels) => new_histogram_vec(
+                self.metric_id,
+                self.help.as_str(),
+                &self.variable_label_ids,
+                self.buckets,
+                Some(labels),
+            ),
+            None => new_histogram_vec::<BuildHasherDefault<DefaultHasher>, _>(
+                self.metric_id,
+                self.help.as_str(),
+                &self.variable_label_ids,
+                self.buckets,
+                None,
+            ),
+        }
+    }
 }
 
 /// IntCounter constructor using MetricId and LabelId
@@ -273,6 +796,16 @@ pub fn new_histogram<S: BuildHasher, Help: AsRef<str>>(
     prometheus::Histogram::with_opts(opts)
 }
 
+/// Tries to register a Histogram metric that is meant to be used as timer metric
+pub fn new_histogram_timer<S: BuildHasher, Help: AsRef<str>>(
+    metric_id: MetricId,
+    help: Help,
+    buckets: TimerBuckets,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::Histogram> {
+    new_histogram(metric_id, help, buckets.into(), const_labels)
+}
+
 /// HistogramVec constructor using MetricId and LabelId
 pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
@@ -293,6 +826,17 @@ pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
 
     let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::HistogramVec::new(opts, &label_names)
+}
+
+/// Tries to register a HistogramVec metric that is meant to be used as timer metric
+pub fn new_histogram_vec_timer<S: BuildHasher, Help: AsRef<str>>(
+    metric_id: MetricId,
+    help: Help,
+    label_ids: &[LabelId],
+    buckets: TimerBuckets,
+    const_labels: Option<HashMap<LabelId, String, S>>,
+) -> prometheus::Result<prometheus::HistogramVec> {
+    new_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
 }
 
 /// Tries to parse the descriptor name into a MetricId.
@@ -396,12 +940,8 @@ impl MetricRegistry {
         };
         let check_variable_label_name_length = || {
             let invalid_descs: Vec<_> = collector.desc().iter().filter_map(|desc| {
-                let invalid_label_names: Vec<_> = desc.variable_labels.iter().filter_map(|label| {
-                    if label.len() > Self::DESC_LABEL_NAME_LEN {
-                        Some(label)
-                    } else {
-                        None
-                    }
+                let invalid_label_names: Vec<_> = desc.variable_labels.iter().filter(|label| {
+                    label.len() > Self::DESC_LABEL_NAME_LEN
                 }).collect();
                 if invalid_label_names.is_empty() {
                     None

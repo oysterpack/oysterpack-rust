@@ -100,15 +100,10 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
 
   Rule: for metric vectors, variable labels must not be blank
 
-  Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Register metric collectors containing descriptors with blank labels
-    Then [01D4B1KQZ9F4FMKF51FHF84D72] the collector will fail to register
+  Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Construct a Desc with blank variable labels
+    Then [01D4B1KQZ9F4FMKF51FHF84D72] the Desc constructor will fail
 
   Rule: for metric vectors, variable labels must be unique
 
-  Scenario: [01D4B1ZKJ821A86MX88PPS05RY] Register a metric vectors with duplicate labels
-    When [01D4B1ZKJ821A86MX88PPS05RY] registering metrics
-    Then [01D4B1ZKJ821A86MX88PPS05RY] the metric will fail to register
-
-  Scenario: [01D4B20762DXC3MZ2494AK6CT3] Register a metric colletors containing descriptors with duplicate labels
-    When [01D4B20762DXC3MZ2494AK6CT3] registering collector
-    Then [01D4B20762DXC3MZ2494AK6CT3] the collector will fail to register
+  Scenario: [01D4B1ZKJ821A86MX88PPS05RY] Construct a Desc with duplicate valriable labels
+    Then [01D4B1ZKJ821A86MX88PPS05RY] the Desc constructor will fail

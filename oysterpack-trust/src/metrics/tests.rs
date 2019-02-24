@@ -883,7 +883,7 @@ fn registry_gather_metrics_for_labels() {
         timer.with_label_values(&["2"]).observe(2.2);
     }
 
-    let mfs = metric_registry.gather_for_labels(hashmap! {
+    let mfs = metric_registry.gather_for_labels(&hashmap! {
         var_label_id.name() => "1".to_string()
     });
     info!("{:#?}", mfs);

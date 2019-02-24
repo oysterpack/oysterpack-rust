@@ -70,6 +70,10 @@ name = "cucumber_metrics_registry"
 harness = false
 
 [[test]]
+name = "cucumber_metrics_support"
+harness = false
+
+[[test]]
 name = "cucumber_execution"
 harness = false
 
