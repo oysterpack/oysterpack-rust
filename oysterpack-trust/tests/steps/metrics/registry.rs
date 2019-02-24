@@ -658,6 +658,11 @@ steps!(World => {
     };
 
     // Rule: for metric vectors, variable labels must not be blank
+
+    // Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Register metric collectors containing descriptors with blank labels
+    then regex "01D4B1KQZ9F4FMKF51FHF84D72" | world, _matches, _step | {
+        unimplemented!();
+    };
 });
 
 #[derive(Clone)]
