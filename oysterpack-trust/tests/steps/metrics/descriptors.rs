@@ -193,22 +193,14 @@ impl Collector for World {
 impl Default for World {
     fn default() -> World {
         Self {
-            counter: metrics::new_int_counter(
-                metrics::MetricId::generate(),
-                "counter",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
-            )
-            .unwrap(),
-            gauge: metrics::new_int_gauge(
-                metrics::MetricId::generate(),
-                "gauge",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
+            counter: metrics::IntCounterBuilder::new(metrics::MetricId::generate(), "int counter")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            gauge: metrics::IntGaugeBuilder::new(metrics::MetricId::generate(), "int gauge")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
             descs: Vec::new(),
         }
     }

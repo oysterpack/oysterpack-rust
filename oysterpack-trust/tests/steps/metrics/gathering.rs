@@ -32,15 +32,15 @@ steps!(World => {
     // Feature: [01D43V3KAZ276MQZY1TZG793EQ] Gathering all metrics
 
     // Scenario: [01D3PPPT1ZNXPKKWM29R14V5ZT] Gathering all metrics
-    given regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, step | {
+    given regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, _step | {
        world.register_metrics()
     };
 
-    when regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, step| {
+    when regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, _step| {
         world.metric_families = metrics::registry().gather();
     };
 
-    then regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, step| {
+    then regex "01D3PPPT1ZNXPKKWM29R14V5ZT" | world, _matches, _step| {
         world.check_all_metrics_returned();
     };
 
@@ -48,12 +48,12 @@ steps!(World => {
 
     // Background:
     //    Given [01D3J441N6BM05NKCBQEVYTZY8] metrics are registered
-    given regex "01D3J441N6BM05NKCBQEVYTZY8" | world, _matches, step | {
+    given regex "01D3J441N6BM05NKCBQEVYTZY8" | world, _matches, _step | {
        world.register_metrics();
     };
 
     // Scenario: [01D3PPY3E710BYY8DQDKVQ31KY] Gather metrics for DescId(s)
-    when regex "01D3PPY3E710BYY8DQDKVQ31KY" | world, _matches, step| {
+    when regex "01D3PPY3E710BYY8DQDKVQ31KY" | world, _matches, _step| {
         world.desc_ids = vec![
             world.counter.desc()[0].id,
             world.int_counter.desc()[0].id,
@@ -64,13 +64,13 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_ids(&world.desc_ids);
     };
 
-    then regex "01D3PPY3E710BYY8DQDKVQ31KY" | world, _matches, step| {
+    then regex "01D3PPY3E710BYY8DQDKVQ31KY" | world, _matches, _step| {
         let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
     // Scenario: [01D4BXN2ZMYRHNGRRCSTKVN0AP] Gather metrics for DescId(s) containing dups
-    when regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, step| {
+    when regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, _step| {
         world.desc_ids = vec![
             world.counter.desc()[0].id,
             world.int_counter.desc()[0].id,
@@ -83,13 +83,13 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
     };
 
-    then regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, step| {
+    then regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, _step| {
         let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
     // Scenario: [01D4D0GEXXQ3WKK78DYC0RJHKD] Gather metrics for DescId(s) containing some that do not match
-    when regex "01D4D0GEXXQ3WKK78DYC0RJHKD" | world, _matches, step| {
+    when regex "01D4D0GEXXQ3WKK78DYC0RJHKD" | world, _matches, _step| {
         let mut desc_ids = vec![
             world.counter.desc()[0].id,
             world.int_counter.desc()[0].id,
@@ -104,13 +104,13 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
     };
 
-    then regex "01D4D0GEXXQ3WKK78DYC0RJHKD" | world, _matches, step| {
+    then regex "01D4D0GEXXQ3WKK78DYC0RJHKD" | world, _matches, _step| {
         let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
     // [01D4D1774JHQNB8X0QRBYEAEBW] Gather metrics for DescId(s) containing none that not match
-    when regex "01D4D1774JHQNB8X0QRBYEAEBW" | world, _matches, step| {
+    when regex "01D4D1774JHQNB8X0QRBYEAEBW" | world, _matches, _step| {
         let mut desc_ids = Vec::with_capacity(2);
         let non_existent_desc_id = find_next_non_existent_desc_id(0);
         desc_ids.push(non_existent_desc_id);
@@ -119,22 +119,22 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
     };
 
-    then regex "01D4D1774JHQNB8X0QRBYEAEBW" | world, _matches, step| {
+    then regex "01D4D1774JHQNB8X0QRBYEAEBW" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // [01D4D1WEKJBFQSR0Z1Q10ZHD2R] Gather metrics for DescId(s) with an empty &[DescId]
-    when regex "01D4D1WEKJBFQSR0Z1Q10ZHD2R" | world, _matches, step| {
+    when regex "01D4D1WEKJBFQSR0Z1Q10ZHD2R" | world, _matches, _step| {
         let mut desc_ids = vec![];
         world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
     };
 
-    then regex "01D4D1WEKJBFQSR0Z1Q10ZHD2R" | world, _matches, step| {
+    then regex "01D4D1WEKJBFQSR0Z1Q10ZHD2R" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D3PQ2KMBY07K48Q281SMPED6] Gather metrics for descriptor names
-    when regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, step| {
+    when regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -145,12 +145,12 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
     };
 
-    then regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, step| {
+    then regex "01D3PQ2KMBY07K48Q281SMPED6" | world, _matches, _step| {
         assert_eq!(world.metric_families.len(), world.desc_names.len());
     };
 
     // Scenario: [01D4BXX8A1SY3CYA8V9330F7QM] Gather metrics for descriptor names with dup names
-    when regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, step| {
+    when regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -163,12 +163,12 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };
 
-    then regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, step| {
+    then regex "01D4BXX8A1SY3CYA8V9330F7QM" | world, _matches, _step| {
         assert_eq!(world.metric_families.len(), world.desc_names.len());
     };
 
     // Scenario: [01D4D2YZXEES3GHA30J5ZZFPGF] Gather metrics for descriptor names containing some that do not match
-    when regex "01D4D2YZXEES3GHA30J5ZZFPGF" | world, _matches, step| {
+    when regex "01D4D2YZXEES3GHA30J5ZZFPGF" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -181,34 +181,34 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };
 
-    then regex "01D4D2YZXEES3GHA30J5ZZFPGF" | world, _matches, step| {
+    then regex "01D4D2YZXEES3GHA30J5ZZFPGF" | world, _matches, _step| {
         assert_eq!(world.metric_families.len(), world.desc_names.len());
     };
 
     // Scenario: [01D4D302NGKYAVCHDF4A1Z6SB3] Gather metrics for descriptor names containing none that match
-    when regex "01D4D302NGKYAVCHDF4A1Z6SB3" | world, _matches, step| {
+    when regex "01D4D302NGKYAVCHDF4A1Z6SB3" | world, _matches, _step| {
         let mut desc_names = vec![ULID::generate().to_string(), ULID::generate().to_string()];
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };
 
-    then regex "01D4D302NGKYAVCHDF4A1Z6SB3" | world, _matches, step| {
+    then regex "01D4D302NGKYAVCHDF4A1Z6SB3" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D4D30ABTZ72781C5NDP42217] Gather metrics for descriptor names using an empty &[Name]
-    when regex "01D4D30ABTZ72781C5NDP42217" | world, _matches, step| {
+    when regex "01D4D30ABTZ72781C5NDP42217" | world, _matches, _step| {
         let mut desc_names = Vec::<String>::new();
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };
 
-    then regex "01D4D30ABTZ72781C5NDP42217" | world, _matches, step| {
+    then regex "01D4D30ABTZ72781C5NDP42217" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D3VC85Q8MVBJ543SHZ4RE9T2] Gather metrics for MetricId(s)
-    when regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, step| {
+    when regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -220,13 +220,13 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
     };
 
-    then regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, step| {
+    then regex "01D3VC85Q8MVBJ543SHZ4RE9T2" | world, _matches, _step| {
         let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
         assert_eq!(world.metric_families.len(), metric_families.len());
     };
 
     // Scenario: [01D4D3C0EBPZX8NWCYRD8YJ0Y3] Gather metrics for MetricId(s) containing dups
-    when regex "01D4D3C0EBPZX8NWCYRD8YJ0Y3" | world, _matches, step| {
+    when regex "01D4D3C0EBPZX8NWCYRD8YJ0Y3" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -241,13 +241,13 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
     };
 
-    then regex "01D4D3C0EBPZX8NWCYRD8YJ0Y3" | world, _matches, step| {
+    then regex "01D4D3C0EBPZX8NWCYRD8YJ0Y3" | world, _matches, _step| {
         let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
         assert_eq!(world.metric_families.len(), metric_families.len());
     };
 
     // Scenario: [01D4D3EX9TP87RQ2S11PFNXG2T] Gather metrics for MetricId(s) containing some that do not match
-    when regex "01D4D3EX9TP87RQ2S11PFNXG2T" | world, _matches, step| {
+    when regex "01D4D3EX9TP87RQ2S11PFNXG2T" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -260,35 +260,35 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
     };
 
-    then regex "01D4D3EX9TP87RQ2S11PFNXG2T" | world, _matches, step| {
+    then regex "01D4D3EX9TP87RQ2S11PFNXG2T" | world, _matches, _step| {
         let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
         assert_eq!(world.metric_families.len(), metric_families.len());
     };
 
     // Scenario: [01D4D3EKJME2MCH81DXTAMGMJS] Gather metrics for MetricId(s) containing none that match
-    when regex "01D4D3EKJME2MCH81DXTAMGMJS" | world, _matches, step| {
-        let mut metric_ids: Vec<metrics::MetricId> = vec![metrics::MetricId::generate()];
+    when regex "01D4D3EKJME2MCH81DXTAMGMJS" | world, _matches, _step| {
+        let metric_ids: Vec<metrics::MetricId> = vec![metrics::MetricId::generate()];
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
     };
 
-    then regex "01D4D3EKJME2MCH81DXTAMGMJS" | world, _matches, step| {
+    then regex "01D4D3EKJME2MCH81DXTAMGMJS" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D4D3EBMA7XR2FWA1Q6E5F560] Gather metrics for MetricId(s) using an empty &[MetricId]
-    when regex "01D4D3EBMA7XR2FWA1Q6E5F560" | world, _matches, step| {
-        let mut metric_ids: Vec<metrics::MetricId> = vec![];
+    when regex "01D4D3EBMA7XR2FWA1Q6E5F560" | world, _matches, _step| {
+        let metric_ids: Vec<metrics::MetricId> = vec![];
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_metric_ids(&metric_ids);
     };
 
-    then regex "01D4D3EBMA7XR2FWA1Q6E5F560" | world, _matches, step| {
+    then regex "01D4D3EBMA7XR2FWA1Q6E5F560" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D43MQQ1H59ZGJ9G2AMEJB5RF] Gather metrics for labels
-    when regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, step| {
+    when regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -311,7 +311,7 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_labels(&world.labels);
     };
 
-    then regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, step| {
+    then regex "01D43MQQ1H59ZGJ9G2AMEJB5RF" | world, _matches, _step| {
         let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
         assert_eq!(world.metric_families.len(), metric_families.len());
         assert!(world.metric_families.iter().all(|mf| metric_families.iter().any(|mf2| mf2.get_name() == mf.get_name())));
@@ -326,7 +326,7 @@ steps!(World => {
     };
 
     // Scenario: [01D4D40A3652FWV58EQMY6907F] Gather metrics for labels with some non-matching labels
-    when regex "01D4D40A3652FWV58EQMY6907F" | world, _matches, step| {
+    when regex "01D4D40A3652FWV58EQMY6907F" | world, _matches, _step| {
         world.desc_names = vec![
             world.counter.desc()[0].fq_name.clone(),
             world.int_counter.desc()[0].fq_name.clone(),
@@ -352,7 +352,7 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_labels(&world.labels);
     };
 
-    then regex "01D4D40A3652FWV58EQMY6907F" | world, _matches, step| {
+    then regex "01D4D40A3652FWV58EQMY6907F" | world, _matches, _step| {
         let metric_families = metrics::registry().gather_for_desc_names(&world.desc_names);
         assert_eq!(world.metric_families.len(), metric_families.len());
         assert!(world.metric_families.iter().all(|mf| metric_families.iter().any(|mf2| mf2.get_name() == mf.get_name())));
@@ -367,7 +367,7 @@ steps!(World => {
     };
 
     // Scenario: [01D4D417QGFCY2XSSARWWH49P5] Gather metrics for labels with no matching labels
-    when regex "01D4D417QGFCY2XSSARWWH49P5" | world, _matches, step| {
+    when regex "01D4D417QGFCY2XSSARWWH49P5" | world, _matches, _step| {
         let labels = hashmap! {
             ULID::generate().to_string() => ULID::generate().to_string()
         };
@@ -375,17 +375,17 @@ steps!(World => {
         world.metric_families = metrics::registry().gather_for_labels(&labels);
     };
 
-    then regex "01D4D417QGFCY2XSSARWWH49P5" | world, _matches, step| {
+    then regex "01D4D417QGFCY2XSSARWWH49P5" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
     // Scenario: [01D4D3WKY9607QG71S76DE65W8] Gather metrics for labels using an empty HashMap
-    when regex "01D4D3WKY9607QG71S76DE65W8" | world, _matches, step| {
+    when regex "01D4D3WKY9607QG71S76DE65W8" | world, _matches, _step| {
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_labels(&HashMap::new());
     };
 
-    then regex "01D4D3WKY9607QG71S76DE65W8" | world, _matches, step| {
+    then regex "01D4D3WKY9607QG71S76DE65W8" | world, _matches, _step| {
         assert!(world.metric_families.is_empty());
     };
 
@@ -551,94 +551,73 @@ impl Collector for World {
 impl Default for World {
     fn default() -> World {
         Self {
-            counter: metrics::new_counter(
-                metrics::MetricId::generate(),
-                "counter",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
-            )
-            .unwrap(),
-            int_counter: metrics::new_int_counter(
+            counter: metrics::CounterBuilder::new(metrics::MetricId::generate(), "counter")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            int_counter: metrics::IntCounterBuilder::new(
                 metrics::MetricId::generate(),
                 "int counter",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            gauge: metrics::new_gauge(
-                metrics::MetricId::generate(),
-                "int gauge",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-            int_gauge: metrics::new_int_gauge(
-                metrics::MetricId::generate(),
-                "gauge",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-
-            counter_vec: metrics::new_counter_vec(
+            gauge: metrics::GaugeBuilder::new(metrics::MetricId::generate(), "gauge")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            int_gauge: metrics::IntGaugeBuilder::new(metrics::MetricId::generate(), "int gauge")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            counter_vec: metrics::CounterVecBuilder::new(
                 metrics::MetricId::generate(),
                 "counter vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            int_counter_vec: metrics::new_int_counter_vec(
+            int_counter_vec: metrics::IntCounterVecBuilder::new(
                 metrics::MetricId::generate(),
                 "int counter vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            gauge_vec: metrics::new_gauge_vec(
-                metrics::MetricId::generate(),
-                "int gauge vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-            int_gauge_vec: metrics::new_int_gauge_vec(
+            gauge_vec: metrics::GaugeVecBuilder::new(
                 metrics::MetricId::generate(),
                 "gauge vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-
-            histogram: metrics::new_histogram(
+            int_gauge_vec: metrics::IntGaugeVecBuilder::new(
+                metrics::MetricId::generate(),
+                "int gauge vec",
+                vec![metrics::LabelId::generate()],
+            )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
+            .unwrap(),
+            histogram: metrics::HistogramBuilder::new(
                 metrics::MetricId::generate(),
                 "histogram",
-                vec![0.1, 0.2],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![0.1],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            histogram_vec: metrics::new_histogram_vec(
+            histogram_vec: metrics::HistogramVecBuilder::new(
                 metrics::MetricId::generate(),
                 "histogram vec",
-                &[metrics::LabelId::generate()],
-                vec![0.1, 0.2],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![0.1],
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
 
             world2: None,

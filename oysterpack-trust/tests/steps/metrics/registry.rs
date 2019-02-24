@@ -893,94 +893,73 @@ impl Collector for World {
 impl Default for World {
     fn default() -> World {
         Self {
-            counter: metrics::new_counter(
-                metrics::MetricId::generate(),
-                "counter",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
-            )
-            .unwrap(),
-            int_counter: metrics::new_int_counter(
+            counter: metrics::CounterBuilder::new(metrics::MetricId::generate(), "counter")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            int_counter: metrics::IntCounterBuilder::new(
                 metrics::MetricId::generate(),
                 "int counter",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            gauge: metrics::new_gauge(
-                metrics::MetricId::generate(),
-                "int gauge",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-            int_gauge: metrics::new_int_gauge(
-                metrics::MetricId::generate(),
-                "gauge",
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-
-            counter_vec: metrics::new_counter_vec(
+            gauge: metrics::GaugeBuilder::new(metrics::MetricId::generate(), "gauge")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            int_gauge: metrics::IntGaugeBuilder::new(metrics::MetricId::generate(), "int gauge")
+                .with_label(metrics::LabelId::generate(), "A")
+                .build()
+                .unwrap(),
+            counter_vec: metrics::CounterVecBuilder::new(
                 metrics::MetricId::generate(),
                 "counter vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            int_counter_vec: metrics::new_int_counter_vec(
+            int_counter_vec: metrics::IntCounterVecBuilder::new(
                 metrics::MetricId::generate(),
                 "int counter vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "A".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            gauge_vec: metrics::new_gauge_vec(
-                metrics::MetricId::generate(),
-                "int gauge vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
-            )
-            .unwrap(),
-            int_gauge_vec: metrics::new_int_gauge_vec(
+            gauge_vec: metrics::GaugeVecBuilder::new(
                 metrics::MetricId::generate(),
                 "gauge vec",
-                &[metrics::LabelId::generate()],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-
-            histogram: metrics::new_histogram(
+            int_gauge_vec: metrics::IntGaugeVecBuilder::new(
+                metrics::MetricId::generate(),
+                "int gauge vec",
+                vec![metrics::LabelId::generate()],
+            )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
+            .unwrap(),
+            histogram: metrics::HistogramBuilder::new(
                 metrics::MetricId::generate(),
                 "histogram",
-                vec![0.1, 0.2],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![0.1],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
-            histogram_vec: metrics::new_histogram_vec(
+            histogram_vec: metrics::HistogramVecBuilder::new(
                 metrics::MetricId::generate(),
                 "histogram vec",
-                &[metrics::LabelId::generate()],
-                vec![0.1, 0.2],
-                Some(hashmap! {
-                    metrics::LabelId::generate() => "B".to_string()
-                }),
+                vec![0.1],
+                vec![metrics::LabelId::generate()],
             )
+            .with_label(metrics::LabelId::generate(), "A")
+            .build()
             .unwrap(),
 
             world2: None,

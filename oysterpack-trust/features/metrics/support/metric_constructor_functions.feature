@@ -1,18 +1,18 @@
-Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Constructor functions are provided for each of the supported metrics.
+Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Metric builders are provided for each of the supported metrics.
 
-  - counter constructor functions
-    - metrics::new_counter()
-    - metrics::new_counter_vec()
-    - metrics::new_int_counter()
-    - metrics::new_int_counter_vec()
-  - gauge constructor functions
-    - metrics::new_gauge()
-    - metrics::new_gauge_vec()
-    - metrics::new_int_gauge()
-    - metrics::new_int_gauge_vec()
-  - histogram constructor functions
-    - metrics::new_histogram()
-    - metrics::new_histogram_vec()
+  - counter builders
+    - CounterBuilder
+    - IntCounterBuilder
+    - CounterVecBuilder
+    - IntCounterBuilder
+  - gauge builders
+    - GaugeBuilder
+    - IntGaugeBuilder
+    - GaugeVecBuilder
+    - IntGaugeBuilder
+  - histogram builders
+    - HistogramBuilder
+    - HistogramVecBuilder
 
   Scenario: [01D3VGSGCP9ZN9BX3BTB349FRJ] Construct a new counter and register it
     Then [01D3VGSGCP9ZN9BX3BTB349FRJ] metric is successfully registered

@@ -77,7 +77,7 @@
 
 use lazy_static::lazy_static;
 use oysterpack_log::*;
-use oysterpack_uid::{macros::ulid, ulid_u128_into_string, ULID};
+use oysterpack_uid::{ulid_u128_into_string, ULID};
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -630,7 +630,7 @@ impl HistogramVecBuilder {
 }
 
 /// IntCounter constructor using MetricId and LabelId
-pub fn new_int_counter<S: BuildHasher, Help: AsRef<str>>(
+fn new_int_counter<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
@@ -647,7 +647,7 @@ pub fn new_int_counter<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// IntGauge constructor using MetricId and LabelId
-pub fn new_int_gauge<S: BuildHasher, Help: AsRef<str>>(
+fn new_int_gauge<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
@@ -664,7 +664,7 @@ pub fn new_int_gauge<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// Gauge constructor using MetricId and LabelId
-pub fn new_gauge<S: BuildHasher, Help: AsRef<str>>(
+fn new_gauge<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
@@ -681,7 +681,7 @@ pub fn new_gauge<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// GaugeVec constructor using MetricId and LabelId
-pub fn new_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
+fn new_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     label_ids: &[LabelId],
@@ -701,7 +701,7 @@ pub fn new_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// IntGaugeVec constructor using MetricId and LabelId
-pub fn new_int_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
+fn new_int_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     label_ids: &[LabelId],
@@ -721,7 +721,7 @@ pub fn new_int_gauge_vec<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// Counter constructor using MetricId and LabelId
-pub fn new_counter<S: BuildHasher, Help: AsRef<str>>(
+fn new_counter<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     const_labels: Option<HashMap<LabelId, String, S>>,
@@ -738,7 +738,7 @@ pub fn new_counter<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// IntCounterVec constructor using MetricId and LabelId
-pub fn new_int_counter_vec<S: BuildHasher, Help: AsRef<str>>(
+fn new_int_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     label_ids: &[LabelId],
@@ -758,7 +758,7 @@ pub fn new_int_counter_vec<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// CounterVec constructor using MetricId and LabelId
-pub fn new_counter_vec<S: BuildHasher, Help: AsRef<str>>(
+fn new_counter_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     label_ids: &[LabelId],
@@ -778,7 +778,7 @@ pub fn new_counter_vec<S: BuildHasher, Help: AsRef<str>>(
 }
 
 /// Histogram constructor using MetricId and LabelId
-pub fn new_histogram<S: BuildHasher, Help: AsRef<str>>(
+fn new_histogram<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     buckets: Vec<f64>,
@@ -796,18 +796,8 @@ pub fn new_histogram<S: BuildHasher, Help: AsRef<str>>(
     prometheus::Histogram::with_opts(opts)
 }
 
-/// Tries to register a Histogram metric that is meant to be used as timer metric
-pub fn new_histogram_timer<S: BuildHasher, Help: AsRef<str>>(
-    metric_id: MetricId,
-    help: Help,
-    buckets: TimerBuckets,
-    const_labels: Option<HashMap<LabelId, String, S>>,
-) -> prometheus::Result<prometheus::Histogram> {
-    new_histogram(metric_id, help, buckets.into(), const_labels)
-}
-
 /// HistogramVec constructor using MetricId and LabelId
-pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
+fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
     metric_id: MetricId,
     help: Help,
     label_ids: &[LabelId],
@@ -826,17 +816,6 @@ pub fn new_histogram_vec<S: BuildHasher, Help: AsRef<str>>(
 
     let label_names: Vec<&str> = label_names.iter().map(String::as_str).collect();
     prometheus::HistogramVec::new(opts, &label_names)
-}
-
-/// Tries to register a HistogramVec metric that is meant to be used as timer metric
-pub fn new_histogram_vec_timer<S: BuildHasher, Help: AsRef<str>>(
-    metric_id: MetricId,
-    help: Help,
-    label_ids: &[LabelId],
-    buckets: TimerBuckets,
-    const_labels: Option<HashMap<LabelId, String, S>>,
-) -> prometheus::Result<prometheus::HistogramVec> {
-    new_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
 }
 
 /// Tries to parse the descriptor name into a MetricId.
@@ -1590,15 +1569,30 @@ impl fmt::Debug for MetricRegistry {
 }
 
 /// Label Id
-#[ulid]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct LabelId(pub u128);
 
 impl LabelId {
+    /// generate a new unique MetricId
+    pub fn generate() -> LabelId {
+        Self(oysterpack_uid::ulid_u128())
+    }
+
+    /// ID getter
+    pub fn id(&self) -> u128 {
+        self.0
+    }
+
+    /// return the ID as a ULID
+    pub fn ulid(&self) -> ULID {
+        ULID::from(self.0)
+    }
+
     /// returns the metric name
     /// - the LabelId ULID is prefixedwith 'L' to ensure it does not start with a number because
     ///   prometheus metric names must match the following pattern `[a-zA-Z_:][a-zA-Z0-9_:]*`
     pub fn name(&self) -> String {
-        format!("L{}", self)
+        self.to_string()
     }
 }
 
@@ -1608,6 +1602,12 @@ impl FromStr for LabelId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let id: ULID = s[1..].parse()?;
         Ok(Self(id.into()))
+    }
+}
+
+impl fmt::Display for LabelId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "L{}", ulid_u128_into_string(self.0))
     }
 }
 
