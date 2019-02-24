@@ -26,18 +26,6 @@ use std::{collections::HashSet, num::NonZeroUsize, panic, thread, time::Duration
 
 steps!(TestContext => {
 
-    given regex "01D3W3GDYVS4P2SR0SECVT0JJT-1" |world, _matches, _step| {
-        world.init_with_new_executor(10, false);
-    };
-
-    when regex "01D3W3GDYVS4P2SR0SECVT0JJT-2" |world, _matches, _step| {
-        check_exeutor_thread_pool_size(world, 10);
-    };
-
-    then regex "01D3W3GDYVS4P2SR0SECVT0JJT-3" |world, _matches, _step| {
-        check_total_threads_count_inc(world, 10);
-    };
-
     given regex "01D3Y1CYCKZHY675FKEPPX4JE4-1" |world, _matches, _step| {
         world.init_with_new_executor(1, false);
     };

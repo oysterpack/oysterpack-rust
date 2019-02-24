@@ -262,7 +262,6 @@ steps!(World => {
     then regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N" | world, _matches, _step| {
         let metrics_text = String::from_utf8_lossy(&world.text_encoded_metrics);
         println!("{}",metrics_text);
-        //TODO: verify that the output format can be ingested via prometheus - use regex
     };
 
     // Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Functions are provided to help collecting timer based metrics
@@ -296,5 +295,5 @@ steps!(World => {
 
 #[derive(Clone, Default)]
 pub struct World {
-    text_encoded_metrics: Vec<u8>
+    text_encoded_metrics: Vec<u8>,
 }

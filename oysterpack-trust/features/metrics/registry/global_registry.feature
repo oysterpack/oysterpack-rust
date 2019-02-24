@@ -9,10 +9,10 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
 
   Rule: Descriptors registered with the same registry have to fulfill certain consistency and uniqueness criteria if they share the same fully-qualified name.
 
-  # They must have the same help string and the same label names (aka label dimensions) in each, constLabels and variableLabels,
+  # They must have the same help string and the same label names (aka label dimensions) in each, constant labels and variable labels,
   # but they must differ in the values of the constLabels.
   #
-  # Descriptors that share the same fully-qualified names and the same label values of their constLabels are considered equal.
+  # Descriptors that share the same fully-qualified names and the same label values of their constant labels are considered equal.
 
   Scenario: [01D3J3DRS0CJ2YN99KAWQ19103] Register 2 metrics using the same MetricId and no labels
     Given [01D3J3DRS0CJ2YN99KAWQ19103] an Counter is already registered with the global registry
@@ -39,7 +39,7 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
     When [01D4D68AW6FYYESQZQCZH8JGCG] a Gauge is registered using the same MetricId and const label names but different label values
     Then [01D4D68AW6FYYESQZQCZH8JGCG] the Gauge will fail to register
 
-  Rule: descriptor `help` must not be blank
+  Rule: Descriptor `help` must not be blank
 
   Scenario: [01D4B036AWCJD6GCDNVGA5YVBB] Register metrics with a blank help message on the descriptor
     Then [01D4B036AWCJD6GCDNVGA5YVBB] the metrics will fail to register
@@ -47,7 +47,7 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
   Scenario: [01D4B08N90FM8EZTT3X5Y72D3M] Register a collector containing multiple descriptors where 1 descriptor has a blank help message
     Then [01D4B08N90FM8EZTT3X5Y72D3M] the collector will fail to register
 
-  Rule: descriptor `help` max length is 250
+  Rule: Descriptor `help` max length is 250
 
   Scenario: [01D4B0S8QW63C6YFCB83CQZXA7] Register metrics with a help message with the max allowed length
     When [01D4B0S8QW63C6YFCB83CQZXA7] registering metrics for each of the MetricId supported types
@@ -59,7 +59,7 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
   Scenario: [01D4B0S1J3XV06GEZJGA9Q5F8V] Register a collector containing multiple descriptors where 1 descriptor has a help message length 1 char bigger then the max allowed length
     Then [01D4B0S1J3XV06GEZJGA9Q5F8V] the collector will fail to register
 
-  Rule: descriptor constant label name or value must not be blank
+  Rule: Descriptor constant label name or value must not be blank
 
   Scenario: [01D4B0K42BC2TB0TAA2QP6BRWZ] Register metrics containing a descriptor with a blank label value
     Then [01D4B0K42BC2TB0TAA2QP6BRWZ] the metric will fail to register
@@ -70,7 +70,7 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
   Scenario: [01D4B0JCKY2ZQNXD0A0CQA89WK] Register a collector containing a descriptor with a blank label value
     Then [01D4B0JCKY2ZQNXD0A0CQA89WK] the collector will fail to register
 
-  Rule: descriptor label name max length is 30 and label value max length is 150
+  Rule: Descriptor label name max length is 30 and label value max length is 150
 
   Scenario: [01D4ED3RW0MP6SRH0T169YSP0J] Register collector using the max allowed length for the const label name
     Then [01D4ED3RW0MP6SRH0T169YSP0J] metrics successfully registered
@@ -93,17 +93,17 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
   Scenario: [01D4B0Y6Y494DYFVE3YVQYXPPR] Register a collector containing a const label value whose length is 1 greater than the max length
     Then [01D4B0Y6Y494DYFVE3YVQYXPPR] the metric will fail to register
 
-  Rule: for metric vectors, at least 1 variable label must be defined on the descriptor
+  Rule: For metric vectors, at least 1 variable label must be defined on the descriptor
 
   Scenario: [01D4B1F6AXH4DHBXC42756CVNZ] Register a metric vectors with no variable labels
     Then [01D4B1F6AXH4DHBXC42756CVNZ] the metric will fail to register
 
-  Rule: for metric vectors, variable labels must not be blank
+  Rule: For metric vectors, variable labels must not be blank
 
   Scenario: [01D4B1KQZ9F4FMKF51FHF84D72] Construct a Desc with blank variable labels
     Then [01D4B1KQZ9F4FMKF51FHF84D72] the Desc constructor will fail
 
-  Rule: for metric vectors, variable labels must be unique
+  Rule: For metric vectors, variable labels must be unique
 
   Scenario: [01D4B1ZKJ821A86MX88PPS05RY] Construct a Desc with duplicate valriable labels
     Then [01D4B1ZKJ821A86MX88PPS05RY] the Desc constructor will fail

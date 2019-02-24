@@ -16,58 +16,45 @@
 
 //! Provides metrics support for [prometheus](https://prometheus.io/).
 //!
-//! ## Features
+//! ## Registry Features
 //! - *[01D43V1W2BHDR5MK08D1HFSFZX]* A global prometheus metrics registry is provided.
 //!   - [MetricRegistry](struct.MetricRegistry.html) via [registry()](fn.registry.html)
-//! - *[01D3JAHR4Z02XTJGTNE4D63VRT]* The metric registry supports any `prometheus::core::Collector`
-//!   - any Collector can be [registered](struct.MetricRegistry.html#method.register)
-//! - *[01D3SF69J8P9T9PSKEXKQJV1ME]* Metric collectors can be retrieved from the global metric registry.
-//!   - [MetricRegistry::collectors()](struct.MetricRegistry.html#method.collectors)
-//!   - [MetricRegistry::filter_collectors()](struct.MetricRegistry.html#method.filter_collectors)
+//! - *[01D3JB8ZGW3KJ3VT44VBCZM3HA]* A process metrics Collector is automatically registered with the global metrics registry
+//!
+//! ### Registry Rules
+//! - Descriptors registered with the same registry have to fulfill certain consistency and uniqueness
+//!   criteria if they share the same fully-qualified name.
+//!   - They must have the same help string and the same label names (aka label dimensions) in each,
+//!     constant labels and variable labels, but they must differ in the values of the constant labels.
+//!   - Descriptors that share the same fully-qualified names and the same label values of their constant
+//!     labels are considered equal.
+//! - Descriptor `help` must not be blank
+//! - Descriptor `help` max length is 250
+//! - Descriptor constant label name or value must not be blank
+//! - Descriptor label name max length is 30 and label value max length is 150
+//! - For metric vectors:
+//!   - at least 1 variable label must be defined on the descriptor
+//!   - variable labels must not be blank
+//!   - variable labels must be unique
+//!
+//! ## Gathering Metrics Features
+//! - *[01D43V3KAZ276MQZY1TZG793EQ]* [Gathering all metrics](struct.MetricRegistry.html#method.gather)
+//! - *[01D43V3KAZ276MQZY1TZG793EQ]* Gathering a subset of the metrics
+//!   - [MetricRegistry::gather_for_desc_ids()](struct.MetricRegistry.html#method.gather_for_desc_ids)
+//!   - [MetricRegistry::gather_for_desc_names()](struct.MetricRegistry.html#method.gather_for_desc_names)
+//!   - [MetricRegistry::gather_for_metric_ids()](struct.MetricRegistry.html#method.gather_for_metric_ids)
+//!   - [MetricRegistry::gather_for_labels()](struct.MetricRegistry.html#method.gather_for_labels)
+//!   - [MetricRegistry::gather_process_metrics()](struct.MetricRegistry.html#method.gather_process_metrics)
+//!
+//! ## Metric Collector Features
+//! - *[01D3JAHR4Z02XTJGTNE4D63VRT]* Any `prometheus::core::Collector` can be registered
+//! - *[01D3SF69J8P9T9PSKEXKQJV1ME]* All registered collectors can be retrieved from the registry
+//! - *[01D3SF69J8P9T9PSKEXKQJV1ME]* Find collectors matching filters
+//!   - [MetricRegistry::find_collectors()](struct.MetricRegistry.html#method.find_collectors)
+//!   - [MetricRegistry::collectors_for_desc_id()](struct.MetricRegistry.html#method.collectors_for_desc_id)
+//!   - [MetricRegistry::collectors_for_desc_ids()](struct.MetricRegistry.html#method.collectors_for_desc_ids)
 //!   - [MetricRegistry::collectors_for_metric_id()](struct.MetricRegistry.html#method.collectors_for_metric_id)
 //!   - [MetricRegistry::collectors_for_metric_ids()](struct.MetricRegistry.html#method.collectors_for_metric_ids)
-//! - *[01D43V2S6HBV642EKK5YGJNH32]* All prometheus metrics support [MetricId](struct.MetricId.html) and [LabelId](struct.LabelId.html) ULID based names.
-//!   - because naming is hard ...
-//!   -  names should be unique and immutable over time
-//!     - the prometheus metric `help` attribute can be used to provide a human friendly label and short description
-//!   - assigning unique numeric identifiers enables new possibilities, e.g.,
-//!     - enabling metrics to be defined in a database. This enables metrics to be linked and reused across
-//!       applications.
-//! - *[01D43V3KAZ276MQZY1TZG793EQ]* Gathering metrics for:
-//!   - all metric collectors
-//!   - descriptors via the descriptor ([MetricRegistry::gather_for_desc_ids()](struct.MetricRegistry.html#method.gather_for_desc_ids)) or name ([MetricRegistry::gather_for_desc_names()](struct.MetricRegistry.html#method.gather_for_desc_names))
-//!   - MetricId(s) ([MetricRegistry::gather_for_metric_ids()](struct.MetricRegistry.html#method.gather_for_metric_ids))
-//!   - labels ([MetricRegistry::gather_for_labels()](struct.MetricRegistry.html#method.gather_for_labels))
-//! - *[01D3JB8ZGW3KJ3VT44VBCZM3HA]* A process metrics Collector is automatically registered with the global metrics registry
-//!   - The prometheus "process" feature provides `prometheus::process_collector::ProcessCollector`.
-//!   - [MetricRegistry::gather_process_metrics()](/struct.MetricRegistry.html#method.gather_process_metrics)
-//!   - [ProcessMetrics](struct.ProcessMetrics.html)
-//! - *[01D3M9X86BSYWW3132JQHWA3AT]* Gathered metrics can be encoded in prometheus compatible text format
-//!   - [MetricRegistry::text_encode_metrics()](/struct.MetricRegistry.html#method.text_encode_metrics)
-//! - *[01D3SF7KGJZZM50TXXW5HX4N99]* Metric descriptors can be retrieved from the metric registry.
-//!   - [MetricRegistry::desc()](struct.MetricRegistry.html#method.descs)
-//!   - [MetricRegistry::filter_desc()](struct.MetricRegistry.html#method.filter_descs)
-//!   - [MetricRegistry::descs_for_metric_ids()](struct.MetricRegistry.html#method.descs_for_metric_ids)
-//!   - [MetricRegistry::descs_for_metric_id()](struct.MetricRegistry.html#method.descs_for_metric_id)
-//! - *[01D3VG4CEEPF8NNBM348PKRDH3]* Constructor functions are provided for each of the supported metrics.
-//!   - counter constructor functions
-//!     - [new_counter()](fn.new_counter.html)
-//!     - [new_counter_vec()](fn.new_counter.html)
-//!     - [new_int_counter()](fn.new_counter.html)
-//!     - [new_int_counter_vec()](fn.new_counter.html)
-//!   - gauge  constructor functions
-//!     - [new_gauge()](fn.new_gauge.html)
-//!     - [new_gauge_vec()](fn.new_gauge_vec.html)
-//!     - [new_int_gauge()](fn.new_int_gauge.html)
-//!     - [new_int_gauge_vec()](fn.new_int_gauge_vec.html)
-//!   - histogram constructor functions
-//!     - [new_histogram()](fn.new_histogram.html)
-//!     - [new_histogram_vec()](fn.new_histogram_vec.html)
-//! - *[01D3XX3ZBB7VW0GGRA60PMFC1M]* Functions are provided to help collecting timer based metrics
-//!   - [time](fn.time.html)
-//!   - [time_with_result](fn.time_with_result.html)
-//!   - [as_float_secs](fn.as_float_secs.html)
-//!
 //!
 //! ## Recommendations
 //!
