@@ -42,6 +42,4 @@ steps!(World => {
 });
 
 #[derive(Clone, Default)]
-pub struct World {
-
-}
+pub struct World {}

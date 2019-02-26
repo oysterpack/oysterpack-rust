@@ -102,9 +102,6 @@ steps!(TestContext => {
         check_exeutor_thread_pool_size(world, num_cpus::get());
     };
 
-    then regex "01D3W0MDTMRJ6GNFCQCPTS55HG-3" |world, _matches, _step| {
-        assert!(world.executor.catch_unwind());
-    };
 
     when regex "01D40G5CFDP2RS7V75WJQCSME4-1" |world, _matches, _step| {
         world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate())
@@ -127,13 +124,10 @@ steps!(TestContext => {
     };
 
     when regex "01D40G78JNHX519WEP1A1E5FVT-1" |world, _matches, _step| {
-        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate())
-            .set_catch_unwind(false)
-        );
+        world.init_with_executor_builder(ExecutorBuilder::new(ExecutorId::generate()));
     };
 
     then regex "01D40G78JNHX519WEP1A1E5FVT-2" |world, _matches, _step| {
-        assert_eq!(world.executor.catch_unwind(), false);
     };
 
     when regex "01D40G7FQDMWEVGSGFH96KQMZ0-1" |world, _matches, _step| {
@@ -302,19 +296,7 @@ fn check_active_task_count(world: &mut TestContext, expected: u64) {
     );
 }
 
-fn check_panicked_task_count(world: &mut TestContext, expected_inc: u64) {
-    assert_eq!(
-        world
-            .executor
-            .panicked_task_count()
-            .expect("Executor does not track panicked tasks"),
-        world
-            .executor_panicked_task_count
-            .expect("Executor does not track panicked tasks")
-            + expected_inc,
-        "check_panicked_task_count failed"
-    );
-}
+fn check_panicked_task_count(world: &mut TestContext, expected_inc: u64) {}
 
 fn await_tasks_completed(world: &mut TestContext) {
     while world.executor.active_task_count() > 0 {
@@ -383,7 +365,7 @@ pub struct TestContext {
     pub executor_spawned_task_count: u64,
     pub executor_completed_task_count: u64,
     pub executor_thread_pool_size: usize,
-    pub executor_panicked_task_count: Option<u64>,
+    pub executor_panicked_task_count: u64,
     pub total_threads: usize,
     pub executor_ids: Vec<ExecutorId>,
 }
@@ -399,8 +381,7 @@ impl TestContext {
     pub fn init_with_new_executor(&mut self, thread_pool_size: usize, catch_unwind: bool) {
         self.init_with_executor_builder(
             ExecutorBuilder::new(ExecutorId::generate())
-                .set_pool_size(NonZeroUsize::new(thread_pool_size).unwrap())
-                .set_catch_unwind(catch_unwind),
+                .set_pool_size(NonZeroUsize::new(thread_pool_size).unwrap()),
         );
     }
 
@@ -426,7 +407,7 @@ impl Default for TestContext {
             executor_completed_task_count: 0,
             executor_thread_pool_size: 0,
             total_threads: 0,
-            executor_panicked_task_count: None,
+            executor_panicked_task_count: 0,
             executor_ids: Vec::new(),
         }
     }
