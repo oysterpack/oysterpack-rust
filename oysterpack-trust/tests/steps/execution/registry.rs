@@ -38,10 +38,10 @@ steps!(World => {
 
     then regex "01D3W0MDTMRJ6GNFCQCPTS55HG-2" | world, _matches, _step | {
         let executor = world.executor.take().unwrap();
-        assert_eq!(executor.active_task_count(), 0);
-        assert_eq!(executor.spawned_task_count(), 0);
-        assert_eq!(executor.completed_task_count(), 0);
-        assert_eq!(executor.panicked_task_count(), 0);
+        assert_eq!(executor.task_active_count(), 0);
+        assert_eq!(executor.task_spawned_count(), 0);
+        assert_eq!(executor.task_completed_count(), 0);
+        assert_eq!(executor.task_panic_count(), 0);
     };
 
     // Scenario: [01D40G5CFDP2RS7V75WJQCSME4] Registering an Executor configured with thread pool size = 20

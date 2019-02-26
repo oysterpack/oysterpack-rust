@@ -59,17 +59,17 @@ lazy_static! {
     static ref EXECUTOR_REGISTRY: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
 
     /// Metric: Number of tasks that the Executor has spawned and run
-    static ref SPAWNED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        SPAWNED_TASK_COUNTER_METRIC_ID,
-        "Task spawn count",
+    static ref TASK_SPAWNED_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        TASK_SPAWNED_COUNTER_METRIC_ID,
+        "Task spawned count",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
 
     /// Metric: Number of tasks that the Executor has completed
-    static ref COMPLETED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        COMPLETED_TASK_COUNTER_METRIC_ID,
-        "Completed task count",
+    static ref TASK_COMPLETED_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        TASK_COMPLETED_COUNTER_METRIC_ID,
+        "Task completed count",
         &[EXECUTOR_ID_LABEL_ID],
         None
     ).unwrap();
@@ -84,8 +84,8 @@ lazy_static! {
 
     /// Metric: Number of spawned tasks that panicked
     /// - this is only tracked for Executors that are configured to catch unwinding panics
-    static ref PANICKED_TASK_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        PANICKED_TASK_COUNTER_METRIC_ID,
+    static ref TASK_PANIC_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        TASK_PANIC_COUNTER_METRIC_ID,
         "Task panic count",
         &[EXECUTOR_ID_LABEL_ID],
         None
@@ -94,13 +94,13 @@ lazy_static! {
 }
 
 /// MetricId for spawned task counter: `M01D2DMYKJSPRG6H419R7ZFXVRH`
-pub const SPAWNED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+pub const TASK_SPAWNED_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1872376925834227814610238473431346961);
 /// MetricId for spawned task counter: `01D39C05YGY6NY3RD18TJ6975H`
-pub const COMPLETED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+pub const TASK_COMPLETED_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1873501394267260593175681052637961393);
 /// MetricId for total number of Executor threads that have been started: `01D3950A0931ESKR66XG7KMD7Z`
-pub const PANICKED_TASK_COUNTER_METRIC_ID: metrics::MetricId =
+pub const TASK_PANIC_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1873492525732701726868218222598567167);
 /// MetricId for total number of Executor threads that have been started: `01D395423XG3514YP762RYTDJ1`
 pub const THREADS_POOL_SIZE_GAUGE_METRIC_ID: metrics::MetricId =
@@ -112,9 +112,9 @@ pub const EXECUTOR_ID_LABEL_ID: metrics::LabelId =
 /// Gathers Executor related metrics
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
     let mut mfs = Vec::with_capacity(7);
-    mfs.extend(SPAWNED_TASK_COUNTER.collect());
-    mfs.extend(COMPLETED_TASK_COUNTER.collect());
-    mfs.extend(PANICKED_TASK_COUNTER.collect());
+    mfs.extend(TASK_SPAWNED_COUNTER.collect());
+    mfs.extend(TASK_COMPLETED_COUNTER.collect());
+    mfs.extend(TASK_PANIC_COUNTER.collect());
     mfs.extend(THREAD_POOL_SIZE_GAUGE.collect());
 
     mfs
@@ -123,9 +123,9 @@ pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
 /// Returns Executor related metric descriptors
 pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
     let mut descs = Vec::with_capacity(7);
-    descs.extend(SPAWNED_TASK_COUNTER.desc());
-    descs.extend(COMPLETED_TASK_COUNTER.desc());
-    descs.extend(PANICKED_TASK_COUNTER.desc());
+    descs.extend(TASK_SPAWNED_COUNTER.desc());
+    descs.extend(TASK_COMPLETED_COUNTER.desc());
+    descs.extend(TASK_PANIC_COUNTER.desc());
     descs.extend(THREAD_POOL_SIZE_GAUGE.desc());
     descs
 }
@@ -237,16 +237,16 @@ impl ExecutorRegistry {
     /// Returns the total number of spawned tasks across all registered Executor(s)
     pub fn spawned_task_count(&self) -> u64 {
         self.thread_pools.values().fold(
-            self.global_executor.spawned_task_count(),
-            |sum, executor| sum + executor.spawned_task_count(),
+            self.global_executor.task_spawned_count(),
+            |sum, executor| sum + executor.task_spawned_count(),
         )
     }
 
     /// Returns the total number of completed tasks across all registered Executor(s)
     pub fn completed_task_count(&self) -> u64 {
         self.thread_pools.values().fold(
-            self.global_executor.completed_task_count(),
-            |sum, executor| sum + executor.completed_task_count(),
+            self.global_executor.task_completed_count(),
+            |sum, executor| sum + executor.task_completed_count(),
         )
     }
 
@@ -254,8 +254,8 @@ impl ExecutorRegistry {
     pub fn active_task_count(&self) -> u64 {
         self.thread_pools
             .values()
-            .fold(self.global_executor.active_task_count(), |sum, executor| {
-                sum + executor.active_task_count()
+            .fold(self.global_executor.task_active_count(), |sum, executor| {
+                sum + executor.task_active_count()
             })
     }
 
@@ -295,8 +295,6 @@ impl fmt::Debug for ExecutorRegistry {
 /// A general-purpose thread pool based executor for scheduling tasks that poll futures to completion.
 /// - The thread pool multiplexes any number of tasks onto a fixed number of worker threads.
 /// - This type is a clonable handle to the threadpool itself. Cloning it will only create a new reference, not a new threadpool.
-/// - is a thin wrapper around futures [ThreadPool](https://rust-lang-nursery.github.io/futures-api-docs/0.3.0-alpha.12/futures/executor/struct.ThreadPool.html)
-///   executor
 ///
 /// ## Metrics
 ///
@@ -304,9 +302,9 @@ impl fmt::Debug for ExecutorRegistry {
 pub struct Executor {
     id: ExecutorId,
     threadpool: ThreadPool,
-    spawned_task_counter: prometheus::IntCounter,
-    completed_task_counter: prometheus::IntCounter,
-    panicked_task_counter: prometheus::IntCounter,
+    task_spawned_counter: prometheus::IntCounter,
+    task_completed_counter: prometheus::IntCounter,
+    task_panic_counter: prometheus::IntCounter,
     stack_size: Option<usize>,
 }
 
@@ -334,9 +332,9 @@ impl Executor {
         Ok(Self {
             id,
             threadpool,
-            spawned_task_counter: SPAWNED_TASK_COUNTER.with_label_values(&labels),
-            completed_task_counter: COMPLETED_TASK_COUNTER.with_label_values(&labels),
-            panicked_task_counter: PANICKED_TASK_COUNTER.with_label_values(&labels),
+            task_spawned_counter: TASK_SPAWNED_COUNTER.with_label_values(&labels),
+            task_completed_counter: TASK_COMPLETED_COUNTER.with_label_values(&labels),
+            task_panic_counter: TASK_PANIC_COUNTER.with_label_values(&labels),
             stack_size,
         })
     }
@@ -394,13 +392,13 @@ impl Executor {
 
     /// returns the number of spawned tasks
     /// - tasks that are run, i.e., via [Executor::run()](struct.Executor.html#method.run), are not counted
-    pub fn spawned_task_count(&self) -> u64 {
-        self.spawned_task_counter.get() as u64
+    pub fn task_spawned_count(&self) -> u64 {
+        self.task_spawned_counter.get() as u64
     }
 
     /// returns the number of spawned tasks that complete, whether they panic or not
-    pub fn completed_task_count(&self) -> u64 {
-        self.completed_task_counter.get() as u64
+    pub fn task_completed_count(&self) -> u64 {
+        self.task_completed_counter.get() as u64
     }
 
     /// returns the number of active tasks, i.e., the difference between spawned and completed
@@ -409,28 +407,40 @@ impl Executor {
     /// If a spawned task panics and the Executor is not configured to catch unwinding panics, then
     /// it does not get marked as completed. Thus, if the active task count drifts upward, it's may
     /// be a sign that you have tasks that are panicking.
-    pub fn active_task_count(&self) -> u64 {
-        self.spawned_task_count() - self.completed_task_count()
+    pub fn task_active_count(&self) -> u64 {
+        self.task_spawned_count() - self.task_completed_count()
     }
 
     /// Returns the number of spawned tasks that have panicked.
     /// - if the Executor is configured to not catch unwinding panics, then None is returned
-    pub fn panicked_task_count(&self) -> u64 {
-        self.panicked_task_counter.get() as u64
+    pub fn task_panic_count(&self) -> u64 {
+        self.task_panic_counter.get() as u64
     }
 
     /// returns the thread pool size
     pub fn thread_pool_size(&self) -> usize {
-        let executor_thread_gauge =
-            THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()]);
-        executor_thread_gauge.get() as usize
+        self.executor_thread_gauge().get() as usize
+    }
+
+    fn executor_thread_gauge(&self) -> prometheus::IntGauge {
+        THREAD_POOL_SIZE_GAUGE.with_label_values(&[self.id.to_string().as_str()])
+    }
+
+    /// collects and returns metrics for this Executor
+    pub fn collect_metrics(&self) -> Vec<prometheus::proto::MetricFamily> {
+        let mut mfs = Vec::with_capacity(4);
+        mfs.extend(self.executor_thread_gauge().collect());
+        mfs.extend(self.task_spawned_counter.collect());
+        mfs.extend(self.task_completed_counter.collect());
+        mfs.extend(self.task_panic_counter.collect());
+        mfs
     }
 }
 
 impl Spawn for Executor {
     fn spawn_obj(&mut self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-        let completed_task_counter = self.completed_task_counter.clone();
-        let panicked_task_counter = self.panicked_task_counter.clone();
+        let completed_task_counter = self.task_completed_counter.clone();
+        let panicked_task_counter = self.task_panic_counter.clone();
         let future = async move {
             if await!(future.catch_unwind()).is_err() {
                 panicked_task_counter.inc();
@@ -439,7 +449,7 @@ impl Spawn for Executor {
         };
         let future = future.boxed();
         self.threadpool.spawn_obj(FutureObj::new(future))?;
-        self.spawned_task_counter.inc();
+        self.task_spawned_counter.inc();
         Ok(())
     }
 
@@ -646,7 +656,7 @@ mod tests {
             let metric_family = gathered_metrics
                 .iter()
                 .find(|metric_family| {
-                    metric_family.get_name() == SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str()
+                    metric_family.get_name() == TASK_SPAWNED_COUNTER_METRIC_ID.name().as_str()
                 })
                 .unwrap();
             let metrics = metric_family.get_metric();
@@ -683,7 +693,7 @@ mod tests {
         // THEN: the spawned task count should match
         assert_eq!(get_counter().get_value() as u64, EXPECTED_TASK_COUNT);
         assert_eq!(
-            executor.spawned_task_count(),
+            executor.task_spawned_count(),
             get_counter().get_value() as u64
         );
 
@@ -692,7 +702,7 @@ mod tests {
         info!("Executor metrics: {:#?}", mfs);
         let total_spawned_task_count: u64 = mfs
             .iter()
-            .filter(|mf| mf.get_name() == SPAWNED_TASK_COUNTER_METRIC_ID.name().as_str())
+            .filter(|mf| mf.get_name() == TASK_SPAWNED_COUNTER_METRIC_ID.name().as_str())
             .flat_map(|mf| mf.get_metric())
             .map(|metric| metric.get_counter().get_value() as u64)
             .collect::<Vec<_>>()
@@ -703,10 +713,10 @@ mod tests {
         assert!(total_spawned_task_count <= spawned_task_count());
 
         // THEN: all tasks should be completed
-        while executor.active_task_count() != 0 {
+        while executor.task_active_count() != 0 {
             info!(
                 "waiting for tasks to complete: executor.active_task_count() = {}",
-                executor.active_task_count()
+                executor.task_active_count()
             );
             thread::yield_now();
         }

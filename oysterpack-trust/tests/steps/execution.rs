@@ -274,7 +274,7 @@ fn spawn_tasks(world: &mut TestContext, success_count: usize, panic_count: usize
 
 fn check_completed_task_count(world: &mut TestContext, expected_inc: u64) {
     assert_eq!(
-        world.executor.completed_task_count(),
+        world.executor.task_completed_count(),
         world.executor_completed_task_count + expected_inc,
         "check_completed_task_count failed"
     );
@@ -282,7 +282,7 @@ fn check_completed_task_count(world: &mut TestContext, expected_inc: u64) {
 
 fn check_spawned_task_count(world: &mut TestContext, expected_inc: u64) {
     assert_eq!(
-        world.executor.spawned_task_count(),
+        world.executor.task_spawned_count(),
         world.executor_spawned_task_count + expected_inc,
         "check_spawned_task_count failed"
     );
@@ -290,7 +290,7 @@ fn check_spawned_task_count(world: &mut TestContext, expected_inc: u64) {
 
 fn check_active_task_count(world: &mut TestContext, expected: u64) {
     assert_eq!(
-        world.executor.active_task_count(),
+        world.executor.task_active_count(),
         expected,
         "check_active_task_count failed"
     );
@@ -299,20 +299,20 @@ fn check_active_task_count(world: &mut TestContext, expected: u64) {
 fn check_panicked_task_count(world: &mut TestContext, expected_inc: u64) {}
 
 fn await_tasks_completed(world: &mut TestContext) {
-    while world.executor.active_task_count() > 0 {
+    while world.executor.task_active_count() > 0 {
         println!(
             "await_tasks_completed(): {}",
-            world.executor.active_task_count()
+            world.executor.task_active_count()
         );
         thread::sleep(Duration::from_millis(1));
     }
 }
 
 fn await_tasks_completed_while_gt(world: &mut TestContext, count: u64) {
-    while world.executor.active_task_count() > count {
+    while world.executor.task_active_count() > count {
         println!(
             "await_tasks_completed_while_gt(): {}",
-            world.executor.active_task_count()
+            world.executor.task_active_count()
         );
         thread::sleep(Duration::from_millis(1));
     }
@@ -391,10 +391,10 @@ impl TestContext {
     }
 
     pub fn gather_metrics(&mut self) {
-        self.executor_spawned_task_count = self.executor.spawned_task_count();
-        self.executor_completed_task_count = self.executor.completed_task_count();
+        self.executor_spawned_task_count = self.executor.task_spawned_count();
+        self.executor_completed_task_count = self.executor.task_completed_count();
         self.executor_thread_pool_size = self.executor.thread_pool_size();
-        self.executor_panicked_task_count = self.executor.panicked_task_count();
+        self.executor_panicked_task_count = self.executor.task_panic_count();
         self.total_threads = total_threads();
     }
 }

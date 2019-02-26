@@ -1069,14 +1069,14 @@ mod tests {
 
         // THEN: we expect the server to have N number of tasks running = 1 Aio worker per logical cpu + 1 controller task + 1 ReqRep backend service task
         let expected_task_count = num_cpus::get() as u64 + 2;
-        info!("active task count = {}", executor.active_task_count());
+        info!("active task count = {}", executor.task_active_count());
         for _ in 0..10 {
-            if executor.active_task_count() == expected_task_count {
+            if executor.task_active_count() == expected_task_count {
                 break;
             }
             thread::sleep_ms(1);
         }
-        assert_eq!(executor.active_task_count(), expected_task_count);
+        assert_eq!(executor.task_active_count(), expected_task_count);
     }
 
 }

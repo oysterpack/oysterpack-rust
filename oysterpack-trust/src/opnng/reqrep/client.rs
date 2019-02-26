@@ -921,17 +921,17 @@ mod tests {
         thread::yield_now();
         let executor = execution::executor(client_executor_id).unwrap();
         for _ in 0..10 {
-            if executor.active_task_count() == 0 {
+            if executor.task_active_count() == 0 {
                 info!("all client tasks have completed");
                 break;
             }
-            info!("waiting for NngClient Aio Context handler tasks to exit: executor.active_task_count() = {}", executor.active_task_count());
+            info!("waiting for NngClient Aio Context handler tasks to exit: executor.active_task_count() = {}", executor.task_active_count());
             thread::sleep_ms(5);
             thread::yield_now();
         }
         // TODO: this sometimes fails, which means there is a bug
         // It has failed where the active task count = 1
-        assert_eq!(executor.active_task_count(), 0);
+        assert_eq!(executor.task_active_count(), 0);
     }
 
     #[test]
@@ -1008,14 +1008,14 @@ mod tests {
         // THEN: we expect the Client to have N number of tasks running = 1 Aio worker per logical cpu + 1 ReqRep backend service task + 1 request sender pool task
         let expected_task_count = num_cpus::get() as u64 + 2;
         let executor = execution::executor(client_executor_id).unwrap();
-        info!("active task count = {}", executor.active_task_count());
+        info!("active task count = {}", executor.task_active_count());
         for _ in 0..10 {
-            if executor.active_task_count() == expected_task_count {
+            if executor.task_active_count() == expected_task_count {
                 break;
             }
             thread::sleep_ms(1);
         }
-        assert_eq!(executor.active_task_count(), expected_task_count);
+        assert_eq!(executor.task_active_count(), expected_task_count);
     }
 
     #[test]
