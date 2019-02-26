@@ -1014,17 +1014,15 @@ fn registry_gather_metrics_by_name() {
         assert_eq!(mf.get_metric().len(), 2);
     }
 
-    let collectors = metric_registry.find_collectors(|collector| {
-        collector
-            .desc()
+    let collectors = metric_registry.find_collectors(|descs| {
+        descs
             .iter()
             .any(move |desc| desc.fq_name == histogram_vec_metric_id.name())
     });
     assert_eq!(collectors.len(), 2);
 
-    let collectors = metric_registry.find_collectors(|collector| {
-        collector
-            .desc()
+    let collectors = metric_registry.find_collectors(|descs| {
+        descs
             .iter()
             .any(move |desc| desc.fq_name == histogram_metric_id.name())
     });

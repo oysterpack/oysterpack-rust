@@ -1,4 +1,4 @@
-Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Metric builders are provided for each of the supported metrics.
+Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Metric builders are provided.
 
   - counter builders
     - CounterBuilder

@@ -71,7 +71,7 @@ steps!(World => {
 
     // Scenario: [01D3PX3BGCMV2PS6FDXHH0ZEB1] Find collectors using a filter
     when regex "01D3PX3BGCMV2PS6FDXHH0ZEB1" |world, _matches, _step| {
-        world.collectors = metrics::registry().find_collectors(|collector| collector.desc().len() == world.desc().len());
+        world.collectors = metrics::registry().find_collectors(|descs| descs.len() == world.desc().len());
     };
 
     then regex "01D3PX3BGCMV2PS6FDXHH0ZEB1" |world, _matches, _step| {
@@ -225,8 +225,7 @@ fn check_all_descs_match(world: &mut World) {
 
 fn check_collector_is_registered(world: &mut World) {
     let desc_ids: HashSet<_> = world.desc().iter().map(|desc| desc.id).collect();
-    let collectors = metrics::registry().find_collectors(|collector| {
-        let descs = collector.desc();
+    let collectors = metrics::registry().find_collectors(|descs| {
         descs.len() == desc_ids.len() && descs.iter().all(|desc| desc_ids.contains(&desc.id))
     });
     assert_eq!(collectors.len(), 1);

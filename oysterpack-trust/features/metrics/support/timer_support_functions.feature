@@ -1,4 +1,4 @@
-Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Functions are provided to help collecting timer based metrics
+Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Helper functions for collecting timer based metrics
 
   - pub fn time<F>(clock: &Clock, f: F) -> u64 where F: FnOnce()
   - pub fn time_with_result<F, T>(clock: &quanta::Clock, f: F) -> (u64, T) where F: FnOnce() -> T

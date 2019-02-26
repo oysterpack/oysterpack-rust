@@ -9,10 +9,10 @@ Feature: [01D43V1W2BHDR5MK08D1HFSFZX] A global prometheus metrics registry is pr
 
   Rule: Descriptors registered with the same registry have to fulfill certain consistency and uniqueness criteria if they share the same fully-qualified name.
 
-  # They must have the same help string and the same label names (aka label dimensions) in each, constant labels and variable labels,
-  # but they must differ in the values of the constLabels.
-  #
-  # Descriptors that share the same fully-qualified names and the same label values of their constant labels are considered equal.
+  # - They must have the same help string and the same label names (aka label dimensions) in each, constant labels and variable labels,
+  #   but they must differ in the values of the constLabels.
+  #   - Descriptors that share the same fully-qualified names and the same label values of their constant labels are considered equal.
+  #   - Each Desc with the same fqName must have the same label names (preset and variable) and Help string
 
   Scenario: [01D3J3DRS0CJ2YN99KAWQ19103] Register 2 metrics using the same MetricId and no labels
     Given [01D3J3DRS0CJ2YN99KAWQ19103] an Counter is already registered with the global registry

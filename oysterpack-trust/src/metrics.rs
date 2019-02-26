@@ -20,14 +20,21 @@
 //! - *[01D43V1W2BHDR5MK08D1HFSFZX]* A global prometheus metrics registry is provided.
 //!   - [MetricRegistry](struct.MetricRegistry.html) via [registry()](fn.registry.html)
 //! - *[01D3JB8ZGW3KJ3VT44VBCZM3HA]* A process metrics Collector is automatically registered with the global metrics registry
+//!   - counter: **process_cpu_seconds_total** Total user and system CPU time spent in seconds
+//!   - gauge: **process_max_fds** Maximum number of open file descriptors
+//!   - gauge: **process_open_fds** Number of open file descriptors.
+//!   - gauge: **process_resident_memory_bytes** Resident memory size in bytes.
+//!   - gauge: **process_start_time_seconds** Start time of the process since unix epoch in seconds.
+//!   - gauge: **process_virtual_memory_bytes** Virtual memory size in bytes.
 //!
 //! ### Registry Rules
 //! - Descriptors registered with the same registry have to fulfill certain consistency and uniqueness
 //!   criteria if they share the same fully-qualified name.
-//!   - They must have the same help string and the same label names (aka label dimensions) in each,
-//!     constant labels and variable labels, but they must differ in the values of the constant labels.
-//!   - Descriptors that share the same fully-qualified names and the same label values of their constant
-//!     labels are considered equal.
+//!   - They must have the same help string and the same set of label names (preset and variable),
+//!     but they must differ in the values of the constant labels.
+//!     - Descriptors that share the same fully-qualified names and the same label values of their constant
+//!       labels are considered equal.
+//!     - Each Desc with the same fqName must have the same set of label names (preset and variable) and Help string
 //! - Descriptor `help` must not be blank
 //! - Descriptor `help` max length is 250
 //! - Descriptor constant label name or value must not be blank
@@ -56,9 +63,46 @@
 //!   - [MetricRegistry::collectors_for_metric_id()](struct.MetricRegistry.html#method.collectors_for_metric_id)
 //!   - [MetricRegistry::collectors_for_metric_ids()](struct.MetricRegistry.html#method.collectors_for_metric_ids)
 //!
+//! ## Metric Descriptor Features
+//! - *[01D3SF7KGJZZM50TXXW5HX4N99]* All metric descriptors can be retrieved from the metric registry.
+//! - *[01D3SF7KGJZZM50TXXW5HX4N99]* Find descriptors matching filters
+//!   - [MetricRegistry::find_descs()](struct.MetricRegistry.html#method.find_descs)
+//!   - [MetricRegistry::descs_for_labels()](struct.MetricRegistry.html#method.descs_for_labels)
+//!   - [MetricRegistry::descs_for_metric_id()](struct.MetricRegistry.html#method.descs_for_metric_id)
+//!   - [MetricRegistry::descs_for_metric_ids()](struct.MetricRegistry.html#method.descs_for_metric_ids)
+//!
+//! ## Metrics Supporting Features
+//! - *[01D43V2S6HBV642EKK5YGJNH32]* MetricId can be used as the metric name.
+//! - *[01D43V2S6HBV642EKK5YGJNH32]* LabelId can be used for constant and variable label names.
+//! - *[01D3VG4CEEPF8NNBM348PKRDH3]* Metric builders are provided.
+//!   - counter builders
+//!     - [CounterBuilder](struct.CounterBuilder.html)
+//!     - [IntCounterBuilder](struct.IntCounterBuilder.html)
+//!     - [CounterVecBuilder](struct.CounterVecBuilder.html)
+//!     - [IntCounterBuilder](struct.IntCounterBuilder.html)
+//!   - gauge builders
+//!     - [GaugeBuilder](struct.GaugeBuilder.html)
+//!     - [IntGaugeBuilder](struct.IntGaugeBuilder.html)
+//!     - [GaugeVecBuilder](struct.GaugeVecBuilder.html)
+//!     - [IntGaugeBuilder](struct.IntGaugeBuilder.html)
+//!   - histogram builders
+//!     - [HistogramBuilder](struct.HistogramBuilder.html)
+//!     - [HistogramVecBuilder](struct.HistogramVecBuilder.html)
+//! - *[01D3M9X86BSYWW3132JQHWA3AT]* Text encoding metrics in a prometheus compatible format
+//! - *[01D3XX3ZBB7VW0GGRA60PMFC1M]* Helper functions for collecting timer based metrics
+//!   - [time](fn.time.html)
+//!   - [time_with_result](fn.time_with_result.html)
+//!   - [as_float_secs](fn.as_float_secs.html)
+//!     - in prometheus, it is a common practice to report timer metrics in secs
+//!
 //! ## Recommendations
 //!
-//! ### Use the Int version of the metrics where possible
+//! ### Using MetricId and LabelId
+//! - because its hard to come up with good names that are unique and make sense to all
+//! - instead use [ULID](https://github.com/ulid/spec) based names and rely on the metric descriptor
+//!   help field to describe the metric
+//!
+//! ### Use the Int version of the metrics
 //! - because they are more efficient
 //! - IntCounter, IntCounterVec, IntGauge, IntGaugeVec
 
@@ -1006,12 +1050,12 @@ impl MetricRegistry {
     /// Returns collectors that match against the specified filter
     pub fn find_collectors<F>(&self, filter: F) -> Vec<ArcCollector>
     where
-        F: Fn(&Collector) -> bool,
+        F: Fn(&[&prometheus::core::Desc]) -> bool,
     {
         let metric_collectors = self.metric_collectors.read().unwrap();
         metric_collectors
             .iter()
-            .filter(|collector| filter(*collector))
+            .filter(|collector| filter(collector.desc().as_slice()))
             .cloned()
             .collect()
     }
@@ -1034,7 +1078,7 @@ impl MetricRegistry {
     /// Returns collectors that contain metric descriptors for the specified MetricId
     pub fn collectors_for_metric_id(&self, metric_id: MetricId) -> Vec<ArcCollector> {
         let metric_name = metric_id.name();
-        self.find_collectors(|c| c.desc().iter().any(|desc| desc.fq_name == metric_name))
+        self.find_collectors(|descs| descs.iter().any(|desc| desc.fq_name == metric_name))
     }
 
     /// Returns collectors that contain metric descriptors for the specified Desc IDs
@@ -1053,7 +1097,7 @@ impl MetricRegistry {
 
     /// Returns collectors that contain metric descriptors for the specified MetricId
     pub fn collectors_for_desc_id(&self, desc_id: DescId) -> Option<ArcCollector> {
-        let collectors = self.find_collectors(|c| c.desc().iter().any(|desc| desc.id == desc_id));
+        let collectors = self.find_collectors(|descs| descs.iter().any(|desc| desc.id == desc_id));
         collectors.first().cloned()
     }
 
@@ -1443,8 +1487,8 @@ impl MetricRegistry {
             return vec![];
         }
 
-        let collectors = self.find_collectors(|c| {
-            c.desc().iter().any(|d| {
+        let collectors = self.find_collectors(|descs| {
+            descs.iter().any(|d| {
                 d.variable_labels
                     .iter()
                     .any(|label| labels.contains_key(label))
@@ -1588,13 +1632,15 @@ impl FromStr for LabelId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != 27 {
-            return Err(oysterpack_uid::DecodingError::InvalidLength)
+            return Err(oysterpack_uid::DecodingError::InvalidLength);
         }
-        if Some('L') == s.chars().next() {
+        if s.starts_with('L') {
             let id: ULID = s[1..].parse()?;
             Ok(Self(id.into()))
         } else {
-            Err(oysterpack_uid::DecodingError::InvalidChar(s.chars().next().unwrap()))
+            Err(oysterpack_uid::DecodingError::InvalidChar(
+                s.chars().next().unwrap(),
+            ))
         }
     }
 }
@@ -1644,13 +1690,15 @@ impl FromStr for MetricId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != 27 {
-            return Err(oysterpack_uid::DecodingError::InvalidLength)
+            return Err(oysterpack_uid::DecodingError::InvalidLength);
         }
-        if Some('M') == s.chars().next() {
+        if s.starts_with('M') {
             let id: ULID = s[1..].parse()?;
             Ok(Self(id.into()))
         } else {
-            Err(oysterpack_uid::DecodingError::InvalidChar(s.chars().next().unwrap()))
+            Err(oysterpack_uid::DecodingError::InvalidChar(
+                s.chars().next().unwrap(),
+            ))
         }
     }
 }

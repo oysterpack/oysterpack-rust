@@ -29,8 +29,8 @@ use std::{
     collections::{hash_map::DefaultHasher, HashMap, HashSet},
     hash::BuildHasherDefault,
     sync::Arc,
+    thread,
     time::Duration,
-    thread
 };
 
 steps!(World => {

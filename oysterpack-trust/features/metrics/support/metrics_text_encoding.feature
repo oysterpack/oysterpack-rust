@@ -1,4 +1,4 @@
-Feature: [01D3M9X86BSYWW3132JQHWA3AT] Gathered metrics can be encoded in prometheus compatible text format
+Feature: [01D3M9X86BSYWW3132JQHWA3AT] Text encoding metrics in a prometheus compatible format
 
   Scenario: [01D3M9ZJQSTWFFMKBR3Z2DXJ9N] text encoding gathered metrics
     Given [01D3M9ZJQSTWFFMKBR3Z2DXJ9N] metrics are registered
