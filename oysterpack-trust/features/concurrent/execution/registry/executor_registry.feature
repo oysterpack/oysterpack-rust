@@ -8,9 +8,8 @@ Feature: [01D3W0H2B7KNTBJTGDYP3CRB7K] A global Executor registry is provided.
     - catching unwinding panics for spawned futures - default = true
 
   Scenario: [01D3W0MDTMRJ6GNFCQCPTS55HG] Registering an Executor with default settings
-    When [01D3W0MDTMRJ6GNFCQCPTS55HG-1] an Executor is registered with default settings
-    Then [01D3W0MDTMRJ6GNFCQCPTS55HG-2] the Executor thread pool size will match the number of cpu cores
-    And [01D3W0MDTMRJ6GNFCQCPTS55HG-3] the Executor is configured to catch unwinding panics
+    Then [01D3W0MDTMRJ6GNFCQCPTS55HG-1] the Executor thread pool size will match the number of cpu cores
+    And [01D3W0MDTMRJ6GNFCQCPTS55HG-2] the Executor is configured to catch unwinding panics
 
   Scenario: [01D40G5CFDP2RS7V75WJQCSME4] Registering an Executor configured with a custom thread pool size
     When [01D40G5CFDP2RS7V75WJQCSME4-1] an Executor is registered with thread pool size = 20

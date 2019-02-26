@@ -24,6 +24,9 @@ use oysterpack_trust::{
 };
 use std::{collections::HashSet, num::NonZeroUsize, panic, thread, time::Duration};
 
+pub mod executor;
+pub mod registry;
+
 steps!(TestContext => {
 
     given regex "01D3Y1CYCKZHY675FKEPPX4JE4-1" |world, _matches, _step| {

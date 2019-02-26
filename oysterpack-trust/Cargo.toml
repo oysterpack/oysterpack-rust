@@ -74,7 +74,11 @@ name = "cucumber_metrics_support"
 harness = false
 
 [[test]]
-name = "cucumber_execution"
+name = "cucumber_execution_executor"
+harness = false
+
+[[test]]
+name = "cucumber_execution_registry"
 harness = false
 
 [[bench]]
