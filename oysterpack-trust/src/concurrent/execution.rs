@@ -14,13 +14,41 @@
  *    limitations under the License.
  */
 
-//! Provides support for async execution
-//! - [Executor](struct.Executor.html) is an async executor that schedules Future tasks across a thread pool
-//! - a global [executor registry](struct.ExecutorRegistry.html) is provided
-//!   - executors can be globally registered via [register()](fn.register.html)
-//! - a [global executor](fn.global_executor.html) is provided
+//! Provides support for async execution integrated with futures
 //!
-//! ## Config
+//! ## Registry Features
+//! - *[01D3W0H2B7KNTBJTGDYP3CRB7K]* A global Executor registry is provided.
+//!  - [ExecutorBuilder](struct.ExecutorBuilder.html) is used to construct and register new Executor(s) with the global registry
+//!  - Each Executor is identified by its ExecutorId, which is used as the registry key
+//!  - The following Executor properties are configurable
+//!    - thread pool size - default = number of cpu cores
+//!    - thread stack size - default = Rust default
+//! - *[01D3W1C9YZDYMDPT98JCFS8F4P]* The [list of registered ExecutorId(s)](fn.executor_ids.html) can be retrieved from the Executor registry
+//!
+//! ## Executor Features
+//! - *[01D3W2RTE80P64E1W1TD61KGBN]* A [global Executor](global_executor) will be automatically provided by the Executor registry
+//! - *[01D3YVY445KA4YF5KYMHHQK2TP]* Executors are configured to catch unwinding panics for spawned futures
+//!
+//! ## Metrics Features
+//! - *[01D3W3G8A7H32MVG3WYBER6J13]* Spawned tasks are tracked via metrics
+//!   - spawned task count
+//!     - M01D2DMYKJSPRG6H419R7ZFXVRH - IntCounterVec
+//!     - Labels: L01D2DN1VBMW6XC7EQ971PBGW68 -> ExecutorId ULID
+//!   - completed task count
+//!     - 01D39C05YGY6NY3RD18TJ6975H - IntCounterVec
+//!     - Labels: L01D2DN1VBMW6XC7EQ971PBGW68 -> ExecutorId ULID
+//!   - panicked task count
+//!     - 01D3950A0931ESKR66XG7KMD7Z - IntCounterVec
+//!     - Labels: L01D2DN1VBMW6XC7EQ971PBGW68 -> ExecutorId ULID
+//! - *[01D418RZF94XJCRQ5D2V4DRMJ6]* Executor thread pool size is recorded as a metric
+//!   - Executor Thread pool size
+//!     - 01D395423XG3514YP762RYTDJ1 - IntGaugeVec
+//!     - Labels: L01D2DN1VBMW6XC7EQ971PBGW68 -> ExecutorId ULID
+//! - *[01D4P0Q8M3ZAWCDH22VXHGN4ZX]* Executor metrics can be collected
+//!   - [Executor::gather_metrics()](struct.Executor.html#method.gather_metrics)
+//!   - [gather_metrics()](fn.gather_metrics.html)
+//!
+//! ## How to register an Executor
 //! - [ExecutorBuilder](struct.ExecutorBuilder.html) - is also used to register a new [Executor](struct.Executor.html)
 //! ``` rust
 //! # use oysterpack_trust::concurrent::execution::*;
@@ -32,13 +60,6 @@
 //!     .register()
 //!     .unwrap();
 //! ```
-//! - each Executor is uniquely identified by its [ExecutorId](struct.ExecutorId.html)
-//!
-//! ## Metrics
-//! - number of spawned tasks per Executor
-//! - number of completed tasks per Executor
-//! - number of threads started
-//! - Executor thread pool sizes
 
 use crate::metrics;
 use failure::Fail;
@@ -116,7 +137,6 @@ pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
     mfs.extend(TASK_COMPLETED_COUNTER.collect());
     mfs.extend(TASK_PANIC_COUNTER.collect());
     mfs.extend(THREAD_POOL_SIZE_GAUGE.collect());
-
     mfs
 }
 
@@ -131,6 +151,7 @@ pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
 }
 
 /// Returns the registered executor IDs
+/// - the global executor ID is not included
 pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
     let executors = EXECUTOR_REGISTRY.read().unwrap();
     executors.thread_pools.keys().cloned().collect()
@@ -427,7 +448,7 @@ impl Executor {
     }
 
     /// collects and returns metrics for this Executor
-    pub fn collect_metrics(&self) -> Vec<prometheus::proto::MetricFamily> {
+    pub fn gather_metrics(&self) -> Vec<prometheus::proto::MetricFamily> {
         let mut mfs = Vec::with_capacity(4);
         mfs.extend(self.executor_thread_gauge().collect());
         mfs.extend(self.task_spawned_counter.collect());

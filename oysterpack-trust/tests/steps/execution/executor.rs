@@ -17,12 +17,10 @@
 use cucumber_rust::*;
 
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
-use maplit::*;
 use oysterpack_trust::{
     concurrent::execution::{self, *},
-    metrics,
 };
-use std::{collections::HashSet, num::NonZeroUsize, panic, thread, time::Duration};
+use std::{thread, time::Duration};
 
 steps!(World => {
     // Feature: [01D3YVY445KA4YF5KYMHHQK2TP] Executors are configured to catch unwinding panics for spawned futures
@@ -58,86 +56,6 @@ steps!(World => {
             println!("received message: {:?}", result);
             result
         }).unwrap();
-    };
-
-    // Feature: [01D3W3G8A7H32MVG3WYBER6J13] Spawned tasks are tracked via metrics
-
-    // Scenario: [01D3Y1D8SJZ8JWPGJKFK4BYHP0] Spawning tasks
-    when regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0" | world, _matches, _step | {
-        let mut executor = ExecutorBuilder::new(ExecutorId::generate()).register().unwrap();
-        for _ in 0..5 {
-            executor.spawn(async {});
-        }
-        for _ in 0..3 {
-            executor.spawn(async { panic!("Boom!!!"); });
-        }
-        // wait for tasks to complete
-        while executor.task_active_count() > 0 {
-            thread::yield_now();
-        }
-        world.executor = Some(executor);
-    };
-
-    then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-1" | world, _matches, _step | {
-        for executor in world.executor.as_ref() {
-            assert_eq!(executor.task_spawned_count(), 8);
-        }
-    };
-
-    then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-2" | world, _matches, _step | {
-        for executor in world.executor.as_ref() {
-            assert_eq!(executor.task_completed_count(), 8);
-        }
-    };
-    then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-3" | world, _matches, _step | {
-        for executor in world.executor.as_ref() {
-            assert_eq!(executor.task_active_count(), 0);
-        }
-    };
-
-    then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-4" | world, _matches, _step | {
-        for executor in world.executor.as_ref() {
-            assert_eq!(executor.task_panic_count(), 3);
-        }
-    };
-
-    then regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0-5" | world, _matches, _step | {
-        for executor in world.executor.as_ref() {
-           let mfs = executor.collect_metrics();
-           println!("{:#?}", mfs);
-           assert!(mfs.iter().any(|mf| {
-                if mf.get_name() == TASK_COMPLETED_COUNTER_METRIC_ID.name().as_str() {
-                    let count = mf.get_metric().iter().next().unwrap().get_counter().get_value() as u64;
-                    count == executor.task_completed_count()
-                } else {
-                    false
-                }
-           }));
-           assert!(mfs.iter().any(|mf| {
-                if mf.get_name() == TASK_SPAWNED_COUNTER_METRIC_ID.name().as_str() {
-                    let count = mf.get_metric().iter().next().unwrap().get_counter().get_value() as u64;
-                    count == executor.task_spawned_count()
-                } else {
-                    false
-                }
-           }));
-           assert!(mfs.iter().any(|mf| {
-                if mf.get_name() == TASK_PANIC_COUNTER_METRIC_ID.name().as_str() {
-                    let count = mf.get_metric().iter().next().unwrap().get_counter().get_value() as u64;
-                    count == executor.task_panic_count()
-                } else {
-                    false
-                }
-           }));
-           assert!(mfs.iter().any(|mf| {
-                if mf.get_name() == THREADS_POOL_SIZE_GAUGE_METRIC_ID.name().as_str() {
-                    let count = mf.get_metric().iter().next().unwrap().get_gauge().get_value() as u64;
-                    count == executor.thread_pool_size() as u64
-                } else {
-                    false
-                }
-           }));
-        }
     };
 
     // Feature: [01D3W2RTE80P64E1W1TD61KGBN] A global Executor will be automatically provided by the Executor registry
@@ -184,6 +102,7 @@ steps!(World => {
         }
         assert_eq!(completed_count, executor.task_completed_count());
     };
+
 });
 
 #[derive(Default)]

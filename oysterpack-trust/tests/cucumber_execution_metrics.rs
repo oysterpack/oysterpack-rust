@@ -21,9 +21,9 @@ use cucumber_rust::*;
 mod steps;
 
 cucumber! {
-    features: "./features/concurrent/execution",
-    world: steps::execution::TestContext,
+    features: "./features/concurrent/execution/metrics",
+    world: steps::execution::metrics::World,
     steps: &[
-        steps::execution::steps
+        steps::execution::metrics::steps
     ]
 }
