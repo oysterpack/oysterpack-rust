@@ -18,7 +18,7 @@
 //!
 //! ## Registry Features
 //! - *[01D3W0H2B7KNTBJTGDYP3CRB7K]* A global Executor registry is provided.
-//!  - [ExecutorBuilder](struct.ExecutorBuilder.html) is used to construct and register new Executor(s) with the global registry
+//!  - [ExecutorBuilder](struct.ExecutorBuilder.html) is used to construct and register new [Executor(s)](struct.Executor.html) with the global registry
 //!  - Each Executor is identified by its ExecutorId, which is used as the registry key
 //!  - The following Executor properties are configurable
 //!    - thread pool size - default = number of cpu cores

@@ -163,6 +163,7 @@ impl ReqRepConfig {
 
     /// constructor
     /// - the chan_buf_size is by default set to the number of logical cpus
+    /// - the TimerBuckets should be based on expected response times
     pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: metrics::TimerBuckets) -> Self {
         Self {
             reqrep_id,
@@ -209,6 +210,7 @@ where
 {
     request_sender: channel::mpsc::Sender<ReqRepMessage<Req, Rep>>,
     reqrep_id: ReqRepId,
+    service_instance_id: ServiceInstanceId,
 }
 
 impl<Req, Rep> ReqRep<Req, Rep>
@@ -221,6 +223,13 @@ where
         self.reqrep_id
     }
 
+    /// Returns the backend ServiceInstanceId
+    /// - this can be used to determine if 2 different ReqRep client instances are talking to the same
+    ///   backend instance
+    pub fn service_instance_id(&self) -> ServiceInstanceId {
+        self.service_instance_id
+    }
+
     /// Send the request async
     /// - each request message is assigned a MessageId, which is returned within the ReplyReceiver
     /// - the ReplyReceiver is used to receive the reply via an async Future
@@ -231,7 +240,6 @@ where
             req: Some(req),
             rep_sender,
             msg_id,
-            reqrep_id: self.reqrep_id,
         };
         await!(self.request_sender.send(msg))?;
         Ok(ReplyReceiver {
@@ -248,7 +256,6 @@ where
             req: Some(req),
             rep_sender,
             msg_id,
-            reqrep_id: self.reqrep_id,
         };
         await!(self.request_sender.send(msg))?;
         let reply = await!(rep_receiver)?;
@@ -264,6 +271,7 @@ where
     fn new(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
+        service_instance_id: ServiceInstanceId,
     ) -> (
         ReqRep<Req, Rep>,
         channel::mpsc::Receiver<ReqRepMessage<Req, Rep>>,
@@ -273,6 +281,7 @@ where
             ReqRep {
                 reqrep_id,
                 request_sender,
+                service_instance_id,
             },
             request_receiver,
         )
@@ -335,7 +344,9 @@ where
                 .clone()
         };
 
-        let (reqrep, mut req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
+        let service_instance_id = ServiceInstanceId::generate();
+        let (reqrep, mut req_receiver) =
+            ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size, service_instance_id);
         let reqrep_service_metrics = reqrep_service_metrics();
 
         let service = async move {
@@ -347,24 +358,25 @@ where
             while let Some(mut msg) = await!(req_receiver.next()) {
                 request_count += 1;
                 debug!(
-                    "Received request #{} ReqRepId({}) MessageId({})",
+                    "[{}] ReqRepId({}) - Received request #{} : MessageId({})",
+                    service_instance_id,
+                    reqrep_id,
                     request_count,
-                    msg.reqrep_id(),
                     msg.message_id()
                 );
                 let req = msg.take_request().unwrap();
                 let start = clock.start();
                 let rep = await!(processor.process(req));
                 let end = clock.end();
-                if let Err(err) = msg.reply(rep) {
-                    warn!("{}", err);
-                }
+                let _ = msg.reply(rep);
                 let delta_nanos = clock.delta(start, end);
                 reqrep_service_metrics
                     .timer
                     .observe(metrics::as_float_secs(delta_nanos));
                 debug!(
-                    "Sent reply #{} : {:?}",
+                    "[{}] ReqRepId({}) - Sent reply #{} : {:?}",
+                    service_instance_id,
+                    reqrep_id,
                     request_count,
                     Duration::from_nanos(delta_nanos)
                 );
@@ -397,7 +409,6 @@ where
     Req: Debug + Send + 'static,
     Rep: Debug + Send + 'static,
 {
-    reqrep_id: ReqRepId,
     msg_id: MessageId,
     req: Option<Req>,
     rep_sender: channel::oneshot::Sender<Rep>,
@@ -423,11 +434,6 @@ where
             .map_err(|_| ChannelError::Disconnected)
     }
 
-    /// Returns the ReqRepId
-    pub fn reqrep_id(&self) -> ReqRepId {
-        self.reqrep_id
-    }
-
     /// Returns the request MessageId
     pub fn message_id(&self) -> MessageId {
         self.msg_id
@@ -441,6 +447,10 @@ where
 /// 2. Used to map to a ReqRep message processor
 #[ulid]
 pub struct ReqRepId(pub u128);
+
+/// Each new ReqRep backend service is assigned a unique id
+#[ulid]
+pub struct ServiceInstanceId(u128);
 
 /// Reply Receiver
 /// - is used to decouple sending the request from receiving the reply - see [ReqRep::send()](struct.ReqRep.html#method.send)
@@ -519,14 +529,15 @@ mod tests {
     fn req_rep() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+        let service_instance_id = ServiceInstanceId::generate();
         let mut executor = global_executor();
-        let (mut req_rep, mut req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
+        let (mut req_rep, mut req_receiver) =
+            ReqRep::<usize, usize>::new(REQREP_ID, 1, service_instance_id);
         let server = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
-                assert_eq!(msg.reqrep_id(), REQREP_ID);
                 info!(
                     "Received request: ReqRepId({}) MessageId({})",
-                    msg.reqrep_id(),
+                    REQREP_ID,
                     msg.message_id()
                 );
                 let n = msg.take_request().unwrap();
@@ -649,8 +660,10 @@ mod tests {
     fn req_rep_with_disconnected_receiver() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
+        let service_instance_id = ServiceInstanceId::generate();
         let mut executor = global_executor();
-        let (mut req_rep, req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
+        let (mut req_rep, req_receiver) =
+            ReqRep::<usize, usize>::new(REQREP_ID, 1, service_instance_id);
         let server = async move {
             let mut req_receiver = req_receiver;
             if let Some(mut msg) = await!(req_receiver.next()) {

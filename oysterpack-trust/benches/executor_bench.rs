@@ -56,7 +56,6 @@ criterion_main!(benches);
 fn executor_run_bench(c: &mut Criterion) {
     c.bench_function("executor_run_bench", move |b| {
         let mut executor = ExecutorBuilder::new(ExecutorId::generate())
-            .set_catch_unwind(false)
             .register()
             .unwrap();
         b.iter(|| {
@@ -65,42 +64,12 @@ fn executor_run_bench(c: &mut Criterion) {
     });
 }
 
-/// ## Summary
-/// - catch_unwind adds no performance overhead
 fn executor_spawn_bench(c: &mut Criterion) {
     let executor_id = ExecutorId::generate();
-    let _ = ExecutorBuilder::new(executor_id)
-        .set_catch_unwind(false)
-        .register()
-        .unwrap();
+    let _ = ExecutorBuilder::new(executor_id).register().unwrap();
 
-    c.bench_function("executor_spawn_no_catch_unwind_bench", move |b| {
+    c.bench_function("executor_spawn_bench", move |b| {
         let mut executor = execution::executor(executor_id).unwrap();
-        assert!(!executor.catch_unwind());
-        b.iter(|| {
-            let (mut tx, rx) = futures::channel::oneshot::channel();
-            executor.spawn(
-                async move {
-                    tx.send(()).unwrap();
-                },
-            );
-            executor.run(
-                async move {
-                    await!(rx).unwrap();
-                },
-            );
-        });
-    });
-
-    let executor_id = ExecutorId::generate();
-    let _ = ExecutorBuilder::new(executor_id)
-        .set_catch_unwind(true)
-        .register()
-        .unwrap();
-
-    c.bench_function("executor_spawn_catch_unwind_bench", move |b| {
-        let mut executor = execution::executor(executor_id).unwrap();
-        assert!(executor.catch_unwind());
         b.iter(|| {
             let (mut tx, rx) = futures::channel::oneshot::channel();
             executor.spawn(

@@ -17,9 +17,7 @@
 use cucumber_rust::*;
 
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
-use oysterpack_trust::{
-    concurrent::execution::{self, *},
-};
+use oysterpack_trust::concurrent::execution::{self, *};
 use std::{thread, time::Duration};
 
 steps!(World => {
