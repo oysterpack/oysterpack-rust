@@ -14,6 +14,21 @@
  *    limitations under the License.
  */
 
-pub mod execution;
-pub mod messaging;
-pub mod metrics;
+use cucumber_rust::*;
+
+use futures::{channel::oneshot, prelude::*, task::SpawnExt};
+use oysterpack_trust::concurrent::execution::{self, *};
+use std::{thread, time::Duration};
+
+steps!(World => {
+    // Feature: [01D4RW7WRVBBGTBZEQCXMFN51V] The ReqRep client can be shared by cloning it.
+
+    // Scenario: [01D4RW8V6K8HR8R1QR8DMN2AQC] Clone the ReqRep client and send requests from multiple threads
+    given regex "01D4RW8V6K8HR8R1QR8DMN2AQC" | _world, _matches, _step | {
+        unimplemented!()
+    };
+
+});
+
+#[derive(Default)]
+pub struct World {}

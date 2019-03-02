@@ -86,8 +86,10 @@ use futures::{
     stream::StreamExt,
     task::{SpawnError, SpawnExt},
 };
+use maplit::hashmap;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
+use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Debug},
@@ -112,6 +114,11 @@ lazy_static::lazy_static! {
 pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1872765971344832352273831154704953923);
 
+/// ReqRep backend message processing timer MetricId: `M01D4ZMEFGBPCK2HSNAPGBARR14`
+/// - metric type is Histogram
+pub const REQREP_PROCESS_TIMER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1875702602137856142367281339226152996);
+
 /// The ReqRepId ULID will be used as the label value: `L01D2Q81HQJJVPQZSQE7BHH67JK`
 pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
@@ -135,6 +142,49 @@ pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
         })
         .next()
         .unwrap_or(0)
+}
+
+/// return the ReqRep backend service count
+pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+    metrics::registry()
+        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
+        .first()
+        .map(|mf| {
+            let label_name = REQREPID_LABEL_ID.name();
+            let label_name = label_name.as_str();
+            let metrics = mf.get_metric();
+            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
+                metrics.len(),
+                fnv::FnvBuildHasher::default(),
+            );
+            metrics.iter().fold(counts, |mut counts, metric| {
+                let reqrep_id = metric
+                    .get_label()
+                    .iter()
+                    .find_map(|label_pair| {
+                        if label_pair.get_name() == label_name {
+                            Some(ReqRepId::from(
+                                label_pair.get_value().parse::<ULID>().unwrap(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                let gauge = metric.get_gauge();
+                counts.insert(reqrep_id, gauge.get_value() as u64);
+                counts
+            })
+        })
+        .unwrap_or_else(fnv::FnvHashMap::default)
+}
+
+/// Gathers metrics related to ReqRep
+pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
+    metrics::registry().gather_for_metric_ids(&[
+        SERVICE_INSTANCE_COUNT_METRIC_ID,
+        REQREP_PROCESS_TIMER_METRIC_ID,
+    ])
 }
 
 /// ReqRep is used to configure and start a ReqRep service
@@ -327,10 +377,12 @@ where
                 .or_insert_with(|| {
                     let timer = metrics::registry()
                         .register_histogram_timer(
-                            metrics::MetricId(reqrep_id.0),
+                            REQREP_PROCESS_TIMER_METRIC_ID,
                             "ReqRep message processor timer in seconds",
                             metric_timer_buckets,
-                            None,
+                            Some(hashmap! {
+                                REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                            }),
                         )
                         .unwrap();
                     let service_count = REQ_REP_SERVICE_INSTANCE_COUNT
@@ -496,8 +548,10 @@ where
 {
     /// request / reply processing
     /// - it returns a Future which will produce the reply
-    /// - the reason it returns a future is to minimizing blocking within the Processor task
-    fn process(&mut self, req: Req) -> FutureReply<Rep>;
+    /// - the reason it returns a future is to minimize blocking within the Processor task
+    ///   - *NOTE*: ideally, it would be cleaner if this method was async. However, async methods on a
+    ///     trait are currently not supported, but are planned to be supported.
+    fn process(&mut self, req: Req) -> FutureReply<Rep>; // TODO: change to an async method when async methods become supported on traits
 
     /// Invoked before any messages have been sent
     fn init(&mut self) {}
@@ -686,5 +740,42 @@ mod tests {
         };
         executor.run(task);
         executor.run(task_handle);
+    }
+
+    #[test]
+    fn processor_timer_metrics() {
+        use maplit::*;
+        // multiple metrics with the same MetricId can be registered as long as they have the same help
+        // string and the same label names (aka label dimensions) in each, constLabels and variableLabels,
+        // but they must differ in the values of the constLabels.
+        for i in 0..5 {
+            metrics::registry()
+                .register_histogram_timer(
+                    super::REQREP_PROCESS_TIMER_METRIC_ID,
+                    "ReqRep message processor timer in seconds",
+                    metrics::TimerBuckets::from(vec![
+                        Duration::from_millis(i),
+                        Duration::from_millis(i + 1),
+                    ]),
+                    Some(hashmap! {
+                        REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                    }),
+                )
+                .unwrap();
+        }
+        metrics::registry()
+            .register_histogram_timer(
+                super::REQREP_PROCESS_TIMER_METRIC_ID,
+                "ReqRep message processor timer in seconds",
+                metrics::TimerBuckets::from(vec![
+                    Duration::from_millis(1),
+                    Duration::from_millis(2),
+                    Duration::from_millis(3),
+                ]),
+                Some(hashmap! {
+                    REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                }),
+            )
+            .unwrap();
     }
 }

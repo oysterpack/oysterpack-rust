@@ -85,6 +85,10 @@ harness = false
 name = "cucumber_execution_metrics"
 harness = false
 
+[[test]]
+name = "cucumber_reqrep_client"
+harness = false
+
 [[bench]]
 name = "reqrep_bench"
 harness = false
