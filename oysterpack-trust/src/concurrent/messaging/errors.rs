@@ -22,25 +22,22 @@ use futures::channel;
 /// Channel sending related errors
 #[derive(Fail, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum ChannelError {
-    /// Failed to send because the channel is full
-    #[fail(display = "Failed to send message because the channel is full")]
-    Full,
-    /// The channel is disconnected
-    #[fail(display = "The channel is disconnected")]
-    Disconnected,
+    /// Sender channel is disconnected
+    #[fail(display = "Sender channel is disconnected")]
+    SenderDisconnected,
+    /// Receiver channel is disconnected
+    #[fail(display = "Receiver channel is disconnected")]
+    ReceiverDisconnected,
 }
 
 impl From<channel::mpsc::SendError> for ChannelError {
-    fn from(err: channel::mpsc::SendError) -> Self {
-        if err.is_disconnected() {
-            return ChannelError::Disconnected;
-        }
-        ChannelError::Full
+    fn from(_: channel::mpsc::SendError) -> Self {
+        ChannelError::SenderDisconnected
     }
 }
 
 impl From<futures::channel::oneshot::Canceled> for ChannelError {
     fn from(_: futures::channel::oneshot::Canceled) -> Self {
-        ChannelError::Disconnected
+        ChannelError::ReceiverDisconnected
     }
 }

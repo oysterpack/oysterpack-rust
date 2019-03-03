@@ -28,7 +28,7 @@ steps!(World => {
         let mut executor = global_executor();
         let task_count = executor.thread_pool_size()*2;
         for _ in 0..task_count {
-            executor.spawn(async { panic!("Boom!!!"); });
+            executor.spawn(async { panic!("Boom!!!"); }).unwrap();
         }
         // wait for tasks to complete
         let panic_count = executor.task_panic_count() + task_count as u64;
@@ -38,11 +38,11 @@ steps!(World => {
     };
 
     when regex "01D3YW91CYQRB0XVAKF580WX04" | world, _matches, _step | {
-        let (mut tx, rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         let mut executor = global_executor();
         executor.spawn( async move {
             tx.send(()).unwrap();
-        });
+        }).unwrap();
         world.rx = Some(rx);
     };
 
@@ -59,7 +59,7 @@ steps!(World => {
     // Feature: [01D3W2RTE80P64E1W1TD61KGBN] A global Executor will be automatically provided by the Executor registry
 
     // Scenario: [01D3W2RF94W85YGQ49JFDXB3XB] Use the global Executor from 10 different threads
-    then regex "01D3W2RF94W85YGQ49JFDXB3XB" | world, _matches, _step | {
+    then regex "01D3W2RF94W85YGQ49JFDXB3XB" | _world, _matches, _step | {
         let executor = global_executor();
         let completed_count = executor.task_completed_count() + 100;
 
@@ -67,7 +67,7 @@ steps!(World => {
             thread::spawn(|| {
                 for _ in 0..10 {
                     let mut executor = global_executor();
-                    executor.spawn(async {});
+                    executor.spawn(async {}).unwrap();
                 }
             });
         }
@@ -80,7 +80,7 @@ steps!(World => {
     };
 
     // Scenario: [01D4P2Z3JWR05CND2N96TMBKT2] Use the global Executor from 10 different threads
-    then regex "01D4P2Z3JWR05CND2N96TMBKT2" | world, _matches, _step | {
+    then regex "01D4P2Z3JWR05CND2N96TMBKT2" | _world, _matches, _step | {
         let id = ExecutorId::generate();
         let executor = ExecutorBuilder::new(id).register().unwrap();
         let completed_count = executor.task_completed_count() + 100;
@@ -89,7 +89,7 @@ steps!(World => {
             thread::spawn(move || {
                 for _ in 0..10 {
                     let mut executor = execution::executor(id).unwrap();
-                    executor.spawn(async {});
+                    executor.spawn(async {}).unwrap();
                 }
             });
         }
@@ -106,5 +106,4 @@ steps!(World => {
 #[derive(Default)]
 pub struct World {
     rx: Option<oneshot::Receiver<()>>,
-    executor: Option<Executor>,
 }

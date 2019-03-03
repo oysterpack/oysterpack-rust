@@ -300,16 +300,9 @@ where
 
     /// Send the request and await to receive a reply
     pub async fn send_recv(&mut self, req: Req) -> Result<Rep, ChannelError> {
-        let (rep_sender, rep_receiver) = channel::oneshot::channel::<Rep>();
-        let msg_id = MessageId::generate();
-        let msg = ReqRepMessage {
-            req: Some(req),
-            rep_sender,
-            msg_id,
-        };
-        await!(self.request_sender.send(msg))?;
-        let reply = await!(rep_receiver)?;
-        Ok(reply)
+        let receiver = await!(self.send(req))?;
+        let rep = await!(receiver.recv())?;
+        Ok(rep)
     }
 
     /// constructor
@@ -483,7 +476,7 @@ where
     pub fn reply(self, rep: Rep) -> Result<(), ChannelError> {
         self.rep_sender
             .send(rep)
-            .map_err(|_| ChannelError::Disconnected)
+            .map_err(|_| ChannelError::SenderDisconnected)
     }
 
     /// Returns the request MessageId
@@ -529,8 +522,9 @@ where
     /// ## Notes
     /// If the MessageId is required for tracking purposes, then it must be retrieved before
     /// invoking recv because this method consumes the object.
-    pub async fn recv(self) -> Result<Rep, channel::oneshot::Canceled> {
-        await!(self.receiver)
+    pub async fn recv(self) -> Result<Rep, ChannelError> {
+        let rep = await!(self.receiver)?;
+        Ok(rep)
     }
 
     /// Closes the receiver channel

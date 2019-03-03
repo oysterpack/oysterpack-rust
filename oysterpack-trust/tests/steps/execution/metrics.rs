@@ -16,11 +16,8 @@
 
 use cucumber_rust::*;
 
-use futures::{channel::oneshot, prelude::*, task::SpawnExt};
-use oysterpack_trust::{
-    concurrent::execution::{self, *},
-    metrics,
-};
+use futures::{channel::oneshot, task::SpawnExt};
+use oysterpack_trust::{concurrent::execution::*, metrics};
 use std::thread;
 
 steps!(World => {
@@ -31,10 +28,10 @@ steps!(World => {
     when regex "01D3Y1D8SJZ8JWPGJKFK4BYHP0" | world, _matches, _step | {
         let mut executor = ExecutorBuilder::new(ExecutorId::generate()).register().unwrap();
         for _ in 0..5 {
-            executor.spawn(async {});
+            executor.spawn(async {}).unwrap();
         }
         for _ in 0..3 {
-            executor.spawn(async { panic!("Boom!!!"); });
+            executor.spawn(async { panic!("Boom!!!"); }).unwrap();
         }
         // wait for tasks to complete
         while executor.task_active_count() > 0 {
@@ -108,7 +105,7 @@ steps!(World => {
     // Feature: [01D4P0Q8M3ZAWCDH22VXHGN4ZX] Executor metrics can be collected
 
     // Scenario: [01D4P0QFZ2YK0HYC74T9S74WXQ] Collect metrics for an individual Executor
-    then regex "01D4P0QFZ2YK0HYC74T9S74WXQ" | world, _matches, _step | {
+    then regex "01D4P0QFZ2YK0HYC74T9S74WXQ" | _world, _matches, _step | {
         let executor = global_executor();
         let mfs = executor.gather_metrics();
         assert!(mfs.iter().any(|mf| {
@@ -146,7 +143,7 @@ steps!(World => {
     };
 
     // Scenario: [01D4P0TGP2D9H4GAXZC1PKMQH3] Collect metrics for all registered Executor(s)
-    then regex "01D4P0TGP2D9H4GAXZC1PKMQH3" | world, _matches, _step | {
+    then regex "01D4P0TGP2D9H4GAXZC1PKMQH3" | _world, _matches, _step | {
         let mfs = gather_metrics();
         println!("{:#?}", mfs);
         assert_eq!(mfs.len(), 4);
@@ -158,14 +155,14 @@ steps!(World => {
     // Feature: [01D418RZF94XJCRQ5D2V4DRMJ6] Executor thread pool size is recorded as a metric
 
     // Scenario: [01D41GJ0WRB49AX2NX4T09BKA8] Verify total Executor threads match against the metric registry
-    given regex "01D41GJ0WRB49AX2NX4T09BKA8" | world, _matches, _step | {
+    given regex "01D41GJ0WRB49AX2NX4T09BKA8" | _world, _matches, _step | {
         if executor_ids().is_empty() {
             ExecutorBuilder::new(ExecutorId::generate()).register().unwrap();
         }
     };
 
     // Scenario: [01D41GJ0WRB49AX2NX4T09BKA8] Verify total Executor threads match against the metric registry
-    then regex "01D41GJ0WRB49AX2NX4T09BKA8" | world, _matches, _step | {
+    then regex "01D41GJ0WRB49AX2NX4T09BKA8" | _world, _matches, _step | {
         let thread_count = total_threads();
         let mfs = metrics::registry().gather_for_metric_ids(&[THREADS_POOL_SIZE_GAUGE_METRIC_ID]);
         let count: u64 = mfs.first()

@@ -16,13 +16,8 @@
 
 use cucumber_rust::*;
 
-use futures::{prelude::*, task::SpawnExt};
-use maplit::*;
-use oysterpack_trust::{
-    concurrent::execution::{self, *},
-    metrics,
-};
-use std::{collections::HashSet, num::NonZeroUsize, panic, thread, time::Duration};
+use oysterpack_trust::concurrent::execution::{self, *};
+use std::{num::NonZeroUsize, panic, thread};
 
 steps!(World => {
     // Feature: [01D3W0H2B7KNTBJTGDYP3CRB7K] A global Executor registry is provided.

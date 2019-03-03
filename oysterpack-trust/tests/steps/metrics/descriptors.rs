@@ -16,7 +16,6 @@
 
 use cucumber_rust::*;
 
-use maplit::*;
 use oysterpack_trust::metrics;
 use prometheus::{
     core::{Collector, Desc},
@@ -139,7 +138,7 @@ steps!(World => {
 
     // Scenario: [01D48TK6AMZCQ5CNYMJC0NVR37] Find descriptors against an empty labels HashMap
     when regex "01D48TK6AMZCQ5CNYMJC0NVR37" | world, _matches, _step| {
-        let mut labels = HashMap::new();
+        let labels = HashMap::new();
         world.descs = metrics::registry().descs_for_labels(&labels);
     };
 

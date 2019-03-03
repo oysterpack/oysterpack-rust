@@ -163,7 +163,7 @@ steps!(World => {
 
     // Scenario: [01D44BM35C61QE76Q2JGKGBKV7] Find collectors for DescId(s) that are not registered
     when regex "01D44BM35C61QE76Q2JGKGBKV7" |world, _matches, _step| {
-        let mut desc_ids = vec![0,1,2];
+        let desc_ids = vec![0,1,2];
         world.collectors_for_desc_ids = metrics::registry().collectors_for_desc_ids(desc_ids.as_slice());
     };
 
@@ -173,7 +173,7 @@ steps!(World => {
 
     // Scenario: [01D44BMDK667A9QNFMQ9H89T95] Find collectors with empty DescId slice
     when regex "01D44BMDK667A9QNFMQ9H89T95" |world, _matches, _step| {
-        let mut desc_ids = vec![];
+        let desc_ids = vec![];
         world.collectors_for_desc_ids = metrics::registry().collectors_for_desc_ids(desc_ids.as_slice());
     };
 
@@ -182,7 +182,7 @@ steps!(World => {
     };
 
     // Scenario: [01D44BMWHBX0BY1JVRZHGA78HM] Find collector by metric DescId
-    when regex "01D44BMWHBX0BY1JVRZHGA78HM" |world, _matches, _step| {
+    when regex "01D44BMWHBX0BY1JVRZHGA78HM" |_world, _matches, _step| {
         // find collector by DescId
     };
 
@@ -195,11 +195,11 @@ steps!(World => {
     };
 
     // Scenario: [01D44BN406V10VRCBGWM4PBDTX] Find collector by metric DescId that is not registered
-    when regex "01D44BN406V10VRCBGWM4PBDTX" |world, _matches, _step| {
+    when regex "01D44BN406V10VRCBGWM4PBDTX" |_world, _matches, _step| {
         // Find collector by metric DescId that is not registered
     };
 
-    then regex "01D44BN406V10VRCBGWM4PBDTX" |world, _matches, _step| {
+    then regex "01D44BN406V10VRCBGWM4PBDTX" |_world, _matches, _step| {
         assert!(metrics::registry().collectors_for_desc_id(0).is_none());
     };
 

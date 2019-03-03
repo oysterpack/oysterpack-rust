@@ -65,7 +65,7 @@ steps!(World => {
     };
 
     then regex "01D3PPY3E710BYY8DQDKVQ31KY" | world, _matches, _step| {
-        let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
+        let desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
@@ -84,7 +84,7 @@ steps!(World => {
     };
 
     then regex "01D4BXN2ZMYRHNGRRCSTKVN0AP" | world, _matches, _step| {
-        let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
+        let desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
@@ -105,7 +105,7 @@ steps!(World => {
     };
 
     then regex "01D4D0GEXXQ3WKK78DYC0RJHKD" | world, _matches, _step| {
-        let mut desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
+        let desc_ids: HashSet<_> = world.desc_ids.iter().cloned().collect();
         assert_eq!(world.metric_families.len(), desc_ids.len());
     };
 
@@ -125,7 +125,7 @@ steps!(World => {
 
     // [01D4D1WEKJBFQSR0Z1Q10ZHD2R] Gather metrics for DescId(s) with an empty &[DescId]
     when regex "01D4D1WEKJBFQSR0Z1Q10ZHD2R" | world, _matches, _step| {
-        let mut desc_ids = vec![];
+        let desc_ids = vec![];
         world.metric_families = metrics::registry().gather_for_desc_ids(&desc_ids);
     };
 
@@ -187,7 +187,7 @@ steps!(World => {
 
     // Scenario: [01D4D302NGKYAVCHDF4A1Z6SB3] Gather metrics for descriptor names containing none that match
     when regex "01D4D302NGKYAVCHDF4A1Z6SB3" | world, _matches, _step| {
-        let mut desc_names = vec![ULID::generate().to_string(), ULID::generate().to_string()];
+        let desc_names = vec![ULID::generate().to_string(), ULID::generate().to_string()];
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };
@@ -198,7 +198,7 @@ steps!(World => {
 
     // Scenario: [01D4D30ABTZ72781C5NDP42217] Gather metrics for descriptor names using an empty &[Name]
     when regex "01D4D30ABTZ72781C5NDP42217" | world, _matches, _step| {
-        let mut desc_names = Vec::<String>::new();
+        let desc_names = Vec::<String>::new();
         metrics::registry().gather();
         world.metric_families = metrics::registry().gather_for_desc_names(&desc_names);
     };

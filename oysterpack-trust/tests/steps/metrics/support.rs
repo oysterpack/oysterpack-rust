@@ -16,22 +16,9 @@
 
 use cucumber_rust::*;
 
-use maplit::*;
 use oysterpack_trust::metrics;
-use oysterpack_uid::ULID;
-use prometheus::{
-    core::{Collector, Desc},
-    proto::MetricFamily,
-    Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramVec, IntCounter, IntCounterVec,
-    IntGauge, IntGaugeVec,
-};
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap, HashSet},
-    hash::BuildHasherDefault,
-    sync::Arc,
-    thread,
-    time::Duration,
-};
+use prometheus::core::Collector;
+use std::{thread, time::Duration};
 
 steps!(World => {
     // Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Metric builders are provided for each of the supported metrics.
@@ -256,7 +243,7 @@ steps!(World => {
     };
 
     when regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N" | world, _matches, _step| {
-        metrics::registry().text_encode_metrics(&mut world.text_encoded_metrics);
+        metrics::registry().text_encode_metrics(&mut world.text_encoded_metrics).unwrap();
     };
 
     then regex "01D3M9ZJQSTWFFMKBR3Z2DXJ9N" | world, _matches, _step| {
