@@ -22,6 +22,7 @@ use oysterpack_trust::concurrent::{
     messaging::reqrep::{self, *},
 };
 use oysterpack_trust::metrics::TimerBuckets;
+use prometheus::Encoder;
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -43,7 +44,7 @@ steps!(World => {
         // make an additional clone to verify that clones don't increase the shared buffer capacity
         let client = world.client.as_ref().clone();
         world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_secs(10)));
-        // this should be plenty of time for all requests to be sent before
+        // this should be plenty of time for all requests to be sent
         thread::sleep(Duration::from_millis(50));
     };
 
@@ -62,7 +63,7 @@ steps!(World => {
         for _ in 0..10 {
             world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_secs(10)));
         }
-        // this should be plenty of time for all requests to be sent before
+        // this should be plenty of time for all requests to be sent
         thread::sleep(Duration::from_millis(50));
     };
 
@@ -81,8 +82,8 @@ steps!(World => {
         // make an additional clone to verify that clones don't increase the shared buffer capacity
         let client = world.client.as_ref().clone();
         world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_secs(10)));
-        // this should be plenty of time for all requests to be sent before
-        thread::sleep(Duration::from_millis(50));
+        // this should be plenty of time for all requests to be sent
+        thread::sleep(Duration::from_millis(100));
     };
 
     then regex "01D4T61JB50KNT3Y7VQ10VX2NR" | world, _matches, _step | {
@@ -102,7 +103,7 @@ steps!(World => {
         for _ in 0..10 {
             world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_secs(10)));
         }
-        // this should be plenty of time for all requests to be sent before
+        // this should be plenty of time for all requests to be sent
         thread::sleep(Duration::from_millis(50));
     };
 
@@ -111,6 +112,43 @@ steps!(World => {
             assert_eq!(request_send_count(client.id()), 12);
         }
     };
+
+    // Feature: [01D4V1PZ43Z5P7XGED38V6DXHA] TimerBuckets are configurable per ReqRep
+
+    // Scenario: [01D4V1WN16Q2P0B536GJ84R0SN] Configure a ReqRep service with TimerBuckets
+    when regex "01D4V1WN16Q2P0B536GJ84R0SN" | world, _matches, _step | {
+        let buckets = TimerBuckets::from(vec![
+            Duration::from_millis(1),
+            Duration::from_millis(2),
+            Duration::from_millis(3),
+        ]);
+        world.client = Some(counter_service_with_timer_buckets(buckets));
+
+        world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_nanos(500000))); // 0.5 ms
+        world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_nanos(1500000))); // 1.5 ms
+        world.send_requests(10, CounterRequest::SleepAndInc(Duration::from_nanos(2500000))); // 2.5 ms
+        thread::yield_now();
+    };
+
+    then regex "01D4V1WN16Q2P0B536GJ84R0SN" | world, _matches, _step | {
+        'outer: loop {
+            for client in world.client.as_ref() {
+                if request_send_count(client.id()) == 30 {
+                    break 'outer;
+                }
+                println!("request_send_count = {}", request_send_count((client.id())));
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+        let reqrep_metrics = reqrep::gather_metrics();
+        let text_encoder = prometheus::TextEncoder::new();
+        let mut reqrep_metrics_txt = Vec::<u8>::with_capacity(1024);
+        text_encoder.encode(&reqrep_metrics, &mut reqrep_metrics_txt);
+        let reqrep_metrics_txt = String::from_utf8_lossy(&reqrep_metrics_txt);
+        println!("{}",reqrep_metrics_txt);
+    };
+
 
 });
 
@@ -135,7 +173,7 @@ impl Processor<CounterRequest, usize> for Counter {
                 }
                 CounterRequest::Panic => panic!("BOOM !!!"),
                 CounterRequest::SleepAndInc(sleep) => {
-                    println!("sleeping for {:?} ...", sleep);
+                    //println!("sleeping for {:?} ...", sleep);
                     thread::sleep(sleep);
                     let mut count = count.write().unwrap();
                     *count += 1;
@@ -161,6 +199,12 @@ fn counter_service() -> ReqRep<CounterRequest, usize> {
         Duration::from_nanos(200),
         Duration::from_nanos(300),
     ]);
+    ReqRepConfig::new(ReqRepId::generate(), buckets)
+        .start_service(Counter::default(), global_executor())
+        .unwrap()
+}
+
+fn counter_service_with_timer_buckets(buckets: TimerBuckets) -> ReqRep<CounterRequest, usize> {
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .start_service(Counter::default(), global_executor())
         .unwrap()

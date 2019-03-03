@@ -95,7 +95,7 @@ use std::{
     fmt::{self, Debug},
     pin::Pin,
     sync::RwLock,
-    time::Duration,
+    time::Instant,
 };
 
 lazy_static::lazy_static! {
@@ -451,7 +451,7 @@ where
                             "ReqRep message processor timer in seconds",
                             metric_timer_buckets,
                             Some(hashmap! {
-                                REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                                REQREPID_LABEL_ID => reqrep_id.to_string()
                             }),
                         )
                         .unwrap();
@@ -474,7 +474,6 @@ where
         let service = async move {
             processor.init();
             reqrep_service_metrics.service_count.inc();
-            let clock = quanta::Clock::new();
             let mut request_count: u64 = 0;
 
             while let Some(mut msg) = await!(req_receiver.next()) {
@@ -487,20 +486,23 @@ where
                     msg.message_id()
                 );
                 let req = msg.take_request().unwrap();
-                let start = clock.start();
+
+                // time the request processing
+                let start = Instant::now();
                 let rep = await!(processor.process(req));
-                let end = clock.end();
+                let elapsed = start.elapsed();
+
+                // send back the reply
+                // we don't care if the client reply channel is disconnected
                 let _ = msg.reply(rep);
-                let delta_nanos = clock.delta(start, end);
+
+                // record the timing metric
                 reqrep_service_metrics
                     .timer
-                    .observe(metrics::as_float_secs(delta_nanos));
+                    .observe(metrics::duration_as_float_secs(elapsed));
                 debug!(
                     "[{}] ReqRepId({}) - Sent reply #{} : {:?}",
-                    service_instance_id,
-                    reqrep_id,
-                    request_count,
-                    Duration::from_nanos(delta_nanos)
+                    service_instance_id, reqrep_id, request_count, elapsed
                 );
             }
             reqrep_service_metrics.service_count.dec();

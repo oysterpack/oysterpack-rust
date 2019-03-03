@@ -1768,6 +1768,11 @@ pub fn as_float_secs(nanos: u64) -> f64 {
     (nanos as f64) / f64::from(NANOS_PER_SEC)
 }
 
+/// Returns the number of seconds contained by the `Duration` as `f64`.
+pub fn duration_as_float_secs(duration: Duration) -> f64 {
+    (duration.as_secs() as f64) + (duration.as_nanos() as f64) / f64::from(NANOS_PER_SEC)
+}
+
 /// Used to specify histogram buckets that will be used as timer
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimerBuckets(smallvec::SmallVec<[Duration; 10]>);
