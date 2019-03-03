@@ -107,6 +107,13 @@ lazy_static::lazy_static! {
         &[REQREPID_LABEL_ID],
         None,
     ).unwrap();
+
+    static ref REQREP_SEND_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        REQREP_SEND_COUNTER_METRIC_ID,
+        "ReqRep request send count",
+        &[REQREPID_LABEL_ID],
+        None,
+    ).unwrap();
 }
 
 /// ReqRep service instance count MetricId: `M01D2Q7VG1HFFXG6JT6HD11ZCJ3`
@@ -122,6 +129,11 @@ pub const REQREP_PROCESS_TIMER_METRIC_ID: metrics::MetricId =
 /// The ReqRepId ULID will be used as the label value: `L01D2Q81HQJJVPQZSQE7BHH67JK`
 pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
+
+/// ReqRep request send counter MetricId: `M01D52BD1MYW4GJ2VN44S14R28Z`
+/// - metric type is Histogram
+pub const REQREP_SEND_COUNTER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1875812830972763422767373669165173023);
 
 /// return the ReqRep backend service count
 pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
@@ -179,11 +191,68 @@ pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
         .unwrap_or_else(fnv::FnvHashMap::default)
 }
 
+/// return the ReqRep request send count
+pub fn request_send_count(reqrep_id: ReqRepId) -> u64 {
+    let label_name = REQREPID_LABEL_ID.name();
+    let label_value = reqrep_id.to_string();
+    metrics::registry()
+        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
+        .iter()
+        .filter_map(|mf| {
+            mf.get_metric()
+                .iter()
+                .find(|metric| {
+                    metric.get_label().iter().any(|label_pair| {
+                        label_pair.get_name() == label_name && label_pair.get_value() == label_value
+                    })
+                })
+                .map(|mf| mf.get_counter().get_value() as u64)
+        })
+        .next()
+        .unwrap_or(0)
+}
+
+/// return the ReqRep backend service count
+pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+    metrics::registry()
+        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
+        .first()
+        .map(|mf| {
+            let label_name = REQREPID_LABEL_ID.name();
+            let label_name = label_name.as_str();
+            let metrics = mf.get_metric();
+            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
+                metrics.len(),
+                fnv::FnvBuildHasher::default(),
+            );
+            metrics.iter().fold(counts, |mut counts, metric| {
+                let reqrep_id = metric
+                    .get_label()
+                    .iter()
+                    .find_map(|label_pair| {
+                        if label_pair.get_name() == label_name {
+                            Some(ReqRepId::from(
+                                label_pair.get_value().parse::<ULID>().unwrap(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                let counter = metric.get_counter();
+                counts.insert(reqrep_id, counter.get_value() as u64);
+                counts
+            })
+        })
+        .unwrap_or_else(fnv::FnvHashMap::default)
+}
+
 /// Gathers metrics related to ReqRep
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
     metrics::registry().gather_for_metric_ids(&[
         SERVICE_INSTANCE_COUNT_METRIC_ID,
         REQREP_PROCESS_TIMER_METRIC_ID,
+        REQREP_SEND_COUNTER_METRIC_ID,
     ])
 }
 
@@ -212,17 +281,21 @@ impl ReqRepConfig {
     }
 
     /// constructor
-    /// - the chan_buf_size is by default set to the number of logical cpus
+    /// - the chan_buf_size default = 1
     /// - the TimerBuckets should be based on expected response times
     pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: metrics::TimerBuckets) -> Self {
         Self {
             reqrep_id,
-            chan_buf_size: num_cpus::get(),
+            chan_buf_size: 0,
             metric_timer_buckets,
         }
     }
 
     /// sets the channel buffer size
+    ///
+    /// The channel's capacity is equal to buffer + num-senders. In other words, each sender gets a
+    /// guaranteed slot in the channel capacity, and on top of that there are buffer "first come, first serve"
+    /// slots available to all senders.
     pub fn set_chan_buf_size(mut self, chan_buf_size: usize) -> ReqRepConfig {
         self.chan_buf_size = chan_buf_size;
         self
@@ -252,7 +325,7 @@ impl ReqRepConfig {
 
 /// Implements a request/reply messaging pattern. Think of it as a generic function: `Req -> Rep`
 /// - each ReqRep is assigned a unique ReqRepId - think of it as the function identifier
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReqRep<Req, Rep>
 where
     Req: Debug + Send + 'static,
@@ -261,6 +334,7 @@ where
     request_sender: channel::mpsc::Sender<ReqRepMessage<Req, Rep>>,
     reqrep_id: ReqRepId,
     service_instance_id: ServiceInstanceId,
+    request_send_counter: prometheus::IntCounter,
 }
 
 impl<Req, Rep> ReqRep<Req, Rep>
@@ -292,6 +366,7 @@ where
             msg_id,
         };
         await!(self.request_sender.send(msg))?;
+        self.request_send_counter.inc();
         Ok(ReplyReceiver {
             msg_id,
             receiver: rep_receiver,
@@ -325,6 +400,8 @@ where
                 reqrep_id,
                 request_sender,
                 service_instance_id,
+                request_send_counter: REQREP_SEND_COUNTER
+                    .with_label_values(&[reqrep_id.to_string().as_str()]),
             },
             request_receiver,
         )
@@ -431,6 +508,22 @@ where
         };
         executor.spawn(service)?;
         Ok(reqrep)
+    }
+}
+
+impl<Req, Rep> fmt::Debug for ReqRep<Req, Rep>
+where
+    Req: Debug + Send + 'static,
+    Rep: Debug + Send + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "ReqRep(reqrep_id = {}, service_instance_id = {}, request_send_count = {})",
+            self.reqrep_id,
+            self.service_instance_id,
+            self.request_send_counter.get()
+        )
     }
 }
 

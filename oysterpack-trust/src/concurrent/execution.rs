@@ -18,11 +18,11 @@
 //!
 //! ## Registry Features
 //! - *[01D3W0H2B7KNTBJTGDYP3CRB7K]* A global Executor registry is provided.
-//!  - [ExecutorBuilder](struct.ExecutorBuilder.html) is used to construct and register new [Executor(s)](struct.Executor.html) with the global registry
-//!  - Each Executor is identified by its ExecutorId, which is used as the registry key
-//!  - The following Executor properties are configurable
-//!    - thread pool size - default = number of cpu cores
-//!    - thread stack size - default = Rust default
+//!   - [ExecutorBuilder](struct.ExecutorBuilder.html) is used to construct and register new [Executor(s)](struct.Executor.html) with the global registry
+//!   - Each Executor is identified by its ExecutorId, which is used as the registry key
+//!   - The following Executor properties are configurable
+//!     - thread pool size - default = number of cpu cores
+//!     - thread stack size - default = Rust default
 //! - *[01D3W1C9YZDYMDPT98JCFS8F4P]* The [list of registered ExecutorId(s)](fn.executor_ids.html) can be retrieved from the Executor registry
 //!
 //! ## Executor Features
