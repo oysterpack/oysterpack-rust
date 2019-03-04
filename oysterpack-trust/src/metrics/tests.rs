@@ -252,15 +252,14 @@ fn metric_registry_histogram_vec() {
 
     let reqrep_timer =
         reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
-    let clock = quanta::Clock::new();
     for _ in 0..10 {
         let ulid_u128: u128 = ULID::generate().into();
         let sleep_ms = (ulid_u128 % 100) as u64;
         info!("sleeping for {}", sleep_ms);
-        let delta = time(&clock, || {
+        {
+            let timer = reqrep_timer.start_timer();
             std::thread::sleep(std::time::Duration::from_millis(sleep_ms))
-        });
-        reqrep_timer.observe(as_float_secs(delta));
+        }
     }
 }
 
@@ -284,14 +283,15 @@ fn metric_registry_histogram() {
 
     info!("{:#?}", registry);
 
-    let clock = quanta::Clock::new();
     const METRIC_COUNT: u64 = 5;
     for _ in 0..5 {
         let ulid_u128: u128 = ULID::generate().into();
         let sleep_ms = (ulid_u128 % 10) as u32;
         info!("sleeping for {}", sleep_ms);
-        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
-        reqrep_timer.observe(as_float_secs(delta));
+        {
+            let timer = reqrep_timer.start_timer();
+            thread::sleep_ms(sleep_ms)
+        }
         reqrep_timer.flush();
     }
 
@@ -375,14 +375,15 @@ fn metric_registry_histogram_vec_with_const_labels() {
 
     let reqrep_timer =
         reqrep_timer_local.with_label_values(&[ULID::generate().to_string().as_str()]);
-    let clock = quanta::Clock::new();
     const METRIC_COUNT: usize = 5;
     for _ in 0..METRIC_COUNT {
         let ulid_u128: u128 = ULID::generate().into();
         let sleep_ms = (ulid_u128 % 100) as u32;
         info!("sleeping for {}", sleep_ms);
-        let delta = time(&clock, || thread::sleep_ms(sleep_ms));
-        reqrep_timer.observe(as_float_secs(delta));
+        {
+            let timer = reqrep_timer.start_timer();
+            thread::sleep_ms(sleep_ms)
+        }
         reqrep_timer.flush();
     }
 
@@ -707,14 +708,15 @@ fn metric_registry_gather() {
 
             let mut metric = metric.local();
             let metric = metric.with_label_values(&["FOO - VAR LABEL"]);
-            let clock = quanta::Clock::new();
             const METRIC_COUNT: usize = 5;
             for _ in 0..METRIC_COUNT {
                 let ulid_u128: u128 = ULID::generate().into();
                 let sleep_ms = (ulid_u128 % 5) as u32;
                 info!("sleeping for {}", sleep_ms);
-                let delta = time(&clock, || thread::sleep_ms(sleep_ms));
-                metric.observe(as_float_secs(delta));
+                {
+                    let timer = metric.start_timer();
+                    thread::sleep_ms(sleep_ms)
+                }
                 metric.flush();
             }
         }

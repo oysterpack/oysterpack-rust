@@ -499,7 +499,7 @@ where
                 // record the timing metric
                 reqrep_service_metrics
                     .timer
-                    .observe(metrics::duration_as_float_secs(elapsed));
+                    .observe(metrics::duration_as_secs_f64(elapsed));
                 debug!(
                     "[{}] ReqRepId({}) - Sent reply #{} : {:?}",
                     service_instance_id, reqrep_id, request_count, elapsed

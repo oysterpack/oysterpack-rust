@@ -1709,67 +1709,16 @@ impl From<ULID> for MetricId {
     }
 }
 
-/// Times how long it takes to run the function in nanos.
-///
-/// ## Use Case
-/// Used to record timings which can then be reported on a Histogram metric
-///
-/// ### Example
-/// ```rust
-/// # use oysterpack_trust::metrics::*;
-///
-/// const METRIC_ID: MetricId = MetricId(1872045779718506837202123142606941790);
-///    let mut reqrep_timer_local = registry()
-///        .register_histogram_vec(
-///            METRIC_ID,
-///            "ReqRep timer",
-///            &[LabelId::generate()],
-///            vec![0.01, 0.025, 0.05, 0.1],
-///            None,
-///        )
-///        .unwrap();
-///
-/// let reqrep_timer =
-///        reqrep_timer_local.with_label_values(&["A"]);
-///    let clock = quanta::Clock::new();
-///    for _ in 0..10 {
-///        // time the work
-///        let delta = time(&clock, || std::thread::sleep(std::time::Duration::from_millis(1)));
-///        // report the time in seconds
-///        reqrep_timer.observe(as_float_secs(delta));
-///    }
-/// ```
-pub fn time<F>(clock: &quanta::Clock, f: F) -> u64
-where
-    F: FnOnce(),
-{
-    let start = clock.start();
-    f();
-    let end = clock.end();
-    clock.delta(start, end)
-}
-
-/// Execute the function and return its result along with how long it took to execute in nanos.
-pub fn time_with_result<F, T>(clock: &quanta::Clock, f: F) -> (u64, T)
-where
-    F: FnOnce() -> T,
-{
-    let start = clock.start();
-    let result = f();
-    let end = clock.end();
-    (clock.delta(start, end), result)
-}
-
 const NANOS_PER_SEC: u32 = 1_000_000_000;
 
 /// converts nanos into secs as f64
 /// - this comes in handy when reporting timings to prometheus, which uses `f64` as the number type
-pub fn as_float_secs(nanos: u64) -> f64 {
+pub fn nanos_as_secs_f64(nanos: u64) -> f64 {
     (nanos as f64) / f64::from(NANOS_PER_SEC)
 }
 
 /// Returns the number of seconds contained by the `Duration` as `f64`.
-pub fn duration_as_float_secs(duration: Duration) -> f64 {
+pub fn duration_as_secs_f64(duration: Duration) -> f64 {
     (duration.as_secs() as f64) + (duration.as_nanos() as f64) / f64::from(NANOS_PER_SEC)
 }
 

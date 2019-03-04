@@ -251,32 +251,19 @@ steps!(World => {
         println!("{}",metrics_text);
     };
 
-    // Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Functions are provided to help collecting timer based metrics
+    // Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Time conversion functions to report timings in seconds as f64
 
-    // Scenario: [01D3XX46RZ63QYR0AAWVBCHWGP] Timing a function that sleeps for 1 ms
+    // Scenario: [01D3XX46RZ63QYR0AAWVBCHWGP] Convert 1_000_000 ns into a sec
     then regex "01D3XX46RZ63QYR0AAWVBCHWGP" | _world, _matches, _step| {
-        let clock = quanta::Clock::new();
-        let time_nanos = metrics::time(&clock, || thread::sleep(Duration::from_millis(1)));
-        let nano_in_millis = 1_000_000;
-        assert!(time_nanos > nano_in_millis && time_nanos < (time_nanos as f64 * 1.1) as u64);
-        let time_secs = metrics::as_float_secs(time_nanos);
-        println!("{} s",time_secs);
-        assert!(time_secs > 0.001 && time_secs < 0.001 * 1.1);
+         let secs = metrics::nanos_as_secs_f64(1_000_000);
+         println!("0.001 sec = {}", secs);
+         assert!(secs >= 0.001 && secs < 0.0011);
     };
 
-    // Scenario: [01D3XZ6GCY1ECSKMBC6870ZBS0] Timing a function that sleeps for 1 ms and returns a result
+    // Scenario: [01D3XZ6GCY1ECSKMBC6870ZBS0] Convert a Duration into secs
     then regex "01D3XZ6GCY1ECSKMBC6870ZBS0" | _world, _matches, _step| {
-        let clock = quanta::Clock::new();
-        let (time_nanos, result) = metrics::time_with_result(&clock, || {
-            thread::sleep(Duration::from_millis(1));
-            true
-        });
-        assert!(result);
-        let nano_in_millis = 1_000_000;
-        assert!(time_nanos > nano_in_millis && time_nanos < (time_nanos as f64 * 1.1) as u64);
-        let time_secs = metrics::as_float_secs(time_nanos);
-        println!("{} s",time_secs);
-        assert!(time_secs > 0.001 && time_secs < 0.001 * 1.1);
+        let secs = metrics::duration_as_secs_f64(Duration::from_millis(1));
+        assert!(secs >= 0.001 && secs < 0.0011);
     };
 });
 
