@@ -195,36 +195,6 @@ steps!(World => {
         }
     };
 
-    // Feature: [01D51SE8P5JWRXZ4RFBDQFR6GW] Each request is assigned a unique MessageId for tracking purposes.
-
-    // Scenario: [01D51SXCCY1YNEG8JSBGW72SYF] Send 100 decoupled requests
-    then regex "01D51SXCCY1YNEG8JSBGW72SYF" | _world, _matches, _step | {
-        let mut client = counter_service_with_channel_size(0);
-        let mut executor = global_executor();
-        const REQ_COUNT: usize = 100;
-        let message_ids = Arc::new(Mutex::new(fnv::FnvHashSet::default()));
-        for _ in 0..REQ_COUNT {
-            let mut client = client.clone();
-            let message_ids = message_ids.clone();
-            executor.spawn(async move {
-                let receiver = await!(client.send(CounterRequest::Inc)).unwrap();
-                let mut message_ids = message_ids.lock().unwrap();
-                message_ids.insert(receiver.message_id());
-            }).unwrap();
-        }
-        thread::sleep(Duration::from_millis(10));
-        loop  {
-            let count = executor.run(client.send_recv(CounterRequest::Get)).unwrap();
-            if count == REQ_COUNT {
-                let mut message_ids = message_ids.lock().unwrap();
-                assert_eq!(message_ids.len(), REQ_COUNT);
-                break;
-            }
-            println!("waiting for tasks to complete: count = {}",count);
-            thread::yield_now();
-        }
-    };
-
     // Feature: [01D4RXDDVA5DWTWF45KBTJTK5Z] Each ReqRep client is linked with a backend service instance identified by a ServiceInstanceId
 
     // Scenario: [01D4RXFJNJ70CTFV5RE1TN8S6Z] Startup multiple ReqRep services

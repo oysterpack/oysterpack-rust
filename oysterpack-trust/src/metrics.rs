@@ -89,11 +89,10 @@
 //!     - [HistogramBuilder](struct.HistogramBuilder.html)
 //!     - [HistogramVecBuilder](struct.HistogramVecBuilder.html)
 //! - *[01D3M9X86BSYWW3132JQHWA3AT]* Text encoding metrics in a prometheus compatible format
-//! - *[01D3XX3ZBB7VW0GGRA60PMFC1M]* Helper functions for collecting timer based metrics
-//!   - [time](fn.time.html)
-//!   - [time_with_result](fn.time_with_result.html)
-//!   - [as_float_secs](fn.as_float_secs.html)
-//!     - in prometheus, it is a common practice to report timer metrics in secs
+//! - *[01D3XX3ZBB7VW0GGRA60PMFC1M]* Time conversion functions to report timings in seconds as f64
+//!   - in prometheus, it is a common practice to report timer metrics in secs
+//!     - [nanos_as_secs_f64](fn.nanos_as_secs_f64.html)
+//!     - [duration_as_secs_f64](fn.duration_as_secs_f64.html)
 //!
 //! ## Recommendations
 //!

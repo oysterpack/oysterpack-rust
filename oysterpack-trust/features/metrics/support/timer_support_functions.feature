@@ -2,8 +2,8 @@ Feature: [01D3XX3ZBB7VW0GGRA60PMFC1M] Time conversion functions to report timing
 
   - In prometheus, it is a common practice to report timer metrics in secs. The following utility functions are provided
     to convert a time into seconds as f64
-    - `pub fn as_float_secs(nanos: u64) -> f64`
-    - `pub fn duration_as_float_secs(duration: Duration) -> f64`
+    - `pub fn nanos_as_secs_f64(nanos: u64) -> f64`
+    - `pub fn duration_as_secs_f64(duration: Duration) -> f64`
 
   Scenario: [01D3XX46RZ63QYR0AAWVBCHWGP] Convert 1_000_000 ns into a sec
     Then [01D3XX46RZ63QYR0AAWVBCHWGP] the time returned should be 0.001 sec

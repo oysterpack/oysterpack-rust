@@ -76,7 +76,7 @@
 
 use crate::concurrent::{
     execution::Executor,
-    messaging::{errors::ChannelError, MessageId},
+    messaging::{errors::ChannelError},
 };
 use crate::metrics;
 use futures::{
@@ -355,20 +355,16 @@ where
     }
 
     /// Send the request async
-    /// - each request message is assigned a MessageId, which is returned within the ReplyReceiver
     /// - the ReplyReceiver is used to receive the reply via an async Future
     pub async fn send(&mut self, req: Req) -> Result<ReplyReceiver<Rep>, ChannelError> {
         let (rep_sender, rep_receiver) = channel::oneshot::channel::<Rep>();
-        let msg_id = MessageId::generate();
         let msg = ReqRepMessage {
             req: Some(req),
             rep_sender,
-            msg_id,
         };
         await!(self.request_sender.send(msg))?;
         self.request_send_counter.inc();
         Ok(ReplyReceiver {
-            msg_id,
             receiver: rep_receiver,
         })
     }
@@ -471,20 +467,15 @@ where
             ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size, service_instance_id);
         let reqrep_service_metrics = reqrep_service_metrics();
 
+
         let service = async move {
             processor.init();
             reqrep_service_metrics.service_count.inc();
             let mut request_count: u64 = 0;
+            let service_type_id = std::any::TypeId::of::<Service>();
 
             while let Some(mut msg) = await!(req_receiver.next()) {
                 request_count += 1;
-                debug!(
-                    "[{}] ReqRepId({}) - Received request #{} : MessageId({})",
-                    service_instance_id,
-                    reqrep_id,
-                    request_count,
-                    msg.message_id()
-                );
                 let req = msg.take_request().unwrap();
 
                 // time the request processing
@@ -501,8 +492,8 @@ where
                     .timer
                     .observe(metrics::duration_as_secs_f64(elapsed));
                 debug!(
-                    "[{}] ReqRepId({}) - Sent reply #{} : {:?}",
-                    service_instance_id, reqrep_id, request_count, elapsed
+                    "[{}] ReqRepId({}) {:?} #{} : {:?}",
+                    service_instance_id, reqrep_id, service_type_id, request_count, elapsed
                 );
             }
             reqrep_service_metrics.service_count.dec();
@@ -519,13 +510,11 @@ where
     Rep: Debug + Send + 'static,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ReqRep(reqrep_id = {}, service_instance_id = {}, request_send_count = {})",
-            self.reqrep_id,
-            self.service_instance_id,
-            self.request_send_counter.get()
-        )
+        f.debug_struct("ReqRep")
+            .field("reqrep_id", &self.reqrep_id)
+            .field("service_instance_id",&self.service_instance_id)
+            .field("request_send_count",&self.request_send_counter.get())
+            .finish()
     }
 }
 
@@ -549,7 +538,6 @@ where
     Req: Debug + Send + 'static,
     Rep: Debug + Send + 'static,
 {
-    msg_id: MessageId,
     req: Option<Req>,
     rep_sender: channel::oneshot::Sender<Rep>,
 }
@@ -563,21 +551,17 @@ where
     ///
     /// ## Notes
     /// - this can only be called once - once the request message is taken, None is always returned
-    pub fn take_request(&mut self) -> Option<Req> {
+    fn take_request(&mut self) -> Option<Req> {
         self.req.take()
     }
 
     /// Send the reply
-    pub fn reply(self, rep: Rep) -> Result<(), ChannelError> {
+    fn reply(self, rep: Rep) -> Result<(), ChannelError> {
         self.rep_sender
             .send(rep)
             .map_err(|_| ChannelError::SenderDisconnected)
     }
 
-    /// Returns the request MessageId
-    pub fn message_id(&self) -> MessageId {
-        self.msg_id
-    }
 }
 
 /// Each request/reply API is uniquely identified by an ID.
@@ -599,7 +583,6 @@ pub struct ReplyReceiver<Rep>
 where
     Rep: Debug + Send + 'static,
 {
-    msg_id: MessageId,
     receiver: channel::oneshot::Receiver<Rep>,
 }
 
@@ -607,16 +590,7 @@ impl<Rep> ReplyReceiver<Rep>
 where
     Rep: Debug + Send + 'static,
 {
-    /// Request message id
-    pub fn message_id(&self) -> MessageId {
-        self.msg_id
-    }
-
     /// Receive the reply
-    ///
-    /// ## Notes
-    /// If the MessageId is required for tracking purposes, then it must be retrieved before
-    /// invoking recv because this method consumes the object.
     pub async fn recv(self) -> Result<Rep, ChannelError> {
         let rep = await!(self.receiver)?;
         Ok(rep)
@@ -679,9 +653,8 @@ mod tests {
         let server = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
                 info!(
-                    "Received request: ReqRepId({}) MessageId({})",
+                    "Received request: ReqRepId({})",
                     REQREP_ID,
-                    msg.message_id()
                 );
                 let n = msg.take_request().unwrap();
                 if let Err(err) = msg.reply(n + 1) {
@@ -693,7 +666,6 @@ mod tests {
         executor.spawn(server);
         let task = async {
             let rep_receiver = await!(req_rep.send(1)).unwrap();
-            info!("request MessageId: {}", rep_receiver.message_id());
             await!(rep_receiver.recv()).unwrap()
         };
         let n = executor.run(task);
@@ -727,10 +699,8 @@ mod tests {
 
         let task = async {
             // WHEN: a request is sent async
-            let rep_receiver = await!(req_rep.send(1)).unwrap();
             // THEN: a ReplyReceiver is returned
-            // AND: a MessageId has been assigned to the request
-            info!("request MessageId: {}", rep_receiver.message_id());
+            let rep_receiver = await!(req_rep.send(1)).unwrap();
             // WHEN: the reply is received async
             await!(rep_receiver.recv()).unwrap()
         };
@@ -773,7 +743,6 @@ mod tests {
             .unwrap();
         let task = async {
             let rep_receiver = await!(client.send(1)).unwrap();
-            info!("request MessageId: {}", rep_receiver.message_id());
             await!(rep_receiver.recv()).unwrap()
         };
         let n = executor.run(task);

@@ -19,16 +19,6 @@
 pub mod errors;
 pub mod reqrep;
 
-use oysterpack_uid::macros::ulid;
-use serde::{Deserialize, Serialize};
-
-/// Message ULID
-///
-/// ## Use Case
-/// 1. Used to track messages
-#[ulid]
-pub struct MessageId(u128);
-
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
@@ -47,5 +37,4 @@ mod tests {
         // at this point the Receiver is cancelled
         assert!(c.try_recv().is_err());
     }
-
 }
