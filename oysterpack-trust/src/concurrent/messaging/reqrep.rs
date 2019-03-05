@@ -74,16 +74,11 @@
 //! - number of running backend service instances
 //! - request processing timings, i.e., [Processor::process()](trait.Processor.html#tymethod.process) is timed
 
-use crate::concurrent::{
-    execution::Executor,
-    messaging::{errors::ChannelError},
-};
+use crate::concurrent::{execution::Executor, messaging::errors::ChannelError};
 use crate::metrics;
 use futures::{
     channel,
-    future::Future,
-    sink::SinkExt,
-    stream::StreamExt,
+    prelude::*,
     task::{SpawnError, SpawnExt},
 };
 use maplit::hashmap;
@@ -467,7 +462,6 @@ where
             ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size, service_instance_id);
         let reqrep_service_metrics = reqrep_service_metrics();
 
-
         let service = async move {
             processor.init();
             reqrep_service_metrics.service_count.inc();
@@ -499,6 +493,7 @@ where
             reqrep_service_metrics.service_count.dec();
             processor.destroy();
         };
+
         executor.spawn(service)?;
         Ok(reqrep)
     }
@@ -512,8 +507,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ReqRep")
             .field("reqrep_id", &self.reqrep_id)
-            .field("service_instance_id",&self.service_instance_id)
-            .field("request_send_count",&self.request_send_counter.get())
+            .field("service_instance_id", &self.service_instance_id)
+            .field("request_send_count", &self.request_send_counter.get())
             .finish()
     }
 }
@@ -523,12 +518,6 @@ where
 struct ReqRepServiceMetrics {
     timer: prometheus::Histogram,
     service_count: prometheus::IntGauge,
-}
-
-impl fmt::Debug for ReqRepServiceMetrics {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ReqRepServiceMetrics")
-    }
 }
 
 /// Message used for request/reply patterns.
@@ -561,7 +550,6 @@ where
             .send(rep)
             .map_err(|_| ChannelError::SenderDisconnected)
     }
-
 }
 
 /// Each request/reply API is uniquely identified by an ID.
@@ -652,10 +640,7 @@ mod tests {
             ReqRep::<usize, usize>::new(REQREP_ID, 1, service_instance_id);
         let server = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
-                info!(
-                    "Received request: ReqRepId({})",
-                    REQREP_ID,
-                );
+                info!("Received request: ReqRepId({})", REQREP_ID,);
                 let n = msg.take_request().unwrap();
                 if let Err(err) = msg.reply(n + 1) {
                     warn!("{}", err);

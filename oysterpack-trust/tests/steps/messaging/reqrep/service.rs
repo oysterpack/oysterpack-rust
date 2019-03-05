@@ -16,6 +16,7 @@
 
 use cucumber_rust::*;
 
+use float_cmp::ApproxEq;
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
 use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
@@ -27,6 +28,7 @@ use oysterpack_trust::{
 };
 use prometheus::Encoder;
 use std::{
+    num::NonZeroUsize,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
@@ -34,14 +36,128 @@ use std::{
     thread,
     time::Duration,
 };
-use float_cmp::ApproxEq;
 
 steps!(World => {
     // Feature: [01D4Z9P9VVHP7NC4MWV6JQ5XBM] Backend service processing is executed async
 
     // Scenario: [01D4Z9S1E16YN6YSFXEHHY1KQT] Startup 10 ReqRep services on a single-threaded Executor
+    given regex "01D4Z9S1E16YN6YSFXEHHY1KQT" | world, _matches, _step | {
+        let buckets = TimerBuckets::from(vec![
+            Duration::from_nanos(100),
+            Duration::from_nanos(200),
+            Duration::from_nanos(300),
+        ]);
+        let executor = ExecutorBuilder::new(ExecutorId::generate())
+            .set_pool_size(NonZeroUsize::new(1).unwrap())
+            .register()
+            .unwrap();
+        let clients: Vec<_> = (0..10).map(|_| {
+            ReqRepConfig::new(ReqRepId::generate(), buckets.clone())
+            .start_service(Counter::default(), executor.clone())
+            .unwrap()
+        }).collect();
+        world.clients = Some(clients);
+        world.executor = Some(executor);
+    };
+
     when regex "01D4Z9S1E16YN6YSFXEHHY1KQT" | world, _matches, _step | {
-        unimplemented!();
+        world.send_requests_using_clients(10, CounterRequest::Inc);
+    };
+
+    then regex "01D4Z9S1E16YN6YSFXEHHY1KQT" | world, _matches, _step | {
+        let mut executor = world.executor.take().unwrap();
+        let mut clients = world.clients.take().unwrap();
+        clients.iter_mut().for_each(|client| {
+            assert_eq!(executor.run(client.send_recv(CounterRequest::Get)).unwrap(), 10);
+        });
+    };
+
+    // [01D4ZAMSJRS22CF9FN2WFZGMZM] Startup 10 ReqRep services on a mutli-threaded Executor
+    given regex "01D4ZAMSJRS22CF9FN2WFZGMZM" | world, _matches, _step | {
+        let clients: Vec<_> = (0..10).map(|_| counter_service()).collect();
+        world.clients = Some(clients);
+        world.executor = Some(execution::global_executor());
+    };
+
+    when regex "01D4ZAMSJRS22CF9FN2WFZGMZM" | world, _matches, _step | {
+        world.send_requests_using_clients(10, CounterRequest::Inc);
+    };
+
+    then regex "01D4ZAMSJRS22CF9FN2WFZGMZM" | world, _matches, _step | {
+        let mut executor = world.executor.take().unwrap();
+        let mut clients = world.clients.take().unwrap();
+        clients.iter_mut().for_each(|client| {
+            loop {
+                let count = executor.run(client.send_recv(CounterRequest::Get)).unwrap();
+                if count == 10 {
+                    break;
+                }
+
+                println!("Waiting for client ({}) requests to complete: {} ...", client.id(), count);
+                thread::sleep(Duration::from_millis(1));
+            }
+        });
+    };
+
+    // Scenario: [01D4ZANG5S4SZ07AZ0QJ0A8XJW] Startup 10 ReqRep services on one Executor and send requests on different Executor
+    given regex "01D4ZANG5S4SZ07AZ0QJ0A8XJW" | world, _matches, _step | {
+        let buckets = TimerBuckets::from(vec![
+            Duration::from_nanos(100),
+            Duration::from_nanos(200),
+            Duration::from_nanos(300),
+        ]);
+        let executor = ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap();
+        let clients: Vec<_> = (0..10).map(|_| {
+            ReqRepConfig::new(ReqRepId::generate(), buckets.clone())
+            .start_service(Counter::default(), executor.clone())
+            .unwrap()
+        }).collect();
+        world.clients = Some(clients);
+        world.executor = Some(execution::global_executor());
+    };
+
+    when regex "01D4ZANG5S4SZ07AZ0QJ0A8XJW" | world, _matches, _step | {
+        world.send_requests_using_clients(10, CounterRequest::Inc);
+    };
+
+    then regex "01D4ZANG5S4SZ07AZ0QJ0A8XJW" | world, _matches, _step | {
+        let mut executor = world.executor.take().unwrap();
+        let mut clients = world.clients.take().unwrap();
+        clients.iter_mut().for_each(|client| {
+            loop {
+                let count = executor.run(client.send_recv(CounterRequest::Get)).unwrap();
+                if count == 10 {
+                    break;
+                }
+
+                println!("Waiting for client ({}) requests to complete: {} ...", client.id(), count);
+                thread::sleep(Duration::from_millis(1));
+            }
+        });
+    };
+
+    // Scenario: [01D4ZGXQ27F3P7MXDW20K4RGR9] Processor message processing task panics
+    when regex "01D4ZGXQ27F3P7MXDW20K4RGR9" | world, _matches, _step | {
+        let mut client = counter_service();
+        let mut executor = execution::global_executor();
+        executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        world.client = Some(client);
+    };
+
+    then regex "01D4ZGXQ27F3P7MXDW20K4RGR9-1" | world, _matches, _step | {
+        for client in &world.client {
+            assert_eq!(service_instance_count(client.id()), 0);
+        }
+    };
+
+    then regex "01D4ZGXQ27F3P7MXDW20K4RGR9-2" | world, _matches, _step | {
+        let mut executor = execution::global_executor();
+        for client in world.client.as_mut() {
+            assert_eq!(executor.run(client.send_recv(CounterRequest::Get)).unwrap(), 0);
+        }
     };
 
 });
@@ -130,7 +246,8 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
 #[derive(Default)]
 pub struct World {
     client: Option<ReqRep<CounterRequest, usize>>,
-    clients: Option<Vec<ReqRep<CounterRequest, usize>>>
+    clients: Option<Vec<ReqRep<CounterRequest, usize>>>,
+    executor: Option<Executor>,
 }
 
 impl World {
@@ -151,6 +268,26 @@ impl World {
                 )
                 .unwrap();
         }
+    }
+
+    fn send_requests_using_clients(&mut self, req_count: usize, request: CounterRequest) {
+        let mut executor = self.executor.take().expect("no executor");
+
+        for clients in &self.clients {
+            clients.iter().for_each(|client| {
+                (0..req_count).for_each(|_| {
+                    let mut client = client.clone();
+                    executor
+                        .spawn(
+                            async move {
+                                await!(client.send_recv(request)).unwrap();
+                            },
+                        )
+                        .unwrap();
+                });
+            });
+        }
+        self.executor = Some(executor);
     }
 
     /// returns the histogram timer metric corresponding to the ReqRepId for the current world.client

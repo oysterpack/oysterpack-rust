@@ -16,6 +16,7 @@
 
 use cucumber_rust::*;
 
+use float_cmp::ApproxEq;
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
 use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
@@ -34,7 +35,6 @@ use std::{
     thread,
     time::Duration,
 };
-use float_cmp::ApproxEq;
 
 steps!(World => {
     // Feature: [01D4ZS9FX0GZZRG9RF072XGBQD] All ReqRep related metrics can be gathered via reqrep::gather_metrics()
@@ -240,7 +240,7 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
 #[derive(Default)]
 pub struct World {
     client: Option<ReqRep<CounterRequest, usize>>,
-    clients: Option<Vec<ReqRep<CounterRequest, usize>>>
+    clients: Option<Vec<ReqRep<CounterRequest, usize>>>,
 }
 
 impl World {
