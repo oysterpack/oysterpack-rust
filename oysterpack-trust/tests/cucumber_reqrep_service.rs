@@ -14,7 +14,16 @@
  *    limitations under the License.
  */
 
-pub mod client;
-pub mod config;
-pub mod metrics;
-pub mod service;
+#![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+
+use cucumber_rust::*;
+
+mod steps;
+
+cucumber! {
+    features: "./features/concurrent/messaging/reqrep/service",
+    world: steps::messaging::reqrep::service::World,
+    steps: &[
+        steps::messaging::reqrep::service::steps
+    ]
+}
