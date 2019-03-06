@@ -22,7 +22,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *},
+        messaging::reqrep::{self, *, metrics::*},
     },
     metrics,
 };
@@ -151,7 +151,7 @@ steps!(World => {
 
     then regex "01D4ZGXQ27F3P7MXDW20K4RGR9-1" | world, _matches, _step | {
         for client in &world.client {
-            assert_eq!(service_instance_count(client.id()), 0);
+            assert_eq!(reqrep::metrics::service_instance_count(client.id()), 0);
         }
     };
 
@@ -174,7 +174,7 @@ steps!(World => {
 
     then regex "01D586H94GS723PJ2R1W4PTR6B-1" | world, _matches, _step | {
         for client in &world.client {
-            assert_eq!(service_instance_count(client.id()), 1);
+            assert_eq!(reqrep::metrics::service_instance_count(client.id()), 1);
         }
     };
 
@@ -363,6 +363,6 @@ impl World {
     /// returns the histogram timer metric corresponding to the ReqRepId for the current world.client
     fn histogram_timer(&self) -> prometheus::proto::Histogram {
         let reqrep_id = self.client.as_ref().iter().next().unwrap().id();
-        histogram_timer_metric(reqrep_id).unwrap()
+        reqrep::metrics::histogram_timer_metric(reqrep_id).unwrap()
     }
 }

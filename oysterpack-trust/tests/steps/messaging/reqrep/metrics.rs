@@ -22,7 +22,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *},
+        messaging::reqrep::{self, *, metrics::*},
     },
     metrics,
 };
@@ -59,7 +59,7 @@ steps!(World => {
             thread::yield_now();
 
             // gather metrics
-            let reqrep_metrics = reqrep::gather_metrics();
+            let reqrep_metrics = reqrep::metrics::gather_metrics();
             println!("{:#?}", reqrep_metrics);
 
             // check that all expected metrics have been gathered
@@ -121,7 +121,7 @@ steps!(World => {
         let reqrep_id = client.id();
         world.client = Some(client);
         world.send_requests(100, CounterRequest::Inc);
-        while reqrep::request_send_count(reqrep_id) < 100 {
+        while request_send_count(reqrep_id) < 100 {
             thread::yield_now();
         }
     };
@@ -133,7 +133,7 @@ steps!(World => {
         let reqrep_id = ReqRepId::generate();
         let clients: Vec<_> = (0..10).map(|_| counter_service_with_reqrep_id(reqrep_id)).collect();
         world.clients = Some(clients);
-        while reqrep::service_instance_count(reqrep_id) < 10 {
+        while service_instance_count(reqrep_id) < 10 {
             thread::yield_now();
         }
     };
@@ -149,7 +149,7 @@ steps!(World => {
     then regex "01D4ZJJJCHMHAK12MGEY5EF6VF-3" | world, _matches, _step | {
         for clients in &world.clients {
             let reqrep_id = clients.first().unwrap().id();
-            assert_eq!(reqrep::service_instance_count(reqrep_id), 7);
+            assert_eq!(reqrep::metrics::service_instance_count(reqrep_id), 7);
         }
     };
 
@@ -164,7 +164,7 @@ steps!(World => {
 
     then regex "01D5891JGSV2PPAM9G22FV9T42-1" | world, _matches, _step | {
         for client in &world.client {
-            assert_eq!(service_instance_count(client.id()), 1);
+            assert_eq!(reqrep::metrics::service_instance_count(client.id()), 1);
         }
     };
 
@@ -334,6 +334,6 @@ impl World {
     /// returns the histogram timer metric corresponding to the ReqRepId for the current world.client
     fn histogram_timer(&self) -> prometheus::proto::Histogram {
         let reqrep_id = self.client.as_ref().iter().next().unwrap().id();
-        histogram_timer_metric(reqrep_id).unwrap()
+        reqrep::metrics::histogram_timer_metric(reqrep_id).unwrap()
     }
 }

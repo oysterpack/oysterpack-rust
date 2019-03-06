@@ -23,8 +23,8 @@ Feature: [01D4T5NV48PVFBC2R3Q80B6W72] The request channel buffer size is configu
     When [01D4T61JB50KNT3Y7VQ10VX2NR] the client sends 10 requests from a single task
     Then [01D4T61JB50KNT3Y7VQ10VX2NR] the number of sent requests after 50 ms is 3
     # - the first request sent is immediately picked up for processing
-    # - then the receiver is free to pick up the next message
-    # - another message is sent from a client using up the shared buffer
+    # - the second request is picked up by the receiver
+    # - the third request is put into the channel buffer
 
   Scenario: [01D52MG7FVEWE4HK6J05VRR49F] Set the channel buffer size to 1 - send 10 requests from 10 ReqRep instance
     Given [01D52MG7FVEWE4HK6J05VRR49F] a Processor that sleeps for 10 secs on each request

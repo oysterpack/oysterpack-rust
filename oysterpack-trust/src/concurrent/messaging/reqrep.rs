@@ -75,7 +75,6 @@
 //! - request processing timings, i.e., [Processor::process()](trait.Processor.html#tymethod.process) is timed
 
 use crate::concurrent::{execution::Executor, messaging::errors::ChannelError};
-use crate::metrics;
 use futures::{
     channel,
     prelude::*,
@@ -84,227 +83,23 @@ use futures::{
 use maplit::hashmap;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
-use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
     any::Any,
     fmt::{self, Debug},
     panic::AssertUnwindSafe,
     pin::Pin,
-    sync::RwLock,
     time::Instant,
 };
 
-lazy_static::lazy_static! {
-    static ref REQ_REP_METRICS: RwLock<fnv::FnvHashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(fnv::FnvHashMap::default());
-
-    static ref REQ_REP_SERVICE_INSTANCE_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(
-        SERVICE_INSTANCE_COUNT_METRIC_ID,
-        "ReqRep service instance count",
-        &[REQREPID_LABEL_ID],
-        None,
-    ).unwrap();
-
-    static ref REQREP_SEND_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        REQREP_SEND_COUNTER_METRIC_ID,
-        "ReqRep request send count",
-        &[REQREPID_LABEL_ID],
-        None,
-    ).unwrap();
-
-    static ref PROCESSOR_PANIC_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
-        PROCESSOR_PANIC_COUNTER_METRIC_ID,
-        "Processor FutureReply panic count",
-        &[REQREPID_LABEL_ID],
-        None,
-    ).unwrap();
-}
-
-/// ReqRep service instance count MetricId: `M01D2Q7VG1HFFXG6JT6HD11ZCJ3`
-/// - metric type is IntGaugeVec
-pub const SERVICE_INSTANCE_COUNT_METRIC_ID: metrics::MetricId =
-    metrics::MetricId(1872765971344832352273831154704953923);
-
-/// ReqRep backend message processing timer MetricId: `M01D4ZMEFGBPCK2HSNAPGBARR14`
-/// - metric type is Histogram
-pub const REQREP_PROCESS_TIMER_METRIC_ID: metrics::MetricId =
-    metrics::MetricId(1875702602137856142367281339226152996);
-
-/// The ReqRepId ULID will be used as the label value: `L01D2Q81HQJJVPQZSQE7BHH67JK`
-pub const REQREPID_LABEL_ID: metrics::LabelId =
-    metrics::LabelId(1872766211119679891800112881745469011);
-
-/// ReqRep request send counter MetricId: `M01D52BD1MYW4GJ2VN44S14R28Z`
-/// - metric type is IntCounterVec
-pub const REQREP_SEND_COUNTER_METRIC_ID: metrics::MetricId =
-    metrics::MetricId(1875812830972763422767373669165173023);
-
-/// ReqRep request send counter MetricId: `M01D52BD1MYW4GJ2VN44S14R28Z`
-/// - metric type is IntCounterVec
-pub const PROCESSOR_PANIC_COUNTER_METRIC_ID: metrics::MetricId =
-    metrics::MetricId(1876035517884156224063178768953919720);
-
-/// return the ReqRep backend service count
-pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
-    let label_name = REQREPID_LABEL_ID.name();
-    let label_value = reqrep_id.to_string();
-    metrics::registry()
-        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
-        .iter()
-        .filter_map(|mf| {
-            mf.get_metric()
-                .iter()
-                .find(|metric| {
-                    metric.get_label().iter().any(|label_pair| {
-                        label_pair.get_name() == label_name && label_pair.get_value() == label_value
-                    })
-                })
-                .map(|mf| mf.get_gauge().get_value() as u64)
-        })
-        .next()
-        .unwrap_or(0)
-}
-
-/// return the ReqRep backend service count
-pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
-    metrics::registry()
-        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
-        .first()
-        .map(|mf| {
-            let label_name = REQREPID_LABEL_ID.name();
-            let label_name = label_name.as_str();
-            let metrics = mf.get_metric();
-            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
-                metrics.len(),
-                fnv::FnvBuildHasher::default(),
-            );
-            metrics.iter().fold(counts, |mut counts, metric| {
-                let reqrep_id = metric
-                    .get_label()
-                    .iter()
-                    .find_map(|label_pair| {
-                        if label_pair.get_name() == label_name {
-                            Some(ReqRepId::from(
-                                label_pair.get_value().parse::<ULID>().unwrap(),
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
-                let gauge = metric.get_gauge();
-                counts.insert(reqrep_id, gauge.get_value() as u64);
-                counts
-            })
-        })
-        .unwrap_or_else(fnv::FnvHashMap::default)
-}
-
-/// return the ReqRep request send count
-pub fn request_send_count(reqrep_id: ReqRepId) -> u64 {
-    let label_name = REQREPID_LABEL_ID.name();
-    let label_value = reqrep_id.to_string();
-    metrics::registry()
-        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
-        .iter()
-        .filter_map(|mf| {
-            mf.get_metric()
-                .iter()
-                .find(|metric| {
-                    metric.get_label().iter().any(|label_pair| {
-                        label_pair.get_name() == label_name && label_pair.get_value() == label_value
-                    })
-                })
-                .map(|mf| mf.get_counter().get_value() as u64)
-        })
-        .next()
-        .unwrap_or(0)
-}
-
-/// return the ReqRep backend service count
-pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
-    metrics::registry()
-        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
-        .first()
-        .map(|mf| {
-            let label_name = REQREPID_LABEL_ID.name();
-            let label_name = label_name.as_str();
-            let metrics = mf.get_metric();
-            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
-                metrics.len(),
-                fnv::FnvBuildHasher::default(),
-            );
-            metrics.iter().fold(counts, |mut counts, metric| {
-                let reqrep_id = metric
-                    .get_label()
-                    .iter()
-                    .find_map(|label_pair| {
-                        if label_pair.get_name() == label_name {
-                            Some(ReqRepId::from(
-                                label_pair.get_value().parse::<ULID>().unwrap(),
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
-                let counter = metric.get_counter();
-                counts.insert(reqrep_id, counter.get_value() as u64);
-                counts
-            })
-        })
-        .unwrap_or_else(fnv::FnvHashMap::default)
-}
-
-/// Gathers metrics related to ReqRep
-pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    metrics::registry().gather_for_metric_ids(metric_ids().as_slice())
-}
-
-/// ReqRep related metric descriptors
-pub fn metric_descs() -> Vec<prometheus::core::Desc> {
-    metrics::registry().descs_for_metric_ids(metric_ids().as_slice())
-}
-
-/// returns the histogram timer metric corresponding to the ReqRepId
-pub fn histogram_timer_metric(reqrep_id: ReqRepId) -> Option<prometheus::proto::Histogram> {
-    let reqrep_id = reqrep_id.to_string();
-    let reqrep_id = reqrep_id.as_str();
-    let histogram: Vec<_> = metrics::registry()
-        .gather_for_metric_ids(&[REQREP_PROCESS_TIMER_METRIC_ID])
-        .iter()
-        .filter_map(|mf| {
-            let metric = &mf.get_metric().iter().next().unwrap();
-            if metric
-                .get_label()
-                .iter()
-                .any(|label_pair| label_pair.get_value() == reqrep_id)
-            {
-                Some(metric.get_histogram().clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-    histogram.first().cloned()
-}
-
-/// ReqRep related MetricId(s)
-pub fn metric_ids() -> Vec<metrics::MetricId> {
-    vec![
-        SERVICE_INSTANCE_COUNT_METRIC_ID,
-        REQREP_PROCESS_TIMER_METRIC_ID,
-        REQREP_SEND_COUNTER_METRIC_ID,
-        PROCESSOR_PANIC_COUNTER_METRIC_ID,
-    ]
-}
+pub mod metrics;
 
 /// ReqRep is used to configure and start a ReqRep service
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReqRepConfig {
     reqrep_id: ReqRepId,
     chan_buf_size: usize,
-    metric_timer_buckets: metrics::TimerBuckets,
+    metric_timer_buckets: crate::metrics::TimerBuckets,
 }
 
 impl ReqRepConfig {
@@ -319,14 +114,14 @@ impl ReqRepConfig {
     }
 
     /// Returns TimerBuckets used to configure the Histogram timer metric
-    pub fn metric_timer_buckets(&self) -> &metrics::TimerBuckets {
+    pub fn metric_timer_buckets(&self) -> &crate::metrics::TimerBuckets {
         &self.metric_timer_buckets
     }
 
     /// constructor
     /// - the chan_buf_size default = 1
     /// - the TimerBuckets should be based on expected response times
-    pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: metrics::TimerBuckets) -> Self {
+    pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: crate::metrics::TimerBuckets) -> Self {
         Self {
             reqrep_id,
             chan_buf_size: 0,
@@ -439,7 +234,7 @@ where
                 reqrep_id,
                 request_sender,
                 service_instance_id,
-                request_send_counter: REQREP_SEND_COUNTER
+                request_send_counter: metrics::REQREP_SEND_COUNTER
                     .with_label_values(&[reqrep_id.to_string().as_str()]),
             },
             request_receiver,
@@ -474,30 +269,30 @@ where
         chan_buf_size: usize,
         processor: Service,
         mut executor: Executor,
-        metric_timer_buckets: metrics::TimerBuckets,
+        metric_timer_buckets: crate::metrics::TimerBuckets,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
     where
         Service: Processor<Req, Rep> + Send + 'static,
     {
         let reqrep_service_metrics = move || {
-            let mut reqrep_metrics = REQ_REP_METRICS.write().unwrap();
+            let mut reqrep_metrics = metrics::REQ_REP_METRICS.write().unwrap();
             reqrep_metrics
                 .entry(reqrep_id)
                 .or_insert_with(|| {
-                    let timer = metrics::registry()
+                    let timer = crate::metrics::registry()
                         .register_histogram_timer(
-                            REQREP_PROCESS_TIMER_METRIC_ID,
+                            metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                             "ReqRep message processor timer in seconds",
                             metric_timer_buckets,
                             Some(hashmap! {
-                                REQREPID_LABEL_ID => reqrep_id.to_string()
+                                metrics::REQREPID_LABEL_ID => reqrep_id.to_string()
                             }),
                         )
                         .unwrap();
-                    let service_count = REQ_REP_SERVICE_INSTANCE_COUNT
+                    let service_count = metrics::REQ_REP_SERVICE_INSTANCE_COUNT
                         .with_label_values(&[reqrep_id.to_string().as_str()]);
 
-                    let panic_count = PROCESSOR_PANIC_COUNTER
+                    let panic_count = metrics::PROCESSOR_PANIC_COUNTER
                         .with_label_values(&[reqrep_id.to_string().as_str()]);
 
                     ReqRepServiceMetrics {
@@ -542,7 +337,7 @@ where
                         // record the timing metric
                         reqrep_service_metrics
                             .timer
-                            .observe(metrics::duration_as_secs_f64(elapsed));
+                            .observe(crate::metrics::duration_as_secs_f64(elapsed));
                     }
                     Err(err) => {
                         reqrep_service_metrics.panic_count.inc();
@@ -757,7 +552,7 @@ mod tests {
         }
         // ReqRep processor //
 
-        let timer_buckets = metrics::TimerBuckets::from(
+        let timer_buckets = crate::metrics::TimerBuckets::from(
             vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
         );
 
@@ -776,7 +571,7 @@ mod tests {
         let n = executor.run(task);
         info!("n = {}", n);
         assert_eq!(n, 2);
-        info!("{:#?}", metrics::registry().gather());
+        info!("{:#?}", crate::metrics::registry().gather());
 
         let task = async {
             // WHEN: a request is sent
@@ -803,7 +598,7 @@ mod tests {
         }
         // ReqRep processor //
 
-        let timer_buckets = metrics::TimerBuckets::from(
+        let timer_buckets = crate::metrics::TimerBuckets::from(
             vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
         );
         let mut client = ReqRepConfig::new(REQREP_ID, timer_buckets)
@@ -816,23 +611,23 @@ mod tests {
         let n = executor.run(task);
         info!("n = {}", n);
         assert_eq!(n, 2);
-        info!("{:#?}", metrics::registry().gather());
+        info!("{:#?}", crate::metrics::registry().gather());
 
-        assert_eq!(service_instance_count(REQREP_ID), 1);
+        assert_eq!(metrics::service_instance_count(REQREP_ID), 1);
         // WHEN: all clients are dropped
         drop(client);
         // THEN: the backend service will stop
-        while service_instance_count(REQREP_ID) != 0 {
+        while metrics::service_instance_count(REQREP_ID) != 0 {
             info!(
                 "waiting for backend service to stop: {}",
-                service_instance_count(REQREP_ID)
+                metrics::service_instance_count(REQREP_ID)
             );
             thread::yield_now();
         }
         info!(
             "service_instance_count({}) = {}",
             REQREP_ID,
-            service_instance_count(REQREP_ID)
+            metrics::service_instance_count(REQREP_ID)
         );
     }
 
@@ -875,31 +670,31 @@ mod tests {
         // string and the same label names (aka label dimensions) in each, constLabels and variableLabels,
         // but they must differ in the values of the constLabels.
         for i in 0..5 {
-            metrics::registry()
+            crate::metrics::registry()
                 .register_histogram_timer(
-                    super::REQREP_PROCESS_TIMER_METRIC_ID,
+                    metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                     "ReqRep message processor timer in seconds",
-                    metrics::TimerBuckets::from(vec![
+                    crate::metrics::TimerBuckets::from(vec![
                         Duration::from_millis(i),
                         Duration::from_millis(i + 1),
                     ]),
                     Some(hashmap! {
-                        REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                        metrics::REQREPID_LABEL_ID => ReqRepId::generate().to_string()
                     }),
                 )
                 .unwrap();
         }
-        metrics::registry()
+        crate::metrics::registry()
             .register_histogram_timer(
-                super::REQREP_PROCESS_TIMER_METRIC_ID,
+                metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                 "ReqRep message processor timer in seconds",
-                metrics::TimerBuckets::from(vec![
+                crate::metrics::TimerBuckets::from(vec![
                     Duration::from_millis(1),
                     Duration::from_millis(2),
                     Duration::from_millis(3),
                 ]),
                 Some(hashmap! {
-                    REQREPID_LABEL_ID => ReqRepId::generate().to_string()
+                    metrics::REQREPID_LABEL_ID => ReqRepId::generate().to_string()
                 }),
             )
             .unwrap();

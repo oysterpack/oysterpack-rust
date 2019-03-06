@@ -21,7 +21,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *},
+        messaging::reqrep::{self, *, metrics::*},
     },
     metrics,
 };
@@ -89,9 +89,9 @@ steps!(World => {
 
     then regex "01D4T61JB50KNT3Y7VQ10VX2NR" | world, _matches, _step | {
         for client in world.client.as_ref() {
-            while request_send_count(client.id()) != 3 {
-                thread::yield_now();
-                println!("Waiting for requests to be sent ...");
+            println!("ReqRepId: {}", client.id());
+            while request_send_count(client.id()) < 3 {
+                thread::sleep(Duration::from_millis(1));
             }
             assert_eq!(request_send_count(client.id()), 3);
         }
@@ -160,7 +160,7 @@ steps!(World => {
     // Feature: [01D4RVW8XQCSZKNQEBGWKG57S5] Each request / reply service is assigned a ReqRepId
 
     // Scenario: [01D4RW448JBGPM3E7GE79BYKYY] Startup a ReqRep service
-    then regex "01D4V1WN16Q2P0B536GJ84R0SN" | _world, _matches, _step | {
+    then regex "01D4RW448JBGPM3E7GE79BYKYY" | _world, _matches, _step | {
         let client = counter_service();
         let client2 = client.clone();
         assert_eq!(client.id(), client2.id());
@@ -234,7 +234,7 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
     ]);
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .set_chan_buf_size(chan_size)
-        .start_service(Counter::default(), global_executor())
+        .start_service(Counter::default(), ExecutorBuilder::new(ExecutorId::generate()).register().unwrap())
         .unwrap()
 }
 
@@ -255,7 +255,7 @@ impl World {
                         for _ in 0..req_count {
                             await!(client.send(request)).unwrap();
                             sent_count += 1;
-                            println!("sent_count = {}", sent_count);
+                            println!("{}: sent_count = {}", client.id(), sent_count);
                         }
                     },
                 )
