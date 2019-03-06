@@ -138,7 +138,9 @@ steps!(World => {
         });
     };
 
-    // Scenario: [01D4ZGXQ27F3P7MXDW20K4RGR9] Processor message processing task panics
+    // Feature: [01D585SEWBEKBBR0ZY3C5GR7A6] Processor is notified via `Processor::panicked()` if a panic occurred while processing the request.
+
+    // Scenario: [01D4ZGXQ27F3P7MXDW20K4RGR9] Processor::process() panics using default behavior
     when regex "01D4ZGXQ27F3P7MXDW20K4RGR9" | world, _matches, _step | {
         let mut client = counter_service();
         let mut executor = execution::global_executor();
@@ -156,15 +158,60 @@ steps!(World => {
     then regex "01D4ZGXQ27F3P7MXDW20K4RGR9-2" | world, _matches, _step | {
         let mut executor = execution::global_executor();
         for client in world.client.as_mut() {
-            assert_eq!(executor.run(client.send_recv(CounterRequest::Get)).unwrap(), 0);
+            assert!(executor.run(client.send_recv(CounterRequest::Get)).is_err());
+            assert!(executor.run(client.send(CounterRequest::Get)).is_err());
         }
     };
 
+    // Scenario: [01D586H94GS723PJ2R1W4PTR6B] Processor::process() panics but Processor is designed to recover from the panic
+    when regex "01D586H94GS723PJ2R1W4PTR6B" | world, _matches, _step | {
+        let mut client = counter_service_ignoring_panics();
+        let mut executor = execution::global_executor();
+        executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        world.client = Some(client);
+    };
+
+    then regex "01D586H94GS723PJ2R1W4PTR6B-1" | world, _matches, _step | {
+        for client in &world.client {
+            assert_eq!(service_instance_count(client.id()), 1);
+        }
+    };
+
+    then regex "01D586H94GS723PJ2R1W4PTR6B-2" | world, _matches, _step | {
+        let mut executor = execution::global_executor();
+        for client in world.client.as_mut() {
+            executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+            assert_eq!(executor.run(client.send_recv(CounterRequest::Get)).unwrap(), 2);
+            let mut client = client.clone();
+            assert_eq!(executor.run(async move {
+                let receiver = await!(client.send(CounterRequest::Get)).unwrap();
+                await!(receiver.recv())
+            }).unwrap(), 2);
+        }
+    };
+
+    then regex "01D586H94GS723PJ2R1W4PTR6B-3" | world, _matches, _step | {
+        let mut executor = execution::global_executor();
+        let histogram_timer = world.histogram_timer();
+        let count = histogram_timer.get_sample_count();
+        for client in world.client.as_mut() {
+            // panic request does not count towards timer metric
+            assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+            // gets reported against timer metric
+            executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+        }
+        thread::sleep(Duration::from_millis(1));
+        let histogram_timer = world.histogram_timer();
+        let count2 = histogram_timer.get_sample_count();
+        assert_eq!(count2, count + 1);
+    };
 });
 
 #[derive(Debug, Default)]
 struct Counter {
     count: Arc<RwLock<usize>>,
+    ignore_panic: bool,
 }
 
 impl Processor<CounterRequest, usize> for Counter {
@@ -193,6 +240,12 @@ impl Processor<CounterRequest, usize> for Counter {
         }
             .boxed()
     }
+
+    fn panicked(&mut self, err: PanicError) {
+        if !self.ignore_panic {
+            panic!(err)
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -211,6 +264,23 @@ fn counter_service() -> ReqRep<CounterRequest, usize> {
     ]);
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .start_service(Counter::default(), global_executor())
+        .unwrap()
+}
+
+fn counter_service_ignoring_panics() -> ReqRep<CounterRequest, usize> {
+    let buckets = TimerBuckets::from(vec![
+        Duration::from_nanos(100),
+        Duration::from_nanos(200),
+        Duration::from_nanos(300),
+    ]);
+    ReqRepConfig::new(ReqRepId::generate(), buckets)
+        .start_service(
+            Counter {
+                count: Arc::default(),
+                ignore_panic: true,
+            },
+            global_executor(),
+        )
         .unwrap()
 }
 
@@ -293,24 +363,6 @@ impl World {
     /// returns the histogram timer metric corresponding to the ReqRepId for the current world.client
     fn histogram_timer(&self) -> prometheus::proto::Histogram {
         let reqrep_id = self.client.as_ref().iter().next().unwrap().id();
-        let reqrep_id = reqrep_id.to_string();
-        let reqrep_id = reqrep_id.as_str();
-        let histogram: Vec<_> = metrics::registry()
-            .gather_for_metric_ids(&[REQREP_PROCESS_TIMER_METRIC_ID])
-            .iter()
-            .filter_map(|mf| {
-                let metric = &mf.get_metric().iter().next().unwrap();
-                if metric
-                    .get_label()
-                    .iter()
-                    .any(|label_pair| label_pair.get_value() == reqrep_id)
-                {
-                    Some(metric.get_histogram().clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        histogram.first().unwrap().clone()
+        histogram_timer_metric(reqrep_id).unwrap()
     }
 }

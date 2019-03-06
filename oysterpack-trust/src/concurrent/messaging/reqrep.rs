@@ -87,7 +87,9 @@ use oysterpack_uid::macros::ulid;
 use oysterpack_uid::ULID;
 use serde::{Deserialize, Serialize};
 use std::{
+    any::Any,
     fmt::{self, Debug},
+    panic::AssertUnwindSafe,
     pin::Pin,
     sync::RwLock,
     time::Instant,
@@ -109,6 +111,13 @@ lazy_static::lazy_static! {
         &[REQREPID_LABEL_ID],
         None,
     ).unwrap();
+
+    static ref PROCESSOR_PANIC_COUNTER: prometheus::IntCounterVec = metrics::registry().register_int_counter_vec(
+        PROCESSOR_PANIC_COUNTER_METRIC_ID,
+        "Processor FutureReply panic count",
+        &[REQREPID_LABEL_ID],
+        None,
+    ).unwrap();
 }
 
 /// ReqRep service instance count MetricId: `M01D2Q7VG1HFFXG6JT6HD11ZCJ3`
@@ -126,9 +135,14 @@ pub const REQREPID_LABEL_ID: metrics::LabelId =
     metrics::LabelId(1872766211119679891800112881745469011);
 
 /// ReqRep request send counter MetricId: `M01D52BD1MYW4GJ2VN44S14R28Z`
-/// - metric type is Histogram
+/// - metric type is IntCounterVec
 pub const REQREP_SEND_COUNTER_METRIC_ID: metrics::MetricId =
     metrics::MetricId(1875812830972763422767373669165173023);
+
+/// ReqRep request send counter MetricId: `M01D52BD1MYW4GJ2VN44S14R28Z`
+/// - metric type is IntCounterVec
+pub const PROCESSOR_PANIC_COUNTER_METRIC_ID: metrics::MetricId =
+    metrics::MetricId(1876035517884156224063178768953919720);
 
 /// return the ReqRep backend service count
 pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
@@ -244,11 +258,45 @@ pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
 
 /// Gathers metrics related to ReqRep
 pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    metrics::registry().gather_for_metric_ids(&[
+    metrics::registry().gather_for_metric_ids(metric_ids().as_slice())
+}
+
+/// ReqRep related metric descriptors
+pub fn metric_descs() -> Vec<prometheus::core::Desc> {
+    metrics::registry().descs_for_metric_ids(metric_ids().as_slice())
+}
+
+/// returns the histogram timer metric corresponding to the ReqRepId
+pub fn histogram_timer_metric(reqrep_id: ReqRepId) -> Option<prometheus::proto::Histogram> {
+    let reqrep_id = reqrep_id.to_string();
+    let reqrep_id = reqrep_id.as_str();
+    let histogram: Vec<_> = metrics::registry()
+        .gather_for_metric_ids(&[REQREP_PROCESS_TIMER_METRIC_ID])
+        .iter()
+        .filter_map(|mf| {
+            let metric = &mf.get_metric().iter().next().unwrap();
+            if metric
+                .get_label()
+                .iter()
+                .any(|label_pair| label_pair.get_value() == reqrep_id)
+            {
+                Some(metric.get_histogram().clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    histogram.first().cloned()
+}
+
+/// ReqRep related MetricId(s)
+pub fn metric_ids() -> Vec<metrics::MetricId> {
+    vec![
         SERVICE_INSTANCE_COUNT_METRIC_ID,
         REQREP_PROCESS_TIMER_METRIC_ID,
         REQREP_SEND_COUNTER_METRIC_ID,
-    ])
+        PROCESSOR_PANIC_COUNTER_METRIC_ID,
+    ]
 }
 
 /// ReqRep is used to configure and start a ReqRep service
@@ -424,7 +472,7 @@ where
     fn start_service<Service>(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
-        mut processor: Service,
+        processor: Service,
         mut executor: Executor,
         metric_timer_buckets: metrics::TimerBuckets,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
@@ -449,9 +497,13 @@ where
                     let service_count = REQ_REP_SERVICE_INSTANCE_COUNT
                         .with_label_values(&[reqrep_id.to_string().as_str()]);
 
+                    let panic_count = PROCESSOR_PANIC_COUNTER
+                        .with_label_values(&[reqrep_id.to_string().as_str()]);
+
                     ReqRepServiceMetrics {
                         timer,
                         service_count,
+                        panic_count,
                     }
                 })
                 .clone()
@@ -461,7 +513,9 @@ where
         let (reqrep, mut req_receiver) =
             ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size, service_instance_id);
         let reqrep_service_metrics = reqrep_service_metrics();
+        let service_count = reqrep_service_metrics.service_count.clone();
 
+        let mut processor = AssertUnwindSafe(processor);
         let service = async move {
             processor.init();
             reqrep_service_metrics.service_count.inc();
@@ -474,27 +528,43 @@ where
 
                 // time the request processing
                 let start = Instant::now();
-                let rep = await!(processor.process(req));
+                let process_future = processor.process(req);
+                let process_future = AssertUnwindSafe(process_future);
+                let rep = await!(process_future.catch_unwind());
                 let elapsed = start.elapsed();
 
-                // send back the reply
-                // we don't care if the client reply channel is disconnected
-                let _ = msg.reply(rep);
+                match rep {
+                    Ok(rep) => {
+                        // send back the reply
+                        // we don't care if the client reply channel is disconnected
+                        let _ = msg.reply(rep);
 
-                // record the timing metric
-                reqrep_service_metrics
-                    .timer
-                    .observe(metrics::duration_as_secs_f64(elapsed));
+                        // record the timing metric
+                        reqrep_service_metrics
+                            .timer
+                            .observe(metrics::duration_as_secs_f64(elapsed));
+                    }
+                    Err(err) => {
+                        reqrep_service_metrics.panic_count.inc();
+                        processor.panicked(err);
+                    }
+                }
+
                 debug!(
                     "[{}] ReqRepId({}) {:?} #{} : {:?}",
                     service_instance_id, reqrep_id, service_type_id, request_count, elapsed
                 );
             }
-            reqrep_service_metrics.service_count.dec();
             processor.destroy();
         };
 
-        executor.spawn(service)?;
+        let service = AssertUnwindSafe(service);
+        executor.spawn(
+            async move {
+                let _ = await!(service.catch_unwind());
+                service_count.dec();
+            },
+        )?;
         Ok(reqrep)
     }
 }
@@ -518,6 +588,7 @@ where
 struct ReqRepServiceMetrics {
     timer: prometheus::Histogram,
     service_count: prometheus::IntGauge,
+    panic_count: prometheus::IntCounter,
 }
 
 /// Message used for request/reply patterns.
@@ -592,6 +663,7 @@ where
 
 /// Request/reply message processor
 /// - the `init()` and `destroy()` are lifecycle hooks, which by default are noop
+/// - the Processor implementation is assumed to be [UnwindSafe](https://doc.rust-lang.org/std/panic/trait.UnwindSafe.html)
 pub trait Processor<Req, Rep>
 where
     Req: Debug + Send + 'static,
@@ -609,7 +681,18 @@ where
 
     /// Invoked when the message processor service is being shutdown
     fn destroy(&mut self) {}
+
+    /// invoked if `process()` panics
+    /// - the default behavior is to simply cascade the panic
+    /// - if the Processor can recover from panics, then ensure the the Processor is designed to be
+    ///   [UnwindSafe](https://doc.rust-lang.org/std/panic/trait.UnwindSafe.html)
+    fn panicked(&mut self, err: PanicError) {
+        panic!(err)
+    }
 }
+
+/// Panic error type
+pub type PanicError = Box<dyn Any + Send + 'static>;
 
 /// Pinned Boxed Future type alias
 pub type FutureReply<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;

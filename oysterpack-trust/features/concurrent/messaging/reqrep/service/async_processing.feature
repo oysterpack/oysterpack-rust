@@ -18,8 +18,3 @@ Feature: [01D4Z9P9VVHP7NC4MWV6JQ5XBM] Backend service processing is executed asy
     Given [01D4ZANG5S4SZ07AZ0QJ0A8XJW] 10 ReqRep services are started
     When [01D4ZANG5S4SZ07AZ0QJ0A8XJW] send 10 requests to each service on a different Executor
     Then [01D4ZANG5S4SZ07AZ0QJ0A8XJW] all requests process successfully
-
-  Scenario: [01D4ZGXQ27F3P7MXDW20K4RGR9] Processor::process() panics
-    When [01D4ZGXQ27F3P7MXDW20K4RGR9] the request processing task panics
-    Then [01D4ZGXQ27F3P7MXDW20K4RGR9-1] the ReqRep service backend task will continue running
-    And [01D4ZGXQ27F3P7MXDW20K4RGR9-2] the ReqRep client is still usable
