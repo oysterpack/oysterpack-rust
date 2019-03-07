@@ -59,7 +59,7 @@ steps!(World => {
             thread::yield_now();
 
             // gather metrics
-            let reqrep_metrics = reqrep::metrics::gather_metrics();
+            let reqrep_metrics = reqrep::metrics::gather();
             println!("{:#?}", reqrep_metrics);
 
             // check that all expected metrics have been gathered
@@ -197,6 +197,64 @@ steps!(World => {
         assert_eq!(count2, count + 1);
     };
 
+    // Feature: [01D59X5KJ7Q72C2F2FP2VYVGS1] ReqRep related metrics can be easily gathered
+
+    // Scenario: [01D59X6B8A40S941CMTRKWAMAB] Start up multiple ReqRep services
+    given regex "01D59X6B8A40S941CMTRKWAMAB-1" | world, _matches, _step | {
+        let mut executor = execution::global_executor();
+        let clients: Vec<_> = (0..3).map(|_| counter_service_ignoring_panics())
+            .map(|client| {
+                {
+                    let mut client = client.clone();
+                    executor.spawn(async move {
+                        await!(client.send(CounterRequest::Inc)).unwrap();
+                    }).unwrap();
+                }
+                {
+                    let mut client = client.clone();
+                    executor.spawn(async move {
+                        await!(client.send(CounterRequest::Get)).unwrap();
+                    }).unwrap();
+                }
+                {
+                    let mut client = client.clone();
+                    executor.spawn(async move {
+                        await!(client.send(CounterRequest::Panic)).unwrap();
+                    }).unwrap();
+                }
+                client
+            })
+            .collect();
+        world.clients = Some(clients);
+    };
+
+    when regex "01D59X6B8A40S941CMTRKWAMAB-2" | world, _matches, _step | {
+        world.metrics = Some(reqrep::metrics::gather())
+    };
+
+    then regex "01D59X6B8A40S941CMTRKWAMAB-3" | world, _matches, _step | {
+        let reqrep_label_id = reqrep::metrics::REQREPID_LABEL_ID.name();
+        let reqrep_ids: Vec<_> = world.clients.iter()
+            .flat_map(|clients| clients)
+            .map(|client| client.id())
+            .map(|id| id.to_string())
+            .collect();
+        for reqrep_metrics in &world.metrics {
+            let metric_names: Vec<_> = reqrep::metrics::metric_ids().iter().map(|id|id.to_string()).collect();
+            metric_names.iter().for_each(|metric_name| {
+                let exists = reqrep_ids.iter().all(|reqrep_id| {
+                    reqrep_metrics.iter().any(|mfs| {
+                        mfs.get_name() == metric_name.as_str() &&
+                        mfs.get_metric().iter().any(|m| m.get_label().iter().any(|l| {
+                            l.get_name() == reqrep_label_id.as_str() && l.get_value() == reqrep_id.as_str()
+                        }))
+                    })
+                });
+                assert!(exists, format!("metric was not found for: {}", metric_name));
+            });
+
+        }
+    };
 
 });
 
@@ -309,6 +367,7 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
 pub struct World {
     client: Option<ReqRep<CounterRequest, usize>>,
     clients: Option<Vec<ReqRep<CounterRequest, usize>>>,
+    metrics: Option<Vec<prometheus::proto::MetricFamily>>
 }
 
 impl World {
@@ -323,7 +382,6 @@ impl World {
                         for _ in 0..req_count {
                             await!(client.send(request)).unwrap();
                             sent_count += 1;
-                            println!("sent_count = {}", sent_count);
                         }
                     },
                 )

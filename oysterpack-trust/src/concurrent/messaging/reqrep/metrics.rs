@@ -69,6 +69,26 @@ pub const REQREP_SEND_COUNTER_METRIC_ID: crate::metrics::MetricId =
 pub const PROCESSOR_PANIC_COUNTER_METRIC_ID: crate::metrics::MetricId =
     crate::metrics::MetricId(1876035517884156224063178768953919720);
 
+/// Gathers metrics related to ReqRep
+pub fn gather() -> Vec<prometheus::proto::MetricFamily> {
+    crate::metrics::registry().gather_for_metric_ids(metric_ids().as_slice())
+}
+
+/// ReqRep related metric descriptors
+pub fn descs() -> Vec<prometheus::core::Desc> {
+    crate::metrics::registry().descs_for_metric_ids(metric_ids().as_slice())
+}
+
+/// ReqRep related MetricId(s)
+pub fn metric_ids() -> Vec<crate::metrics::MetricId> {
+    vec![
+        SERVICE_INSTANCE_COUNT_METRIC_ID,
+        REQREP_PROCESS_TIMER_METRIC_ID,
+        REQREP_SEND_COUNTER_METRIC_ID,
+        PROCESSOR_PANIC_COUNTER_METRIC_ID,
+    ]
+}
+
 /// return the ReqRep backend service count
 pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
     let label_name = REQREPID_LABEL_ID.name();
@@ -181,16 +201,6 @@ pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
         .unwrap_or_else(fnv::FnvHashMap::default)
 }
 
-/// Gathers metrics related to ReqRep
-pub fn gather_metrics() -> Vec<prometheus::proto::MetricFamily> {
-    crate::metrics::registry().gather_for_metric_ids(metric_ids().as_slice())
-}
-
-/// ReqRep related metric descriptors
-pub fn metric_descs() -> Vec<prometheus::core::Desc> {
-    crate::metrics::registry().descs_for_metric_ids(metric_ids().as_slice())
-}
-
 /// returns the histogram timer metric corresponding to the ReqRepId
 pub fn histogram_timer_metric(reqrep_id: ReqRepId) -> Option<prometheus::proto::Histogram> {
     let reqrep_id = reqrep_id.to_string();
@@ -212,14 +222,4 @@ pub fn histogram_timer_metric(reqrep_id: ReqRepId) -> Option<prometheus::proto::
         })
         .collect();
     histogram.first().cloned()
-}
-
-/// ReqRep related MetricId(s)
-pub fn metric_ids() -> Vec<crate::metrics::MetricId> {
-    vec![
-        SERVICE_INSTANCE_COUNT_METRIC_ID,
-        REQREP_PROCESS_TIMER_METRIC_ID,
-        REQREP_SEND_COUNTER_METRIC_ID,
-        PROCESSOR_PANIC_COUNTER_METRIC_ID,
-    ]
 }
