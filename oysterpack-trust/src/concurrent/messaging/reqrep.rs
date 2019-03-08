@@ -327,8 +327,7 @@ where
                 .clone()
         };
 
-        let (reqrep, mut req_receiver) =
-            ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
+        let (reqrep, mut req_receiver) = ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
         let reqrep_service_metrics = reqrep_service_metrics();
         let service_count = reqrep_service_metrics.service_count.clone();
 
@@ -530,8 +529,7 @@ mod tests {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let mut executor = global_executor();
-        let (mut req_rep, mut req_receiver) =
-            ReqRep::<usize, usize>::new(REQREP_ID, 1);
+        let (mut req_rep, mut req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
                 info!("Received request: ReqRepId({})", REQREP_ID,);
@@ -652,8 +650,7 @@ mod tests {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
         let mut executor = global_executor();
-        let (mut req_rep, req_receiver) =
-            ReqRep::<usize, usize>::new(REQREP_ID, 1);
+        let (mut req_rep, req_receiver) = ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
             let mut req_receiver = req_receiver;
             if let Some(mut msg) = await!(req_receiver.next()) {
