@@ -1,6 +1,6 @@
 Feature: [01D4Z9P9VVHP7NC4MWV6JQ5XBM] Backend service processing is executed async
 
-  - Backend services receive messages to process in a non-blocking fashion, i.e., threads are not blocked waiting for messages.
+  - Backend services receive messages in a non-blocking fashion, i.e., threads are not blocked waiting for messages.
   - Processor::process() is designed to return an async task which is scheduled to run on the the same Executor thread that
     is running the service task
 

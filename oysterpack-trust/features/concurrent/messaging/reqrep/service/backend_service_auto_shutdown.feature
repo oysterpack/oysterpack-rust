@@ -2,7 +2,6 @@ Feature: [01D4RWGKRYAJCQ4Q5SD3Z6WG6P] When all ReqRep client references fall out
 
   The backend service will continue to run as long as ReqRep client references are alive.
   - when the service instance shutsdown, the service instance gauge metric will be decremented
-    - when all instances have been shutdown, then the ReqRepId type id mapping will be unregistered
 
   Scenario: [01D4RWJMA0THQQPSF2XQ6Q8AM1] Drop all ReqRep client instances
     Given [01D4RWJMA0THQQPSF2XQ6Q8AM1] a ReqRep client

@@ -1,4 +1,4 @@
-Feature: [01D4ZHRS7RV42RXN1R83Q8QDPA] The number of running ReqRep service backend instances will be tracked
+Feature: [01D4ZHRS7RV42RXN1R83Q8QDPA] The number of running ReqRep service backend instances are tracked
 
   Counts are tracked per ReqRepId
 

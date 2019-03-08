@@ -1,7 +1,5 @@
 Feature: [01D4RV5JQPQHXQNNJR8740J39J] Sending request is coupled with receiving reply
 
-  Using the streamlined coupled approach, the client is not able to get access to the request MessageId
-
   Scenario: [01D4RDC36HSVM7M65SCQK13T2S] ReqRep::send_rec()
     Then [01D4RDC36HSVM7M65SCQK13T2S] the reply is successfully received
 

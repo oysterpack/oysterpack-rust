@@ -37,41 +37,6 @@ use std::{
 };
 
 steps!(World => {
-    // Feature: [01D4ZS9FX0GZZRG9RF072XGBQD] All ReqRep related metrics can be gathered via reqrep::gather_metrics()
-
-    // Scenario: [01D4ZSJ5XPDVKG33NXDE6TP6QX] send requests and then gather metrics
-    given regex "01D4ZSJ5XPDVKG33NXDE6TP6QX" | world, _matches, _step | {
-        world.client = Some(counter_service());
-    };
-
-    when regex "01D4ZSJ5XPDVKG33NXDE6TP6QX" | world, _matches, _step | {
-        world.send_requests(10, CounterRequest::Inc);
-    };
-
-    then regex "01D4ZSJ5XPDVKG33NXDE6TP6QX" | world, _matches, _step | {
-        world.client.iter().for_each(|client| {
-            let reqrep_id = client.id();
-
-            // wait until all requests have been sent
-            while request_send_count(reqrep_id) < 10 {
-                thread::yield_now();
-            }
-            thread::yield_now();
-
-            // gather metrics
-            let reqrep_metrics = reqrep::metrics::gather();
-            println!("{:#?}", reqrep_metrics);
-
-            // check that all expected metrics have been gathered
-            let metric_ids = vec![REQREP_PROCESS_TIMER_METRIC_ID, REQREP_SEND_COUNTER_METRIC_ID, SERVICE_INSTANCE_COUNT_METRIC_ID];
-            metric_ids.iter().for_each(|meric_id| {
-                let metric_name = REQREP_PROCESS_TIMER_METRIC_ID.name();
-                let metric_name = metric_name.as_str();
-                assert!(reqrep_metrics.iter().any(|mf| mf.get_name() == metric_name));
-            });
-        })
-    };
-
     // Feature: [01D4ZS3J72KG380GFW4GMQKCFH] Message processing timer metrics are collected
 
     // Scenario: [01D5028W0STBFHDAPWA79B4TGG] Processor sleeps for 10 ms

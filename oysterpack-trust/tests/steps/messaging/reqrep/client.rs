@@ -194,15 +194,6 @@ steps!(World => {
             thread::yield_now();
         }
     };
-
-    // Feature: [01D4RXDDVA5DWTWF45KBTJTK5Z] Each ReqRep client is linked with a backend service instance identified by a ServiceInstanceId
-
-    // Scenario: [01D4RXFJNJ70CTFV5RE1TN8S6Z] Startup multiple ReqRep services
-    then regex "01D4RXFJNJ70CTFV5RE1TN8S6Z" | _world, _matches, _step | {
-        let client_1 = counter_service();
-        let client_2 = counter_service();
-        assert_ne!(client_1.service_instance_id(), client_2.service_instance_id());
-    };
 });
 
 #[derive(Debug, Default)]

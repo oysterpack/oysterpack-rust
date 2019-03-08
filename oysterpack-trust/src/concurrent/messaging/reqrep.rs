@@ -31,6 +31,46 @@
 //! be distributed over the network or be running on the same machine. This also makes it easy to mock
 //! services for testing purposes.
 //!
+//! ## Client Features
+//! - *[01D4R2Y8D8FCJGJ1JTFDVT4KD5]* Sending request is decoupled from receiving reply
+//!   - [ReqRep::send()](struct.ReqRep.html#method.send) is used to send the request and returns a ReplyReceiver
+//!   - [ReplyReceiver](struct.ReplyReceiver.html) is used to receive the reply at the client's leisure
+//!     - this enables the client to do additional work between sending the request and receiving the reply
+//! - *[01D4RV5JQPQHXQNNJR8740J39J]* Sending request is coupled with receiving reply
+//!   - [ReqRep::send_recv()](struct.ReqRep.html#method.send_recv)
+//! - *[01D4RW7WRVBBGTBZEQCXMFN51V]* The ReqRep client can be shared by cloning it
+//!
+//! ## Service Features
+//! - *[01D4Z9P9VVHP7NC4MWV6JQ5XBM]* Backend service processing is executed async
+//!   - Backend services receive messages in a non-blocking fashion, i.e., threads are not blocked waiting for messages.
+//!   - Processor::process() is designed to return an async task which is scheduled to run on the the same Executor thread that
+//!    is running the service task
+//! - *[01D4ZAQBNT7MF2E0PWW77BJ6HS]* The backend service Processor lifecycle hooks are invoked on service startup and shutdown
+//!   - when the backend service starts up and before processing any messages, the [Processor::init()](trait.Processor.html#method.init) lifecycle method is called
+//!   - when the backend service is shutdown, [Processor::destroy()](trait.Processor.html#method.destroy) is invoked
+//! - *[01D585SEWBEKBBR0ZY3C5GR7A6]* Processor is notified via [Processor::panicked()](trait.Processor.html#method.panicked) if a panic occurred while processing the request.
+//!   - The default implementation simply cascades the panic, which terminates the ReqRep service
+//! - *[01D4RWGKRYAJCQ4Q5SD3Z6WG6P]* When all ReqRep client references fall out of scope, then the backend service will automatically shutdown
+//!
+//! ## Config Features
+//! - *[01D4RVW8XQCSZKNQEBGWKG57S5]* Each request / reply service is assigned a [ReqRepId](struct.ReqRepId.html)
+//! - *[01D4T5NV48PVFBC2R3Q80B6W72]* The request channel buffer size is configurable
+//!   - This is referring to the channel used by the ReqRep client to send requests to the backend service.
+//!   - By default, the channel buffer size is 0.
+//!     - The channel's capacity is equal to buffer + num-senders. In other words, each sender gets a guaranteed slot in the
+//!       channel capacity, and on top of that there are buffer "first come, first serve" slots available to all senders.
+//! - *[01D4V1PZ43Z5P7XGED38V6DXHA]* [TimerBuckets](../../../metrics/struct.TimerBuckets.html) are configurable per ReqRep
+//!   - TimerBuckets are used to configure a histogram metric used to time message processing in the backend service.
+//!   - TimerBuckets are not a one size fits all, and need to be tailored to the performance requirements for the backend Processor.
+//!
+//! ## Metric Features
+//! - *[01D52CH5BJQM4D903VN1MJ10CC]* The number of requests sent per ReqRepId is tracked
+//! - *[01D4ZHRS7RV42RXN1R83Q8QDPA]* The number of running ReqRep service backend instances are tracked
+//! - *[01D4ZS3J72KG380GFW4GMQKCFH]* Message processing timer metrics are collected
+//! - *[01D59WRTHWQRPC8DYMN76RJ5X0]* Backend Processor panics are tracked
+//! - *[01D59X5KJ7Q72C2F2FP2VYVGS1]* ReqRep related metric descriptors can be easily retrieved
+//! - *[01D59X5KJ7Q72C2F2FP2VYVGS1]* ReqRep related metrics can be easily gathered
+//!
 //! ```rust
 //! # #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 //! # use oysterpack_trust::concurrent::messaging::reqrep::{self, *};
@@ -66,13 +106,6 @@
 //!   assert_eq!(2, await!(reply_receiver.recv()).unwrap());
 //! });
 //! ```
-//!
-//! ## Config
-//! - [ReqRepConfig](struct.ReqRepConfig.html)
-//!
-//! ## Metrics
-//! - number of running backend service instances
-//! - request processing timings, i.e., [Processor::process()](trait.Processor.html#tymethod.process) is timed
 
 use crate::concurrent::{execution::Executor, messaging::errors::ChannelError};
 use futures::{
@@ -171,7 +204,6 @@ where
 {
     request_sender: channel::mpsc::Sender<ReqRepMessage<Req, Rep>>,
     reqrep_id: ReqRepId,
-    service_instance_id: ServiceInstanceId,
     request_send_counter: prometheus::IntCounter,
 }
 
@@ -183,13 +215,6 @@ where
     /// Returns the ReqRepId
     pub fn id(&self) -> ReqRepId {
         self.reqrep_id
-    }
-
-    /// Returns the backend ServiceInstanceId
-    /// - this can be used to determine if 2 different ReqRep client instances are talking to the same
-    ///   backend instance
-    pub fn service_instance_id(&self) -> ServiceInstanceId {
-        self.service_instance_id
     }
 
     /// Send the request async
@@ -223,7 +248,6 @@ where
     fn new(
         reqrep_id: ReqRepId,
         chan_buf_size: usize,
-        service_instance_id: ServiceInstanceId,
     ) -> (
         ReqRep<Req, Rep>,
         channel::mpsc::Receiver<ReqRepMessage<Req, Rep>>,
@@ -233,7 +257,6 @@ where
             ReqRep {
                 reqrep_id,
                 request_sender,
-                service_instance_id,
                 request_send_counter: metrics::REQREP_SEND_COUNTER
                     .with_label_values(&[reqrep_id.to_string().as_str()]),
             },
@@ -304,9 +327,8 @@ where
                 .clone()
         };
 
-        let service_instance_id = ServiceInstanceId::generate();
         let (reqrep, mut req_receiver) =
-            ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size, service_instance_id);
+            ReqRep::<Req, Rep>::new(reqrep_id, chan_buf_size);
         let reqrep_service_metrics = reqrep_service_metrics();
         let service_count = reqrep_service_metrics.service_count.clone();
 
@@ -346,8 +368,8 @@ where
                 }
 
                 debug!(
-                    "[{}] ReqRepId({}) {:?} #{} : {:?}",
-                    service_instance_id, reqrep_id, service_type_id, request_count, elapsed
+                    "ReqRepId({}) {:?} #{} : {:?}",
+                    reqrep_id, service_type_id, request_count, elapsed
                 );
             }
             processor.destroy();
@@ -372,7 +394,6 @@ where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ReqRep")
             .field("reqrep_id", &self.reqrep_id)
-            .field("service_instance_id", &self.service_instance_id)
             .field("request_send_count", &self.request_send_counter.get())
             .finish()
     }
@@ -425,10 +446,6 @@ where
 /// 2. Used to map to a ReqRep message processor
 #[ulid]
 pub struct ReqRepId(pub u128);
-
-/// Each new ReqRep backend service is assigned a unique id
-#[ulid]
-pub struct ServiceInstanceId(u128);
 
 /// Reply Receiver
 /// - is used to decouple sending the request from receiving the reply - see [ReqRep::send()](struct.ReqRep.html#method.send)
@@ -512,10 +529,9 @@ mod tests {
     fn req_rep() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let service_instance_id = ServiceInstanceId::generate();
         let mut executor = global_executor();
         let (mut req_rep, mut req_receiver) =
-            ReqRep::<usize, usize>::new(REQREP_ID, 1, service_instance_id);
+            ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
             while let Some(mut msg) = await!(req_receiver.next()) {
                 info!("Received request: ReqRepId({})", REQREP_ID,);
@@ -635,10 +651,9 @@ mod tests {
     fn req_rep_with_disconnected_receiver() {
         configure_logging();
         const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-        let service_instance_id = ServiceInstanceId::generate();
         let mut executor = global_executor();
         let (mut req_rep, req_receiver) =
-            ReqRep::<usize, usize>::new(REQREP_ID, 1, service_instance_id);
+            ReqRep::<usize, usize>::new(REQREP_ID, 1);
         let server = async move {
             let mut req_receiver = req_receiver;
             if let Some(mut msg) = await!(req_receiver.next()) {

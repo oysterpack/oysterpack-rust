@@ -1,6 +1,6 @@
 Feature: [01D585SEWBEKBBR0ZY3C5GR7A6] Processor is notified via `Processor::panicked()` if a panic occurred while processing the request.
 
-  - The default `Processor::panicked()` implementation simply cascades the panic.
+  - The default implementation simply cascades the panic, which terminates the ReqRep service
 
   Scenario: [01D4ZGXQ27F3P7MXDW20K4RGR9] Processor::process() panics using default behavior
     When [01D4ZGXQ27F3P7MXDW20K4RGR9] the request processing task panics
