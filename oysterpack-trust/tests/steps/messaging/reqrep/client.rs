@@ -19,7 +19,7 @@ use cucumber_rust::*;
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
 use oysterpack_trust::concurrent::{
     execution::{self, *},
-    messaging::reqrep::{self, *, metrics::*},
+    messaging::reqrep::{self, metrics::*, *},
 };
 use oysterpack_trust::metrics::TimerBuckets;
 use std::{

@@ -16,7 +16,7 @@ oysterpack_log = {path = "../oysterpack-log", version = "0.1" }
 oysterpack_events = {path = "../oysterpack-events", version = "0.1"}
 oysterpack_errors = {path = "../oysterpack-errors", version = "0.1"}
 
-futures-preview = "0.3.0-alpha.12"
+futures-preview = "0.3.0-alpha.13"
 
 sodiumoxide = "0.2.0"
 bs58 = "0.2.2"

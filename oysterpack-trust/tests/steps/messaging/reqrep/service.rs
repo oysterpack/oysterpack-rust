@@ -22,7 +22,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *, metrics::*},
+        messaging::reqrep::{self, metrics::*, *},
     },
     metrics,
 };

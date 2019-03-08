@@ -22,7 +22,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *, metrics::*},
+        messaging::reqrep::{self, metrics::*, *},
     },
     metrics,
 };
@@ -33,7 +33,7 @@ use std::{
         Arc, Mutex, RwLock,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 steps!(World => {
@@ -226,6 +226,7 @@ steps!(World => {
             })
             .collect();
         world.clients = Some(clients);
+        thread::yield_now();
     };
 
     when regex "01D59X6B8A40S941CMTRKWAMAB-2" | world, _matches, _step | {
@@ -252,10 +253,151 @@ steps!(World => {
                 });
                 assert!(exists, format!("metric was not found for: {}", metric_name));
             });
-
         }
     };
 
+    then regex "01D59X6B8A40S941CMTRKWAMAB-4" | world, _matches, _step | {
+        // because of task scheduling issues, the service may not yet even be started
+        let now = Instant::now();
+        'outer: loop {
+            let reqrep_metrics = reqrep::metrics::gather();
+            let counts_match = reqrep_metrics.iter()
+                    .filter_map(|mf| {
+                        if mf.get_name() == reqrep::metrics::SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str() {
+                            mf.get_metric().iter().next()
+                        } else {
+                            None
+                        }
+                    })
+                    .all(|metric| {
+                        let reqrep_id = metric.get_label().iter()
+                            .find(|label_pair| {
+                                label_pair.get_name() == reqrep::metrics::REQREPID_LABEL_ID.name()
+                            })
+                            .map(|label_pair| label_pair.get_value().parse::<ReqRepId>().unwrap())
+                            .unwrap();
+                            if (metric.get_gauge().get_value() as u64) != reqrep::metrics::service_instance_count(reqrep_id) {
+                                println!("{} != {}", metric.get_gauge().get_value(),reqrep::metrics::service_instance_count(reqrep_id));
+                            }
+                            (metric.get_gauge().get_value() as u64) == reqrep::metrics::service_instance_count(reqrep_id)
+                    });
+            if counts_match {
+                break;
+            }
+            // if the counts are not synced up after 100 ms, then fail the test
+            if now.elapsed() < Duration::from_millis(100){
+                thread::yield_now();
+            } else {
+                panic!("counts did not match")
+            }
+        }
+    };
+
+    then regex "01D59X6B8A40S941CMTRKWAMAB-5" | world, _matches, _step | {
+        // because of task scheduling issues, the service may not yet even be started
+        let now = Instant::now();
+        'outer: loop {
+            let reqrep_metrics = reqrep::metrics::gather();
+            let counts_match = reqrep_metrics.iter()
+                    .filter_map(|mf| {
+                        if mf.get_name() == reqrep::metrics::REQREP_SEND_COUNTER_METRIC_ID.name().as_str() {
+                            mf.get_metric().iter().next()
+                        } else {
+                            None
+                        }
+                    })
+                    .all(|metric| {
+                        let reqrep_id = metric.get_label().iter()
+                            .find(|label_pair| label_pair.get_name() == reqrep::metrics::REQREPID_LABEL_ID.name())
+                            .map(|label_pair| label_pair.get_value().parse::<ReqRepId>().unwrap())
+                            .unwrap();
+                            if metric.get_counter().get_value() as u64 != reqrep::metrics::request_send_count(reqrep_id) {
+                                println!("{} != {}", metric.get_counter().get_value(),reqrep::metrics::request_send_count(reqrep_id));
+                            }
+                            metric.get_counter().get_value() as u64 == reqrep::metrics::request_send_count(reqrep_id)
+                    });
+            if counts_match {
+                break;
+            }
+            // if the counts are not synced up after 100 ms, then fail the test
+            if now.elapsed() < Duration::from_millis(100){
+                thread::yield_now();
+            } else {
+                panic!("counts did not match")
+            }
+        }
+    };
+
+    then regex "01D59X6B8A40S941CMTRKWAMAB-6" | world, _matches, _step | {
+        // because of task scheduling issues, the service may not yet even be started
+        let now = Instant::now();
+        'outer: loop {
+            let reqrep_metrics = reqrep::metrics::gather();
+            let counts_match = reqrep_metrics.iter()
+                    .filter_map(|mf| {
+                        if mf.get_name() == reqrep::metrics::REQREP_PROCESS_TIMER_METRIC_ID.name().as_str() {
+                            mf.get_metric().iter().next()
+                        } else {
+                            None
+                        }
+                    })
+                    .all(|metric| {
+                        let reqrep_id = metric.get_label().iter()
+                            .find(|label_pair| label_pair.get_name() == reqrep::metrics::REQREPID_LABEL_ID.name())
+                            .map(|label_pair| label_pair.get_value().parse::<ReqRepId>().unwrap())
+                            .unwrap();
+                            metric.get_histogram().get_sample_count() as u64 == reqrep::metrics::histogram_timer_metric(reqrep_id).unwrap().get_sample_count()
+                    });
+            if counts_match {
+                break;
+            }
+            // if the counts are not synced up after 100 ms, then fail the test
+            if now.elapsed() < Duration::from_millis(100){
+                thread::yield_now();
+            } else {
+                panic!("counts did not match")
+            }
+        }
+    };
+
+    // Feature: [01D59X5KJ7Q72C2F2FP2VYVGS1] ReqRep related metric descriptors can be easily retrieved
+
+    // Scenario: [01D5AKRF2JQJTQZQAHZFTV5CEG] Get ReqRep related metric descriptors
+    then regex "01D5AKRF2JQJTQZQAHZFTV5CEG" | world, _matches, _step | {
+        let descs = reqrep::metrics::descs();
+        println!("{:#?}", descs);
+        let metric_ids = reqrep::metrics::metric_ids();
+        println!("{:?}", metric_ids);
+        assert!(metric_ids.iter().all(|metric_id| {
+            descs.iter().any(|desc| desc.fq_name == metric_id.name())
+        }));
+    };
+
+    // Feature: [01D59WRTHWQRPC8DYMN76RJ5X0] Backend Processor panics are tracked as a metric.
+
+    // Scenario: [01D59WYME5Y6Z8TEHKPEH6ZFTR] Processor panics while processing a request - service terminates
+    then regex "01D59WYME5Y6Z8TEHKPEH6ZFTR" | world, _matches, _step | {
+        let mut client = counter_service();
+        let mut executor = global_executor();
+        executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 0);
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 1);
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 1);
+    };
+
+    // Scenario: [01D5DCAFHBYKKMP4BH89VADGNB] Processor panics while processing a request - service recovers and keeps running
+    then regex "01D5DCAFHBYKKMP4BH89VADGNB" | world, _matches, _step | {
+        let mut client = counter_service_ignoring_panics();
+        let mut executor = global_executor();
+        executor.run(client.send_recv(CounterRequest::Inc)).unwrap();
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 0);
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 1);
+        assert!(executor.run(client.send_recv(CounterRequest::Panic)).is_err());
+        assert_eq!(reqrep::metrics::processor_panic_count(client.id()), 2);
+    };
 });
 
 #[derive(Debug, Default)]
@@ -367,7 +509,7 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
 pub struct World {
     client: Option<ReqRep<CounterRequest, usize>>,
     clients: Option<Vec<ReqRep<CounterRequest, usize>>>,
-    metrics: Option<Vec<prometheus::proto::MetricFamily>>
+    metrics: Option<Vec<prometheus::proto::MetricFamily>>,
 }
 
 impl World {

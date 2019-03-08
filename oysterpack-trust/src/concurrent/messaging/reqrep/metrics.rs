@@ -147,10 +147,29 @@ pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
 
 /// return the ReqRep request send count
 pub fn request_send_count(reqrep_id: ReqRepId) -> u64 {
+    count(reqrep_id, REQREP_SEND_COUNTER_METRIC_ID)
+}
+
+/// return the ReqRep backend service count
+pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+    counts(REQREP_SEND_COUNTER_METRIC_ID)
+}
+
+/// return the ReqRep service Processor panic count
+pub fn processor_panic_count(reqrep_id: ReqRepId) -> u64 {
+    count(reqrep_id, PROCESSOR_PANIC_COUNTER_METRIC_ID)
+}
+
+/// return the ReqRep backend service count
+pub fn processor_panic_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+    counts(PROCESSOR_PANIC_COUNTER_METRIC_ID)
+}
+
+fn count(reqrep_id: ReqRepId, metric_id: crate::metrics::MetricId) -> u64 {
     let label_name = REQREPID_LABEL_ID.name();
     let label_value = reqrep_id.to_string();
     crate::metrics::registry()
-        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
+        .gather_for_desc_names(&[metric_id.name().as_str()])
         .iter()
         .filter_map(|mf| {
             mf.get_metric()
@@ -166,10 +185,9 @@ pub fn request_send_count(reqrep_id: ReqRepId) -> u64 {
         .unwrap_or(0)
 }
 
-/// return the ReqRep backend service count
-pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+fn counts(metric_id: crate::metrics::MetricId) -> fnv::FnvHashMap<ReqRepId, u64> {
     crate::metrics::registry()
-        .gather_for_desc_names(&[REQREP_SEND_COUNTER_METRIC_ID.name().as_str()])
+        .gather_for_desc_names(&[metric_id.name().as_str()])
         .first()
         .map(|mf| {
             let label_name = REQREPID_LABEL_ID.name();

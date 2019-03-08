@@ -21,7 +21,7 @@ use oysterpack_trust::metrics::TimerBuckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
-        messaging::reqrep::{self, *, metrics::*},
+        messaging::reqrep::{self, metrics::*, *},
     },
     metrics,
 };
@@ -234,7 +234,12 @@ fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest,
     ]);
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .set_chan_buf_size(chan_size)
-        .start_service(Counter::default(), ExecutorBuilder::new(ExecutorId::generate()).register().unwrap())
+        .start_service(
+            Counter::default(),
+            ExecutorBuilder::new(ExecutorId::generate())
+                .register()
+                .unwrap(),
+        )
         .unwrap()
 }
 

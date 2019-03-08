@@ -110,6 +110,15 @@ pub fn ulid(
                     }
                 }
 
+                impl std::str::FromStr for #struct_ident {
+                    type Err = oysterpack_uid::DecodingError;
+
+                    fn from_str(s: &str) -> Result<Self, Self::Err> {
+                        let ulid: oysterpack_uid::ULID = s.parse()?;
+                        Ok(#struct_ident(ulid.into()))
+                    }
+                }
+
                 impl #struct_ident {
                     /// returns the ID as a ULID
                     pub fn ulid(&self) -> oysterpack_uid::ULID {
@@ -152,6 +161,15 @@ pub fn ulid(
                 impl From<oysterpack_uid::DomainULID> for #struct_ident {
                     fn from(ulid: oysterpack_uid::DomainULID) -> #struct_ident {
                         #struct_ident(ulid.ulid())
+                    }
+                }
+
+                impl std::str::FromStr for #struct_ident {
+                    type Err = oysterpack_uid::DecodingError;
+
+                    fn from_str(s: &str) -> Result<Self, Self::Err> {
+                        let ulid: oysterpack_uid::ULID = s.parse()?;
+                        Ok(#struct_ident(ulid))
                     }
                 }
 
