@@ -4,3 +4,9 @@ members = ["oysterpack","oysterpack-*", "apps/oysterpack-*"]
 [profile.release]
 #Link Time Optimization usually reduces size of binaries and static libraries.
 lto = true
+
+[profile.test]
+debug = false
+
+[profile.dev]
+debug = false

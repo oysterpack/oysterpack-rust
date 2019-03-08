@@ -250,8 +250,8 @@ pub struct World {
 
 impl World {
     fn send_requests(&mut self, req_count: usize, request: CounterRequest) {
+        let mut executor = ExecutorBuilder::new(ExecutorId::generate()).register().unwrap();
         for client in self.client.as_ref() {
-            let mut executor = global_executor();
             let mut client = client.clone();
             executor
                 .spawn(
