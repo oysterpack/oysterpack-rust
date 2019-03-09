@@ -17,9 +17,9 @@
 //! request / reply related metrics
 
 use super::{ReqRepId, ReqRepServiceMetrics};
+use hashbrown::HashMap;
 use oysterpack_uid::ULID;
 use parking_lot::RwLock;
-use hashbrown::HashMap;
 
 lazy_static::lazy_static! {
     pub(super) static ref REQ_REP_METRICS: RwLock<HashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(HashMap::new());
@@ -103,7 +103,7 @@ pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
 pub fn service_instance_counts() -> HashMap<ReqRepId, u64> {
     let reqrep_metrics = REQ_REP_METRICS.read();
     let counts = HashMap::with_capacity(reqrep_metrics.len());
-    reqrep_metrics.iter().fold(counts, |mut counts, (k,v)| {
+    reqrep_metrics.iter().fold(counts, |mut counts, (k, v)| {
         counts.insert(k.clone(), v.service_count.get() as u64);
         counts
     })

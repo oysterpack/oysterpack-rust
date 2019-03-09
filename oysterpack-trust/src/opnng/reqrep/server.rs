@@ -67,6 +67,7 @@ use crate::metrics;
 use crate::opnng::config::{SocketConfig, SocketConfigError};
 use failure::Fail;
 use futures::{future::FutureExt, prelude::*, sink::SinkExt, stream::StreamExt, task::SpawnExt};
+use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
@@ -74,7 +75,6 @@ use oysterpack_uid::ULID;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe};
-use hashbrown::HashMap;
 
 lazy_static! {
 

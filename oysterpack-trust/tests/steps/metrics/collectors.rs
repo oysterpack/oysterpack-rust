@@ -23,9 +23,7 @@ use prometheus::{
     proto::MetricFamily,
     IntCounter, IntGauge,
 };
-use std::collections::{
-    HashSet, HashMap
-};
+use std::collections::{HashMap, HashSet};
 
 steps!(World => {
     // Feature: [01D3JAHR4Z02XTJGTNE4D63VRT] Any `prometheus::core::Collector` can be registered

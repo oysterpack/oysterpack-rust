@@ -19,6 +19,9 @@
 use crate::metrics;
 use lazy_static::lazy_static;
 use prometheus::core::Collector;
+use super::{
+    Executor, ExecutorId, EXECUTOR_REGISTRY
+};
 
 lazy_static! {
 
@@ -90,4 +93,97 @@ pub fn metric_descs() -> Vec<&'static prometheus::core::Desc> {
     descs.extend(TASK_PANIC_COUNTER.desc());
     descs.extend(THREAD_POOL_SIZE_GAUGE.desc());
     descs
+}
+
+/// Returns the total number of spawned tasks across all registered Executor(s)
+pub fn task_spawned_count() -> u64 {
+    EXECUTOR_REGISTRY.task_spawned_count()
+}
+
+/// Returns the total number of active tasks across all registered Executor(s)
+pub fn task_active_count() -> u64 {
+    EXECUTOR_REGISTRY.task_active_count()
+}
+
+/// Returns the total number of completed tasks across all registered Executor(s)
+pub fn task_completed_count() -> u64 {
+    EXECUTOR_REGISTRY.task_completed_count()
+}
+
+/// Returns the number of spawned tasks that have panicked across all registered Executor(s)
+pub fn task_panic_count() -> u64 {
+    EXECUTOR_REGISTRY.task_panic_count()
+}
+
+/// Returns the total number of threads that have been started across all Executors
+pub fn total_thread_count() -> usize {
+    let thread_pools = EXECUTOR_REGISTRY.thread_pools.read();
+    thread_pools
+        .values()
+        .map(Executor::thread_pool_size)
+        .sum::<usize>()
+        + EXECUTOR_REGISTRY.global_executor.thread_pool_size()
+}
+
+/// Returns the current thread pool sizes for the currently registered Executors
+pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
+    EXECUTOR_REGISTRY.executor_thread_pool_sizes()
+}
+
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use crate::concurrent::execution::*;
+    use std::{
+        thread,
+        num::NonZeroUsize
+    };
+
+    #[test]
+    fn task_counts() {
+        let mut executor = global_executor();
+        const TASK_COUNT: usize = 1000;
+        (0..TASK_COUNT).for_each(|_| executor.spawn(async {thread::yield_now()}).unwrap());
+        let count = task_active_count();
+        println!("active task count = {}", count);
+        assert!(count >= 0);
+        assert!(task_spawned_count() >= TASK_COUNT as u64);
+        loop {
+            let count = task_active_count();
+            if count == 0 {
+                break;
+            }
+            println!("active task count = {}", count);
+            thread::yield_now();
+        }
+        assert!(task_completed_count() >= TASK_COUNT as u64);
+        (0..TASK_COUNT).for_each(|i| executor.spawn(async move {panic!(format!("BOOM #{}", i))}).unwrap());
+        loop {
+            let count = task_panic_count();
+            if count >= TASK_COUNT as u64 {
+                break;
+            }
+            println!("panic task count = {}", count);
+            thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn thread_pool_sizes() {
+        let count = total_thread_count();
+        const SIZE: usize = 100;
+        let executor = ExecutorBuilder::new(ExecutorId::generate())
+            .set_pool_size(NonZeroUsize::new(SIZE).unwrap())
+            .register().unwrap();
+        loop {
+            // because tests are run in parallel and because of the asyn nature, other tests may be creating Executors
+            if total_thread_count() >= count + SIZE {
+                break;
+            }
+            println!("total_thread_count() = {} ... waiting for at least {}", total_thread_count(), count + SIZE)
+        }
+    }
+
 }

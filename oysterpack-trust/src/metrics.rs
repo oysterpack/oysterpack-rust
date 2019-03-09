@@ -156,10 +156,7 @@ impl CounterBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -198,10 +195,7 @@ impl IntCounterBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -246,10 +240,7 @@ impl CounterVecBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -300,10 +291,7 @@ impl IntCounterVecBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -348,10 +336,7 @@ impl GaugeBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -390,10 +375,7 @@ impl IntGaugeBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -438,10 +420,7 @@ impl IntGaugeVecBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -492,10 +471,7 @@ impl GaugeVecBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -556,10 +532,7 @@ impl HistogramBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -629,10 +602,7 @@ impl HistogramVecBuilder {
 
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
-        let mut labels = self
-            .const_labels
-            .take()
-            .unwrap_or_else(HashMap::default);
+        let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -1081,10 +1051,7 @@ impl MetricRegistry {
     }
 
     /// Returns collectors that contain metric descriptors for the specified Desc IDs
-    pub fn collectors_for_desc_ids(
-        &self,
-        desc_ids: &[DescId],
-    ) -> HashMap<DescId, ArcCollector> {
+    pub fn collectors_for_desc_ids(&self, desc_ids: &[DescId]) -> HashMap<DescId, ArcCollector> {
         let map = HashMap::with_capacity_and_hasher(desc_ids.len(), Default::default());
         desc_ids.iter().fold(map, |mut map, desc_id| {
             if let Some(collector) = self.collectors_for_desc_id(*desc_id) {

@@ -67,6 +67,7 @@ use futures::{
     future::{Future, FutureExt, FutureObj},
     task::{Spawn, SpawnError, SpawnExt},
 };
+use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
@@ -74,7 +75,6 @@ use parking_lot::RwLock;
 use prometheus::core::Collector;
 use serde::{Deserialize, Serialize};
 use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize};
-use hashbrown::HashMap;
 
 pub mod metrics;
 
@@ -98,27 +98,6 @@ pub fn executor(id: ExecutorId) -> Option<Executor> {
 /// - the thread pool size equals the number of CPU cores.
 pub fn global_executor() -> Executor {
     EXECUTOR_REGISTRY.global_executor()
-}
-
-/// Returns the total number of tasks spawned across all registered Executor(s)
-pub fn spawned_task_count() -> u64 {
-    EXECUTOR_REGISTRY.spawned_task_count()
-}
-
-/// Returns the total number of threads that have been started across all Executors
-/// - this is not the active count
-pub fn total_threads() -> usize {
-    let thread_pools = EXECUTOR_REGISTRY.thread_pools.read();
-    thread_pools
-        .values()
-        .map(Executor::thread_pool_size)
-        .sum::<usize>()
-        + EXECUTOR_REGISTRY.global_executor.thread_pool_size()
-}
-
-/// Returns the current thread pool sizes for the currently registered Executors
-pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
-    EXECUTOR_REGISTRY.executor_thread_pool_sizes()
 }
 
 /// Executor registry
@@ -178,7 +157,7 @@ impl ExecutorRegistry {
     }
 
     /// Returns the total number of spawned tasks across all registered Executor(s)
-    pub fn spawned_task_count(&self) -> u64 {
+    pub fn task_spawned_count(&self) -> u64 {
         let thread_pools = self.thread_pools.read();
         thread_pools.values().fold(
             self.global_executor.task_spawned_count(),
@@ -186,8 +165,18 @@ impl ExecutorRegistry {
         )
     }
 
+    /// Returns the total number of active tasks across all registered Executor(s)
+    pub fn task_active_count(&self) -> u64 {
+        let thread_pools = self.thread_pools.read();
+        thread_pools
+            .values()
+            .fold(self.global_executor.task_active_count(), |sum, executor| {
+                sum + executor.task_active_count()
+            })
+    }
+
     /// Returns the total number of completed tasks across all registered Executor(s)
-    pub fn completed_task_count(&self) -> u64 {
+    pub fn task_completed_count(&self) -> u64 {
         let thread_pools = self.thread_pools.read();
         thread_pools.values().fold(
             self.global_executor.task_completed_count(),
@@ -195,14 +184,13 @@ impl ExecutorRegistry {
         )
     }
 
-    /// Returns the total number of active tasks across all registered Executor(s)
-    pub fn active_task_count(&self) -> u64 {
+    /// Returns the number of spawned tasks that have panicked across all registered Executor(s)
+    pub fn task_panic_count(&self) -> u64 {
         let thread_pools = self.thread_pools.read();
-        thread_pools
-            .values()
-            .fold(self.global_executor.task_active_count(), |sum, executor| {
-                sum + executor.task_active_count()
-            })
+        thread_pools.values().fold(
+            self.global_executor.task_panic_count(),
+            |sum, executor| sum + executor.task_panic_count(),
+        )
     }
 
     /// Returns the current thread pool sizes for the currently registered Executors
@@ -232,10 +220,13 @@ impl Default for ExecutorRegistry {
 impl fmt::Debug for ExecutorRegistry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ExecutorRegistry")
-            .field("spawned_task_count", &self.spawned_task_count())
-            .field("completed_task_count", &self.completed_task_count())
-            .field("active_task_count", &self.active_task_count())
-            .field("executor_thread_pool_sizes", &self.executor_thread_pool_sizes())
+            .field("spawned_task_count", &self.task_spawned_count())
+            .field("completed_task_count", &self.task_completed_count())
+            .field("active_task_count", &self.task_active_count())
+            .field(
+                "executor_thread_pool_sizes",
+                &self.executor_thread_pool_sizes(),
+            )
             .finish()
     }
 }
@@ -360,7 +351,7 @@ impl Executor {
     }
 
     /// Returns the number of spawned tasks that have panicked.
-    /// - if the Executor is configured to not catch unwinding panics, then None is returned
+    /// - if the Executor is configured to not catch unwinding panics, then 0 is returned
     pub fn task_panic_count(&self) -> u64 {
         self.task_panic_counter.get() as u64
     }
@@ -657,7 +648,7 @@ mod tests {
             .sum();
         // THEN: it should match the count from `spawned_task_count()`
         // there may be a race condition when tests are run in parallel that are spawning tasks
-        assert!(total_spawned_task_count <= spawned_task_count());
+        assert!(total_spawned_task_count <= task_spawned_count());
 
         // THEN: all tasks should be completed
         while executor.task_active_count() != 0 {
@@ -855,7 +846,8 @@ mod tests {
                     await!(task_handle);
                 },
             )
-        })).is_err());
+        }))
+        .is_err());
     }
 
     // wrapping a future in a CatchUnwind halts the unwinding in the future that panicked

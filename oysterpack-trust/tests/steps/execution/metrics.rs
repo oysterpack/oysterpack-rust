@@ -166,7 +166,7 @@ steps!(World => {
 
     // Scenario: [01D41GJ0WRB49AX2NX4T09BKA8] Verify total Executor threads match against the metric registry
     then regex "01D41GJ0WRB49AX2NX4T09BKA8" | _world, _matches, _step | {
-        let thread_count = total_threads();
+        let thread_count = total_thread_count();
         let mfs = metrics::registry().gather_for_metric_ids(&[THREADS_POOL_SIZE_GAUGE_METRIC_ID]);
         let count: u64 = mfs.first()
             .unwrap()
