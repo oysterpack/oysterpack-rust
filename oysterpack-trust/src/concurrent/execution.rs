@@ -187,10 +187,11 @@ impl ExecutorRegistry {
     /// Returns the number of spawned tasks that have panicked across all registered Executor(s)
     pub fn task_panic_count(&self) -> u64 {
         let thread_pools = self.thread_pools.read();
-        thread_pools.values().fold(
-            self.global_executor.task_panic_count(),
-            |sum, executor| sum + executor.task_panic_count(),
-        )
+        thread_pools
+            .values()
+            .fold(self.global_executor.task_panic_count(), |sum, executor| {
+                sum + executor.task_panic_count()
+            })
     }
 
     /// Returns the current thread pool sizes for the currently registered Executors

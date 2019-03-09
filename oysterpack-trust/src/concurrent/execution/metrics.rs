@@ -16,12 +16,10 @@
 
 //! execution related metrics
 
+use super::{Executor, ExecutorId, EXECUTOR_REGISTRY};
 use crate::metrics;
 use lazy_static::lazy_static;
 use prometheus::core::Collector;
-use super::{
-    Executor, ExecutorId, EXECUTOR_REGISTRY
-};
 
 lazy_static! {
 
@@ -130,36 +128,28 @@ pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
     EXECUTOR_REGISTRY.executor_thread_pool_sizes()
 }
 
-
 #[cfg(test)]
 mod test {
 
     use super::*;
     use crate::concurrent::execution::*;
-    use std::{
-        thread,
-        num::NonZeroUsize
-    };
+    use std::{num::NonZeroUsize, thread};
 
     #[test]
     fn task_counts() {
         let mut executor = global_executor();
         const TASK_COUNT: usize = 1000;
-        (0..TASK_COUNT).for_each(|_| executor.spawn(async {thread::yield_now()}).unwrap());
+        (0..TASK_COUNT).for_each(|_| executor.spawn(async { thread::yield_now() }).unwrap());
         let count = task_active_count();
         println!("active task count = {}", count);
         assert!(count >= 0);
         assert!(task_spawned_count() >= TASK_COUNT as u64);
-        loop {
-            let count = task_active_count();
-            if count == 0 {
-                break;
-            }
-            println!("active task count = {}", count);
-            thread::yield_now();
-        }
         assert!(task_completed_count() >= TASK_COUNT as u64);
-        (0..TASK_COUNT).for_each(|i| executor.spawn(async move {panic!(format!("BOOM #{}", i))}).unwrap());
+        (0..TASK_COUNT).for_each(|i| {
+            executor
+                .spawn(async move { panic!(format!("BOOM #{}", i)) })
+                .unwrap()
+        });
         loop {
             let count = task_panic_count();
             if count >= TASK_COUNT as u64 {
@@ -176,13 +166,18 @@ mod test {
         const SIZE: usize = 100;
         let executor = ExecutorBuilder::new(ExecutorId::generate())
             .set_pool_size(NonZeroUsize::new(SIZE).unwrap())
-            .register().unwrap();
+            .register()
+            .unwrap();
         loop {
             // because tests are run in parallel and because of the asyn nature, other tests may be creating Executors
             if total_thread_count() >= count + SIZE {
                 break;
             }
-            println!("total_thread_count() = {} ... waiting for at least {}", total_thread_count(), count + SIZE)
+            println!(
+                "total_thread_count() = {} ... waiting for at least {}",
+                total_thread_count(),
+                count + SIZE
+            )
         }
     }
 
