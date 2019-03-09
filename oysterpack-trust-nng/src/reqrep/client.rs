@@ -43,7 +43,10 @@ use oysterpack_trust::concurrent::{
     execution::Executor,
     messaging::reqrep::{self, ReqRep, ReqRepId},
 };
-use crate::opnng::{self, config::SocketConfigError};
+use crate::config::{
+    self,
+    SocketConfigError
+};
 use failure::Fail;
 use futures::{
     channel::{mpsc, oneshot},
@@ -467,7 +470,7 @@ pub struct SocketConfig {
     reconnect_min_time: Option<Duration>,
     reconnect_max_time: Option<Duration>,
     resend_time: Option<Duration>,
-    socket_config: Option<opnng::config::SocketConfig>,
+    socket_config: Option<config::SocketConfig>,
 }
 
 impl SocketConfig {
@@ -507,7 +510,7 @@ impl SocketConfig {
     }
 
     /// Socket settings
-    pub fn socket_config(&self) -> Option<&opnng::config::SocketConfig> {
+    pub fn socket_config(&self) -> Option<&config::SocketConfig> {
         self.socket_config.as_ref()
     }
 
@@ -566,7 +569,7 @@ impl SocketConfig {
     }
 
     /// Apply socket settings
-    pub fn set_socket_config(self, config: opnng::config::SocketConfig) -> Self {
+    pub fn set_socket_config(self, config: config::SocketConfig) -> Self {
         let mut this = self;
         this.socket_config = Some(config);
         this
@@ -790,7 +793,7 @@ pub enum DialerConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::opnng::{
+    use crate::{
         config::{SocketConfig, SocketConfigError},
         reqrep::server
     };

@@ -38,7 +38,8 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-pub mod opnng;
+pub mod config;
+pub mod reqrep;
 
 #[cfg(test)]
 fn log_config() -> oysterpack_log::LogConfig {

@@ -24,8 +24,7 @@ extern crate criterion;
 
 use criterion::Criterion;
 
-use oysterpack_trust_nng::opnng::{
-    self,
+use oysterpack_trust_nng::{
     reqrep::{client::*, server},
 };
 use oysterpack_trust::{

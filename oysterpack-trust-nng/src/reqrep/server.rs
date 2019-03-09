@@ -68,7 +68,7 @@ use oysterpack_trust::{
     },
     metrics
 };
-use crate::opnng::config::{SocketConfig, SocketConfigError};
+use crate::config::{SocketConfig, SocketConfigError};
 use failure::Fail;
 use futures::{future::FutureExt, prelude::*, sink::SinkExt, stream::StreamExt, task::SpawnExt};
 use hashbrown::HashMap;
