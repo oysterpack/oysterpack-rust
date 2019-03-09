@@ -76,19 +76,17 @@ steps!(World => {
             thread::sleep(Duration::from_millis(1));
             println!("waiting for tasks to complete ...");
         }
-        assert_eq!(completed_count, executor.task_completed_count());
     };
 
     // Scenario: [01D4P2Z3JWR05CND2N96TMBKT2] Use the global Executor from 10 different threads
     then regex "01D4P2Z3JWR05CND2N96TMBKT2" | _world, _matches, _step | {
-        let id = ExecutorId::generate();
-        let executor = ExecutorBuilder::new(id).register().unwrap();
+        let executor = global_executor();
         let completed_count = executor.task_completed_count() + 100;
 
         for _ in 0..10 {
             thread::spawn(move || {
                 for _ in 0..10 {
-                    let mut executor = execution::executor(id).unwrap();
+                    let mut executor = global_executor();
                     executor.spawn(async {}).unwrap();
                 }
             });
@@ -98,7 +96,6 @@ steps!(World => {
             thread::sleep(Duration::from_millis(1));
             println!("waiting for tasks to complete ...");
         }
-        assert_eq!(completed_count, executor.task_completed_count());
     };
 
 });
