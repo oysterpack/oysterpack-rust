@@ -111,9 +111,8 @@ use oysterpack_uid::{ulid_u128_into_string, ULID};
 use parking_lot::RwLock;
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, HashMap, HashSet},
     fmt,
     hash::{BuildHasher, BuildHasherDefault},
     io::Write,
@@ -142,7 +141,7 @@ pub fn registry() -> &'static MetricRegistry {
 pub struct CounterBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl CounterBuilder {
@@ -160,7 +159,7 @@ impl CounterBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -184,7 +183,7 @@ impl CounterBuilder {
 pub struct IntCounterBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl IntCounterBuilder {
@@ -202,7 +201,7 @@ impl IntCounterBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -227,7 +226,7 @@ pub struct CounterVecBuilder {
     metric_id: MetricId,
     help: String,
     variable_label_ids: Vec<LabelId>,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl CounterVecBuilder {
@@ -250,7 +249,7 @@ impl CounterVecBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -281,7 +280,7 @@ pub struct IntCounterVecBuilder {
     metric_id: MetricId,
     help: String,
     variable_label_ids: Vec<LabelId>,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl IntCounterVecBuilder {
@@ -304,7 +303,7 @@ impl IntCounterVecBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -334,7 +333,7 @@ impl IntCounterVecBuilder {
 pub struct GaugeBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl GaugeBuilder {
@@ -352,7 +351,7 @@ impl GaugeBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -376,7 +375,7 @@ impl GaugeBuilder {
 pub struct IntGaugeBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl IntGaugeBuilder {
@@ -394,7 +393,7 @@ impl IntGaugeBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -419,7 +418,7 @@ pub struct IntGaugeVecBuilder {
     metric_id: MetricId,
     help: String,
     variable_label_ids: Vec<LabelId>,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl IntGaugeVecBuilder {
@@ -442,7 +441,7 @@ impl IntGaugeVecBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -473,7 +472,7 @@ pub struct GaugeVecBuilder {
     metric_id: MetricId,
     help: String,
     variable_label_ids: Vec<LabelId>,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
 }
 
 impl GaugeVecBuilder {
@@ -496,7 +495,7 @@ impl GaugeVecBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -526,7 +525,7 @@ impl GaugeVecBuilder {
 pub struct HistogramBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
     buckets: Vec<f64>,
 }
 
@@ -560,7 +559,7 @@ impl HistogramBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -590,7 +589,7 @@ impl HistogramBuilder {
 pub struct HistogramVecBuilder {
     metric_id: MetricId,
     help: String,
-    const_labels: Option<fnv::FnvHashMap<LabelId, String>>,
+    const_labels: Option<HashMap<LabelId, String>>,
     buckets: Vec<f64>,
     variable_label_ids: Vec<LabelId>,
 }
@@ -633,7 +632,7 @@ impl HistogramVecBuilder {
         let mut labels = self
             .const_labels
             .take()
-            .unwrap_or_else(fnv::FnvHashMap::default);
+            .unwrap_or_else(HashMap::default);
         labels.insert(id, value.as_ref().to_string());
         self.const_labels = Some(labels);
         self
@@ -1023,7 +1022,7 @@ impl MetricRegistry {
         let metric_names = metric_ids
             .iter()
             .map(MetricId::name)
-            .collect::<fnv::FnvHashSet<_>>();
+            .collect::<HashSet<_>>();
         self.find_descs(|desc| metric_names.contains(&desc.fq_name))
     }
 
@@ -1064,8 +1063,8 @@ impl MetricRegistry {
     pub fn collectors_for_metric_ids(
         &self,
         metric_ids: &[MetricId],
-    ) -> fnv::FnvHashMap<MetricId, Vec<ArcCollector>> {
-        let map = fnv::FnvHashMap::with_capacity_and_hasher(metric_ids.len(), Default::default());
+    ) -> HashMap<MetricId, Vec<ArcCollector>> {
+        let map = HashMap::with_capacity_and_hasher(metric_ids.len(), Default::default());
         metric_ids.iter().fold(map, |mut map, metric_id| {
             let collectors = self.collectors_for_metric_id(*metric_id);
             if !collectors.is_empty() {
@@ -1085,8 +1084,8 @@ impl MetricRegistry {
     pub fn collectors_for_desc_ids(
         &self,
         desc_ids: &[DescId],
-    ) -> fnv::FnvHashMap<DescId, ArcCollector> {
-        let map = fnv::FnvHashMap::with_capacity_and_hasher(desc_ids.len(), Default::default());
+    ) -> HashMap<DescId, ArcCollector> {
+        let map = HashMap::with_capacity_and_hasher(desc_ids.len(), Default::default());
         desc_ids.iter().fold(map, |mut map, desc_id| {
             if let Some(collector) = self.collectors_for_desc_id(*desc_id) {
                 map.insert(*desc_id, collector);

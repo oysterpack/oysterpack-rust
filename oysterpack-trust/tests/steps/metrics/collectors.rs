@@ -23,7 +23,9 @@ use prometheus::{
     proto::MetricFamily,
     IntCounter, IntGauge,
 };
-use std::collections::HashSet;
+use std::collections::{
+    HashSet, HashMap
+};
 
 steps!(World => {
     // Feature: [01D3JAHR4Z02XTJGTNE4D63VRT] Any `prometheus::core::Collector` can be registered
@@ -248,8 +250,8 @@ pub struct World {
     counter: IntCounter,
     gauge: IntGauge,
     collectors: Vec<metrics::ArcCollector>,
-    collectors_for_metric_ids: fnv::FnvHashMap<metrics::MetricId, Vec<metrics::ArcCollector>>,
-    collectors_for_desc_ids: fnv::FnvHashMap<metrics::DescId, metrics::ArcCollector>,
+    collectors_for_metric_ids: HashMap<metrics::MetricId, Vec<metrics::ArcCollector>>,
+    collectors_for_desc_ids: HashMap<metrics::DescId, metrics::ArcCollector>,
 }
 
 impl World {
@@ -301,8 +303,8 @@ impl Default for World {
                 .build()
                 .unwrap(),
             collectors: Vec::new(),
-            collectors_for_metric_ids: fnv::FnvHashMap::default(),
-            collectors_for_desc_ids: fnv::FnvHashMap::default(),
+            collectors_for_metric_ids: HashMap::default(),
+            collectors_for_desc_ids: HashMap::default(),
         }
     }
 }
