@@ -74,11 +74,12 @@ use oysterpack_uid::ULID;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe};
+use hashbrown::HashMap;
 
 lazy_static! {
 
     /// Global Executor registry
-    static ref SERVER_HANDLES: RwLock<fnv::FnvHashMap<ULID, ServerHandle>> = RwLock::new(fnv::FnvHashMap::default());
+    static ref SERVER_HANDLES: RwLock<HashMap<ULID, ServerHandle>> = RwLock::new(HashMap::new());
 
     /// the metric is incremented on nng::PipeEvent::AddPost and decremented on nng::PipeEvent::RemovePost
     static ref ACTIVE_CONN_COUNT: prometheus::IntGaugeVec = metrics::registry().register_int_gauge_vec(

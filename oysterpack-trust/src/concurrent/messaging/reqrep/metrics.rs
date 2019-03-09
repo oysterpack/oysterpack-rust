@@ -19,9 +19,10 @@
 use super::{ReqRepId, ReqRepServiceMetrics};
 use oysterpack_uid::ULID;
 use parking_lot::RwLock;
+use hashbrown::HashMap;
 
 lazy_static::lazy_static! {
-    pub(super) static ref REQ_REP_METRICS: RwLock<fnv::FnvHashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(fnv::FnvHashMap::default());
+    pub(super) static ref REQ_REP_METRICS: RwLock<HashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(HashMap::new());
 
     pub(crate) static ref REQ_REP_SERVICE_INSTANCE_COUNT: prometheus::IntGaugeVec = crate::metrics::registry().register_int_gauge_vec(
         SERVICE_INSTANCE_COUNT_METRIC_ID,
@@ -99,12 +100,9 @@ pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
 }
 
 /// return the ReqRep backend service count
-pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+pub fn service_instance_counts() -> HashMap<ReqRepId, u64> {
     let reqrep_metrics = REQ_REP_METRICS.read();
-    let counts = fnv::FnvHashMap::with_capacity_and_hasher(
-        reqrep_metrics.len(),
-        fnv::FnvBuildHasher::default(),
-    );
+    let counts = HashMap::with_capacity(reqrep_metrics.len());
     reqrep_metrics.iter().fold(counts, |mut counts, (k,v)| {
         counts.insert(k.clone(), v.service_count.get() as u64);
         counts
@@ -117,7 +115,7 @@ pub fn request_send_count(reqrep_id: ReqRepId) -> u64 {
 }
 
 /// return the ReqRep backend service count
-pub fn request_send_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+pub fn request_send_counts() -> HashMap<ReqRepId, u64> {
     counts(REQREP_SEND_COUNTER_METRIC_ID)
 }
 
@@ -127,7 +125,7 @@ pub fn processor_panic_count(reqrep_id: ReqRepId) -> u64 {
 }
 
 /// return the ReqRep backend service count
-pub fn processor_panic_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
+pub fn processor_panic_counts() -> HashMap<ReqRepId, u64> {
     counts(PROCESSOR_PANIC_COUNTER_METRIC_ID)
 }
 
@@ -151,7 +149,7 @@ fn count(reqrep_id: ReqRepId, metric_id: crate::metrics::MetricId) -> u64 {
         .unwrap_or(0)
 }
 
-fn counts(metric_id: crate::metrics::MetricId) -> fnv::FnvHashMap<ReqRepId, u64> {
+fn counts(metric_id: crate::metrics::MetricId) -> HashMap<ReqRepId, u64> {
     crate::metrics::registry()
         .gather_for_desc_names(&[metric_id.name().as_str()])
         .first()
@@ -159,10 +157,7 @@ fn counts(metric_id: crate::metrics::MetricId) -> fnv::FnvHashMap<ReqRepId, u64>
             let label_name = REQREPID_LABEL_ID.name();
             let label_name = label_name.as_str();
             let metrics = mf.get_metric();
-            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
-                metrics.len(),
-                fnv::FnvBuildHasher::default(),
-            );
+            let counts = HashMap::with_capacity(metrics.len());
             metrics.iter().fold(counts, |mut counts, metric| {
                 let reqrep_id = metric
                     .get_label()
@@ -182,7 +177,7 @@ fn counts(metric_id: crate::metrics::MetricId) -> fnv::FnvHashMap<ReqRepId, u64>
                 counts
             })
         })
-        .unwrap_or_else(fnv::FnvHashMap::default)
+        .unwrap_or_else(HashMap::new)
 }
 
 /// returns the histogram timer metric corresponding to the ReqRepId

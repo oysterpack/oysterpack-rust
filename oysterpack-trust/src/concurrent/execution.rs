@@ -74,70 +74,57 @@ use parking_lot::RwLock;
 use prometheus::core::Collector;
 use serde::{Deserialize, Serialize};
 use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize};
+use hashbrown::HashMap;
 
 pub mod metrics;
 
 lazy_static! {
     /// Global Executor registry
-    static ref EXECUTOR_REGISTRY: RwLock<ExecutorRegistry> = RwLock::new(ExecutorRegistry::default());
+    static ref EXECUTOR_REGISTRY: ExecutorRegistry = ExecutorRegistry::default();
 }
 
 /// Returns the registered executor IDs
 /// - the global executor ID is not included
 pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
-    let executors = EXECUTOR_REGISTRY.read();
-    executors.thread_pools.keys().cloned().collect()
+    EXECUTOR_REGISTRY.executor_ids()
 }
 
 /// returns the Executor for the specified ID
 pub fn executor(id: ExecutorId) -> Option<Executor> {
-    let executors = EXECUTOR_REGISTRY.read();
-    match executors.thread_pools.get(&id) {
-        Some(executor) => Some(executor.clone()),
-        None => {
-            if id == Executor::GLOBAL_EXECUTOR_ID {
-                return Some(executors.global_executor.clone());
-            }
-            None
-        }
-    }
+    EXECUTOR_REGISTRY.executor(id)
 }
 
 /// Returns the global executor
 /// - the thread pool size equals the number of CPU cores.
 pub fn global_executor() -> Executor {
-    let executors = EXECUTOR_REGISTRY.read();
-    executors.global_executor.clone()
+    EXECUTOR_REGISTRY.global_executor()
 }
 
 /// Returns the total number of tasks spawned across all registered Executor(s)
 pub fn spawned_task_count() -> u64 {
-    let executors = EXECUTOR_REGISTRY.read();
-    executors.spawned_task_count()
+    EXECUTOR_REGISTRY.spawned_task_count()
 }
 
 /// Returns the total number of threads that have been started across all Executors
 /// - this is not the active count
 pub fn total_threads() -> usize {
-    let registry = EXECUTOR_REGISTRY.read();
-    registry
-        .thread_pools
+    let thread_pools = EXECUTOR_REGISTRY.thread_pools.read();
+    thread_pools
         .values()
         .map(Executor::thread_pool_size)
         .sum::<usize>()
-        + registry.global_executor.thread_pool_size()
+        + EXECUTOR_REGISTRY.global_executor.thread_pool_size()
 }
 
 /// Returns the current thread pool sizes for the currently registered Executors
 pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
-    let executors = EXECUTOR_REGISTRY.read();
-    executors.executor_thread_pool_sizes()
+    EXECUTOR_REGISTRY.executor_thread_pool_sizes()
 }
 
 /// Executor registry
 pub struct ExecutorRegistry {
     global_executor: Executor,
-    thread_pools: fnv::FnvHashMap<ExecutorId, Executor>,
+    thread_pools: RwLock<HashMap<ExecutorId, Executor>>,
 }
 
 impl ExecutorRegistry {
@@ -145,22 +132,24 @@ impl ExecutorRegistry {
     /// life of the app.
     /// - returns false is an executor with the same ID is already registered
     fn register(
-        &mut self,
+        &self,
         id: ExecutorId,
         builder: &mut ThreadPoolBuilder,
         stack_size: Option<usize>,
     ) -> Result<Executor, ExecutorRegistryError> {
-        if self.thread_pools.contains_key(&id) || id == Executor::GLOBAL_EXECUTOR_ID {
+        let mut thread_pools = self.thread_pools.write();
+        if thread_pools.contains_key(&id) || id == Executor::GLOBAL_EXECUTOR_ID {
             return Err(ExecutorRegistryError::ExecutorAlreadyRegistered(id));
         }
         let executor = Executor::new(id, builder, stack_size)?;
-        self.thread_pools.insert(id, executor.clone());
+        thread_pools.insert(id, executor.clone());
         Ok(executor)
     }
 
     /// Returns the registered executor IDs
     pub fn executor_ids(&self) -> smallvec::SmallVec<[ExecutorId; 16]> {
-        let keys = self.thread_pools.keys();
+        let thread_pools = self.thread_pools.read();
+        let keys = thread_pools.keys();
         let mut ids = smallvec::SmallVec::with_capacity(keys.len());
         for key in keys {
             ids.push(*key);
@@ -170,7 +159,8 @@ impl ExecutorRegistry {
 
     /// returns the Executor for the specified ID
     pub fn executor(&self, id: ExecutorId) -> Option<Executor> {
-        match self.thread_pools.get(&id) {
+        let thread_pools = self.thread_pools.read();
+        match thread_pools.get(&id) {
             Some(executor) => Some(executor.clone()),
             None => {
                 if id == Executor::GLOBAL_EXECUTOR_ID {
@@ -189,7 +179,8 @@ impl ExecutorRegistry {
 
     /// Returns the total number of spawned tasks across all registered Executor(s)
     pub fn spawned_task_count(&self) -> u64 {
-        self.thread_pools.values().fold(
+        let thread_pools = self.thread_pools.read();
+        thread_pools.values().fold(
             self.global_executor.task_spawned_count(),
             |sum, executor| sum + executor.task_spawned_count(),
         )
@@ -197,7 +188,8 @@ impl ExecutorRegistry {
 
     /// Returns the total number of completed tasks across all registered Executor(s)
     pub fn completed_task_count(&self) -> u64 {
-        self.thread_pools.values().fold(
+        let thread_pools = self.thread_pools.read();
+        thread_pools.values().fold(
             self.global_executor.task_completed_count(),
             |sum, executor| sum + executor.task_completed_count(),
         )
@@ -205,7 +197,8 @@ impl ExecutorRegistry {
 
     /// Returns the total number of active tasks across all registered Executor(s)
     pub fn active_task_count(&self) -> u64 {
-        self.thread_pools
+        let thread_pools = self.thread_pools.read();
+        thread_pools
             .values()
             .fold(self.global_executor.task_active_count(), |sum, executor| {
                 sum + executor.task_active_count()
@@ -214,7 +207,8 @@ impl ExecutorRegistry {
 
     /// Returns the current thread pool sizes for the currently registered Executors
     pub fn executor_thread_pool_sizes(&self) -> Vec<(ExecutorId, usize)> {
-        self.thread_pools
+        let thread_pools = self.thread_pools.read();
+        thread_pools
             .iter()
             .map(|(executor_id, executor)| (*executor_id, executor.thread_pool_size()))
             .collect()
@@ -230,18 +224,19 @@ impl Default for ExecutorRegistry {
 
         Self {
             global_executor: default_executor(),
-            thread_pools: fnv::FnvHashMap::default(),
+            thread_pools: RwLock::new(HashMap::new()),
         }
     }
 }
 
 impl fmt::Debug for ExecutorRegistry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Executors(thread pool count = {})",
-            self.thread_pools.len()
-        )
+        f.debug_struct("ExecutorRegistry")
+            .field("spawned_task_count", &self.spawned_task_count())
+            .field("completed_task_count", &self.completed_task_count())
+            .field("active_task_count", &self.active_task_count())
+            .field("executor_thread_pool_sizes", &self.executor_thread_pool_sizes())
+            .finish()
     }
 }
 
@@ -533,9 +528,8 @@ impl ExecutorBuilder {
     /// An executor can only be registered once, and once it is registered, it stays registered for
     /// the life of the app.
     pub fn register(self) -> Result<Executor, ExecutorRegistryError> {
-        let mut executors = EXECUTOR_REGISTRY.write();
         let mut threadpool_builder = self.builder();
-        executors.register(
+        EXECUTOR_REGISTRY.register(
             self.id,
             &mut threadpool_builder,
             self.stack_size.as_ref().map(|size| size.get()),
@@ -678,9 +672,7 @@ mod tests {
     #[test]
     fn executor_spawn_await() {
         configure_logging();
-
-        let executors = EXECUTOR_REGISTRY.read();
-        let mut executor = executors.global_executor();
+        let mut executor = super::global_executor();
         let result = executor.run(
             async {
                 info!("spawned task says hello");
@@ -749,8 +741,7 @@ mod tests {
         let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
             .map(|i| {
                 let handle = thread::spawn(move || {
-                    let executors = EXECUTOR_REGISTRY.read();
-                    let mut executor = executors.global_executor();
+                    let mut executor = super::global_executor();
                     executor
                         .spawn(async move { info!("{:?} : task #{}", thread::current().id(), i) });
                     let task_handle = executor
@@ -839,8 +830,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTOR_REGISTRY.read();
-            let mut executor = executors.global_executor();
+            let mut executor = super::global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
                 .unwrap();
@@ -853,40 +843,31 @@ mod tests {
 
     // the panic is bubbled up to the current thread when awaiting on a task that panics
     #[test]
-    #[should_panic]
     fn await_spawned_panic_task() {
         configure_logging();
-
-        let result = {
-            let executors = EXECUTOR_REGISTRY.read();
-            let mut executor = executors.global_executor();
-            let task_handle = executor
-                .spawn_with_handle(async { panic!("BOOM!!") })
-                .unwrap();
-            catch_unwind(AssertUnwindSafe(|| {
-                executor.run(
-                    async {
-                        await!(task_handle);
-                    },
-                )
-            }))
-        };
-        if let Err(err) = result {
-            panic!(err);
-        }
+        let mut executor = super::global_executor();
+        let task_handle = executor
+            .spawn_with_handle(async { panic!("BOOM!!") })
+            .unwrap();
+        assert!(catch_unwind(AssertUnwindSafe(|| {
+            executor.run(
+                async {
+                    await!(task_handle);
+                },
+            )
+        })).is_err());
     }
 
-    // wrapping a future in a CatchUnwind halts the unwinding to the future
+    // wrapping a future in a CatchUnwind halts the unwinding in the future that panicked
     #[test]
     fn spawn_panicking_tasks_with_catch_unwind_protection() {
         configure_logging();
 
-        let executors = EXECUTOR_REGISTRY.read();
-        let mut executor = executors.global_executor();
+        let mut executor = super::global_executor();
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];
         for i in 0..panic_task_count {
-            let future = async { unimplemented!() };
+            let future = async { panic!("BOOM !!!") };
             let handle = executor.spawn_with_handle(future);
             handles.push(handle.unwrap());
         }
@@ -898,9 +879,8 @@ mod tests {
             async move {
                 for handle in handles {
                     let handle = AssertUnwindSafe(handle);
-                    await!(handle.catch_unwind());
+                    assert!(await!(handle.catch_unwind()).is_err());
                 }
-                info!("this should hang ...");
             },
         );
     }

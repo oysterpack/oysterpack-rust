@@ -58,13 +58,14 @@ use oysterpack_log::*;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe, sync::Arc, time::Duration};
+use hashbrown::HashMap;
 
 lazy_static! {
      /// Global Client contexts
-    static ref CLIENT_CONTEXTS: RwLock<fnv::FnvHashMap<ReqRepId, Arc<NngClientContext>>> = RwLock::new(fnv::FnvHashMap::default());
+    static ref CLIENT_CONTEXTS: RwLock<HashMap<ReqRepId, Arc<NngClientContext>>> = RwLock::new(HashMap::new());
 
     /// Global ReqRep nng client registry
-    static ref CLIENTS: RwLock<fnv::FnvHashMap<ReqRepId, Client>> = RwLock::new(fnv::FnvHashMap::default());
+    static ref CLIENTS: RwLock<HashMap<ReqRepId, Client>> = RwLock::new(HashMap::new());
 }
 
 /// Client type alias
