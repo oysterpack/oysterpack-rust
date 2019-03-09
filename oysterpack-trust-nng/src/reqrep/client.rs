@@ -349,7 +349,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
         async move {
             let (borrow_tx, borrow_rx) = oneshot::channel();
             if await!(borrow.send(borrow_tx)).is_err() {
-                return Err(RequestError::NngAioContextPoolChannelDisconnected);
+                return Err(RequestError::AioContextPoolChannelDisconnected);
             }
 
             let (tx, rx) = oneshot::channel();
@@ -366,7 +366,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
                     },
                     Err(err) => Err(RequestError::AioContextChannelDisconnected(err)),
                 },
-                Err(_) => Err(RequestError::NngAioContextPoolChannelDisconnected),
+                Err(_) => Err(RequestError::AioContextPoolChannelDisconnected),
             }
         }
             .boxed()
@@ -436,10 +436,11 @@ pub enum NngClientError {
 /// Request related errors
 #[derive(Debug, Fail, Clone)]
 pub enum RequestError {
-    /// The nng Aio Context pool channel is disconnected
+    /// The nng Aio Context pool channel is disconnected. This is the pool that the client uses to
+    /// borrow a sender channel to send the request to an Aio worker.
     #[fail(display = "The nng Aio Context pool channel is disconnected.")]
-    NngAioContextPoolChannelDisconnected,
-    /// The nng Aio Context channel is disconnected
+    AioContextPoolChannelDisconnected,
+    /// The nng Aio Context channel is disconnected. The Aio Context represents the Aio worker.
     #[fail(display = "The nng Aio Context channel is disconnected: {}", _0)]
     AioContextChannelDisconnected(#[cause] futures::channel::mpsc::SendError),
     /// Reply channel closed
@@ -606,12 +607,7 @@ impl DialerConfig {
 
     /// Start a socket dialer.
     ///
-    /// Normally, the first attempt to connect to the dialer's address is done synchronously, including
-    /// any necessary name resolution. As a result, a failure, such as if the connection is refused,
-    /// will be returned immediately, and no further action will be taken.
-    ///
-    /// However, if nonblocking is specified, then the connection attempt is made asynchronously.
-    ///
+    /// Connection attempt is made asynchronously.
     /// Furthermore, if the connection was closed for a synchronously dialed connection, the dialer
     /// will still attempt to redial asynchronously.
     ///
@@ -699,21 +695,17 @@ impl DialerConfig {
 
     /// The minimum amount of time to wait before attempting to establish a connection after a previous
     /// attempt has failed.
-    ///
-    /// If set on a Socket, this value becomes the default for new dialers. Individual dialers can
-    /// then override the setting.
     pub fn reconnect_min_time(&self) -> Option<Duration> {
         self.reconnect_min_time
     }
 
-    ///The maximum amount of time to wait before attempting to establish a connection after a previous
+    /// The maximum amount of time to wait before attempting to establish a connection after a previous
     /// attempt has failed.
     ///
     /// If this is non-zero, then the time between successive connection attempts will start at the
     /// value of ReconnectMinTime, and grow exponentially, until it reaches this value. If this value
     /// is zero, then no exponential back-off between connection attempts is done, and each attempt
-    /// will wait the time specified by ReconnectMinTime. This can be set on a socket, but it can
-    /// also be overridden on an individual dialer.
+    /// will wait the time specified by ReconnectMinTime.
     pub fn reconnect_max_time(&self) -> Option<Duration> {
         self.reconnect_max_time
     }

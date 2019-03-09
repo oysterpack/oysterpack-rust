@@ -15,6 +15,7 @@
  */
 
 //! Provides support for the request/reply messaging protocol.
+//! - the service client interface is defined by [Client](client/type.Client.html)
 
 pub mod client;
 pub mod server;

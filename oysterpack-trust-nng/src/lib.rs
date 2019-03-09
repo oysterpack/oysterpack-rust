@@ -14,17 +14,11 @@
  *    limitations under the License.
  */
 
-//! **OysterPack Trust** provides a framework and foundation to build software that can be trusted
-//! for
-//! - stability
-//! - accuracy
-//! - performance
-//! - scalability
-//! - security
-//! - operations supportability
+//! **oysterpack-trust-nng** provides support for building robust scalable distributed applications
+//! leveraging proven [nng](https://nanomsg.github.io/nng/) messaging technology.
 //!
-//! **OysterPack Trust** follows [Reactive Systems](https://www.reactivemanifesto.org) design principles.
-//!
+//! nng provides the advanced messaging protocol-specific processing. Rust provides the power of
+//! fearless concurrency and futures for message processing.
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 #![deny(clippy::all)]

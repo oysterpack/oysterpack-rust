@@ -14,7 +14,16 @@
  *    limitations under the License.
  */
 
-//! This module provides support for concurrent and parallel programming.
+#![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
 
-pub mod execution;
-pub mod messaging;
+use cucumber_rust::*;
+
+mod steps;
+
+cucumber! {
+    features: "./features/reqrep/client",
+    world: steps::messaging::reqrep::client::World,
+    steps: &[
+        steps::messaging::reqrep::client::steps
+    ]
+}

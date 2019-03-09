@@ -14,7 +14,7 @@
  *    limitations under the License.
  */
 
-//! **OysterPack Trust** provides a framework and foundation to build software that can be trusted
+//! **oysterpack-trust** provides a framework and foundation to build software that can be trusted
 //! for
 //! - stability
 //! - accuracy
