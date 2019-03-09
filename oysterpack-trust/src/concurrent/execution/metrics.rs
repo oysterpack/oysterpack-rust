@@ -128,12 +128,14 @@ pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
     EXECUTOR_REGISTRY.executor_thread_pool_sizes()
 }
 
+#[allow(warnings)]
 #[cfg(test)]
 mod test {
 
     use super::*;
     use crate::concurrent::execution::*;
     use std::{num::NonZeroUsize, thread};
+    use futures::task::SpawnExt;
 
     #[test]
     fn task_counts() {

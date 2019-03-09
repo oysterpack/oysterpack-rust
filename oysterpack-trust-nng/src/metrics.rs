@@ -856,8 +856,6 @@ impl MetricRegistry {
         &self,
         collector: impl prometheus::core::Collector + 'static,
     ) -> prometheus::Result<ArcCollector> {
-        let mut metric_collectors = self.metric_collectors.write();
-
         let validate_help = || {
             let mut help_validation_err: Vec<_> = collector
                 .desc()
@@ -958,7 +956,10 @@ impl MetricRegistry {
 
         let collector = ArcCollector::new(collector);
         self.registry.register(Box::new(collector.clone()))?;
-        metric_collectors.push(collector.clone());
+        {
+            let mut metric_collectors = self.metric_collectors.write();
+            metric_collectors.push(collector.clone());
+        }
         Ok(collector)
     }
 

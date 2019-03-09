@@ -65,7 +65,7 @@ use failure::Fail;
 use futures::{
     executor::{ThreadPool, ThreadPoolBuilder},
     future::{Future, FutureExt, FutureObj},
-    task::{Spawn, SpawnError, SpawnExt},
+    task::{Spawn, SpawnError},
 };
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
@@ -302,34 +302,6 @@ impl Executor {
         self.threadpool.run(f)
     }
 
-    /// Spawns the future and returns a crossbeam channel Receiver that can be used to retrieve the
-    /// future result.
-    ///
-    /// ## Notes
-    /// If the future panics, then the Receiver will become disconnected.
-    pub fn spawn_channel<F>(
-        &mut self,
-        f: F,
-    ) -> Result<crossbeam::channel::Receiver<F::Output>, ExecutorError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (sender, receiver) = crossbeam::channel::bounded(1);
-        {
-            self.spawn(
-                async move {
-                    let result = await!(f);
-                    let _ = sender.send(result);
-                },
-            )
-            .map_err(|err| ExecutorError::SpawnError {
-                is_executor_shutdown: err.is_shutdown(),
-            })?;
-        }
-        Ok(receiver)
-    }
-
     /// returns the number of spawned tasks
     /// - tasks that are run, i.e., via [Executor::run()](struct.Executor.html#method.run), are not counted
     pub fn task_spawned_count(&self) -> u64 {
@@ -535,7 +507,6 @@ mod tests {
     use super::{metrics::*, *};
     use crate::configure_logging;
     use crate::metrics;
-    use crate::opnng::reqrep::server::SpawnError::ExecutorSpawnError;
     use futures::{future::FutureExt, task::SpawnExt};
     use std::{iter::Iterator, panic::*, thread};
 
@@ -684,45 +655,6 @@ mod tests {
         match result {
             Ok(_) => panic!("should have returned an ExecutorError::SpawnedFuturePanic"),
             Err(err) => info!("failed as expected"),
-        }
-    }
-
-    #[test]
-    fn executor_spawn_channel() {
-        configure_logging();
-
-        let mut executor = super::global_executor();
-        // GIVEN: a task is spawned
-        let result_rx = executor
-            .spawn_channel(
-                async {
-                    info!("spawned task says hello");
-                    true
-                },
-            )
-            .unwrap();
-
-        // THEN: it is successfully received
-        let result = result_rx.recv().unwrap();
-        info!("result: {:?}", result);
-        assert!(result);
-
-        // GIVEN: a task that panics
-        let result_rx = executor
-            .spawn_channel(
-                async {
-                    panic!("spawned task says hello");
-                    true
-                },
-            )
-            .unwrap();
-
-        // THEN: the channel will become disconnected
-        match result_rx.recv() {
-            Err(crossbeam::channel::RecvError) => {
-                info!("The future panicked, which caused the Receiver to be cancelled")
-            }
-            other => panic!("Unexpected result: {:?}", other),
         }
     }
 

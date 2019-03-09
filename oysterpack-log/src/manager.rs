@@ -19,13 +19,13 @@
 use crate::config::LogConfig;
 use fern::Output;
 use log::Record;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const LOG_NOT_INITIALIZED: usize = 0;
 const LOG_INITIALIZING: usize = 1;
 const LOG_INITIALIZED: usize = 2;
 // LOG_STATE transitions: LOG_NOT_INITIALIZED -> LOG_INITIALIZING -> LOG_INITIALIZED
-static LOG_STATE: AtomicUsize = ATOMIC_USIZE_INIT;
+static LOG_STATE: AtomicUsize = AtomicUsize::new(0);
 
 static mut LOG_CONFIG: Option<LogConfig> = None;
 

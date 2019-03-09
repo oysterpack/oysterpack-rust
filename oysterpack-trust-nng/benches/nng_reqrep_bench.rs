@@ -24,16 +24,16 @@ extern crate criterion;
 
 use criterion::Criterion;
 
+use oysterpack_trust_nng::opnng::{
+    self,
+    reqrep::{client::*, server},
+};
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
         messaging::reqrep::{self, *},
     },
     metrics,
-    opnng::{
-        self,
-        reqrep::{client::*, server},
-    },
 };
 use oysterpack_uid::*;
 

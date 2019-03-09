@@ -61,9 +61,13 @@
 //!     being added to the socket
 //! - the ReqRep service provides the message processing metrics
 
-use crate::concurrent::execution::Executor;
-use crate::concurrent::messaging::reqrep::{ReqRep, ReqRepId};
-use crate::metrics;
+use oysterpack_trust::{
+    concurrent::{
+        execution::Executor,
+        messaging::reqrep::{ReqRep, ReqRepId}
+    },
+    metrics
+};
 use crate::opnng::config::{SocketConfig, SocketConfigError};
 use failure::Fail;
 use futures::{future::FutureExt, prelude::*, sink::SinkExt, stream::StreamExt, task::SpawnExt};
@@ -816,13 +820,14 @@ pub enum ListenerConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+    use oysterpack_trust::{
         concurrent::{
             execution::{self, *},
             messaging::reqrep::{self, *},
         },
-        configure_logging, metrics,
+         metrics,
     };
+    use crate::configure_logging;
     use oysterpack_uid::ULID;
     use oysterpack_uid::*;
     use std::{thread, time::Duration};

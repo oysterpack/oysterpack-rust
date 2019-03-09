@@ -39,7 +39,7 @@
 //! tasks. If all Aio context tasks are busy, then requests will wait asynchronously in a non-blocking
 //! manner for an Aio context task.
 
-use crate::concurrent::{
+use oysterpack_trust::concurrent::{
     execution::Executor,
     messaging::reqrep::{self, ReqRep, ReqRepId},
 };
@@ -790,15 +790,19 @@ pub enum DialerConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::opnng::config::{SocketConfig, SocketConfigError};
-    use crate::{
+    use crate::opnng::{
+        config::{SocketConfig, SocketConfigError},
+        reqrep::server
+    };
+
+    use oysterpack_trust::{
         concurrent::{
             execution::{self, *},
             messaging::reqrep::{self, *},
         },
-        configure_logging, metrics,
-        opnng::reqrep::server,
+         metrics,
     };
+    use crate::configure_logging;
     use futures::executor::ThreadPoolBuilder;
     use oysterpack_uid::ULID;
     use oysterpack_uid::*;

@@ -31,16 +31,14 @@
 #![allow(clippy::unreadable_literal)]
 //#![deny(missing_docs, missing_debug_implementations, warnings)]
 #![deny(missing_docs, missing_debug_implementations)]
-#![doc(html_root_url = "https://docs.rs/oysterpack_trust/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/oysterpack_trust_nng/0.1.0")]
 
 #[allow(unused_imports)]
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
 
-pub mod concurrent;
-pub mod metrics;
-//pub mod opnng;
+pub mod opnng;
 
 #[cfg(test)]
 fn log_config() -> oysterpack_log::LogConfig {
