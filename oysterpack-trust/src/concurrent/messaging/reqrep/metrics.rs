@@ -18,7 +18,7 @@
 
 use super::{ReqRepId, ReqRepServiceMetrics};
 use oysterpack_uid::ULID;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 lazy_static::lazy_static! {
     pub(super) static ref REQ_REP_METRICS: RwLock<fnv::FnvHashMap<ReqRepId, ReqRepServiceMetrics>> = RwLock::new(fnv::FnvHashMap::default());

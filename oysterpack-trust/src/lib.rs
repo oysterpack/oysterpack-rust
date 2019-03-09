@@ -27,7 +27,6 @@
 //!
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
-#![feature(duration_float)]
 #![deny(clippy::all)]
 #![allow(clippy::unreadable_literal)]
 //#![deny(missing_docs, missing_debug_implementations, warnings)]

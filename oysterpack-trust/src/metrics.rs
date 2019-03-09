@@ -108,6 +108,7 @@
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::{ulid_u128_into_string, ULID};
+use parking_lot::RwLock;
 use prometheus::{core::Collector, Encoder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -119,7 +120,7 @@ use std::{
     iter::Extend,
     iter::Iterator,
     str::FromStr,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::Duration,
 };
 
@@ -987,7 +988,7 @@ impl MetricRegistry {
         let collector = ArcCollector::new(collector);
         self.registry.register(Box::new(collector.clone()))?;
         {
-            let mut metric_collectors = self.metric_collectors.write().unwrap();
+            let mut metric_collectors = self.metric_collectors.write();
             metric_collectors.push(collector.clone());
         }
         Ok(collector)
@@ -995,7 +996,7 @@ impl MetricRegistry {
 
     /// Collects descriptors for registered metrics
     pub fn descs(&self) -> Vec<prometheus::core::Desc> {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         metric_collectors
             .iter()
             .flat_map(prometheus::core::Collector::desc)
@@ -1008,7 +1009,7 @@ impl MetricRegistry {
     where
         F: Fn(&prometheus::core::Desc) -> bool,
     {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         metric_collectors
             .iter()
             .flat_map(prometheus::core::Collector::desc)
@@ -1051,7 +1052,7 @@ impl MetricRegistry {
     where
         F: Fn(&[&prometheus::core::Desc]) -> bool,
     {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         metric_collectors
             .iter()
             .filter(|collector| filter(collector.desc().as_slice()))
@@ -1102,13 +1103,13 @@ impl MetricRegistry {
 
     /// Returns the registered collectors
     pub fn collectors(&self) -> Vec<ArcCollector> {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         metric_collectors.iter().cloned().collect()
     }
 
     /// Returns the number of registered collectors
     pub fn collector_count(&self) -> usize {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         metric_collectors.len()
     }
 
@@ -1119,7 +1120,7 @@ impl MetricRegistry {
     /// ## Notes
     /// Each metric family may map to more than 1 metric Desc depending on label values
     pub fn metric_family_count(&self) -> usize {
-        let metric_collectors = self.metric_collectors.read().unwrap();
+        let metric_collectors = self.metric_collectors.read();
         let mut desc_names = metric_collectors
             .iter()
             .flat_map(prometheus::core::Collector::desc)
@@ -1407,7 +1408,7 @@ impl MetricRegistry {
     ///   - if metrics do not have constant labels, then the id maps to `Desc.fq_name`
     /// - the returned MetricFamily will contain only the requested metrics
     pub fn gather_for_desc_ids(&self, desc_ids: &[DescId]) -> Vec<prometheus::proto::MetricFamily> {
-        let collectors = self.metric_collectors.read().unwrap();
+        let collectors = self.metric_collectors.read();
 
         if desc_ids.is_empty() {
             return vec![];
@@ -1539,7 +1540,7 @@ impl MetricRegistry {
         let contains_name =
             |desc_name: &str| desc_names.iter().any(|name| name.as_ref() == desc_name);
 
-        let collectors = self.metric_collectors.read().unwrap();
+        let collectors = self.metric_collectors.read();
         collectors
             .iter()
             .filter(|collector| {
@@ -1573,7 +1574,7 @@ impl MetricRegistry {
 
     /// Gathers process related metrics
     pub fn gather_process_metrics(&self) -> ProcessMetrics {
-        let collectors = self.metric_collectors.read().unwrap();
+        let collectors = self.metric_collectors.read();
         // the ProcessCollector will always be the first registered collector
         ProcessMetrics::collect(&collectors[0])
     }
@@ -1752,10 +1753,7 @@ impl From<Vec<Duration>> for TimerBuckets {
 
 impl Into<Vec<f64>> for TimerBuckets {
     fn into(self) -> Vec<f64> {
-        self.0
-            .into_iter()
-            .map(|duration| duration.as_float_secs())
-            .collect()
+        self.0.into_iter().map(duration_as_secs_f64).collect()
     }
 }
 

@@ -298,7 +298,7 @@ where
         Service: Processor<Req, Rep> + Send + 'static,
     {
         let reqrep_service_metrics = move || {
-            let mut reqrep_metrics = metrics::REQ_REP_METRICS.write().unwrap();
+            let mut reqrep_metrics = metrics::REQ_REP_METRICS.write();
             reqrep_metrics
                 .entry(reqrep_id)
                 .or_insert_with(|| {

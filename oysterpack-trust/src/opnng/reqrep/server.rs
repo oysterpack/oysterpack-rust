@@ -71,8 +71,9 @@ use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
 use oysterpack_uid::ULID;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, num::NonZeroUsize, sync::Mutex, sync::RwLock};
+use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe};
 
 lazy_static! {
 
@@ -204,12 +205,10 @@ pub fn spawn(
                 worker_start_chans.push(start_tx);
                 // used to notify the workers when an Aio event has occurred, i.e., the Aio callback has been invoked
                 let (aio_tx, mut aio_rx) = futures::channel::mpsc::unbounded::<()>();
-                // wrap aio_tx within a Mutex in order to make it unwind safe and usable within  Aio callback
-                let aio_tx = Mutex::new(aio_tx);
+                let aio_tx = AssertUnwindSafe(aio_tx);
                 let ctx = nng::Context::new(socket).map_err(SpawnError::ContextCreateFailure)?;
                 let callback_ctx = ctx.clone();
                 let aio = nng::Aio::with_callback(move |_aio| {
-                    let aio_tx = aio_tx.lock().unwrap();
                     if let Err(err) = aio_tx.unbounded_send(()) {
                         // means the channel has been disconnected because the worker Future task has completed
                         // the server is either being stopped, or the worker has crashed
@@ -347,7 +346,7 @@ pub fn spawn(
             listener.close();
             socket.close();
             debug!("Server({}) is shut down", reqrep_id);
-            let mut server_handles = SERVER_HANDLES.write().unwrap();
+            let mut server_handles = SERVER_HANDLES.write();
             server_handles.remove(&server_handle_id);
         }).map_err(|err| SpawnError::ExecutorSpawnError {
             is_executor_shutdown: err.is_shutdown()
@@ -370,7 +369,7 @@ pub fn spawn(
         metrics: server_metrics,
     };
 
-    let mut server_handles = SERVER_HANDLES.write().unwrap();
+    let mut server_handles = SERVER_HANDLES.write();
     server_handles.insert(server_handle.id(), server_handle.clone());
 
     Ok(server_handle)
@@ -491,7 +490,7 @@ impl ServerHandle {
     /// - ServerHandle(s) are globally registered when the server is spawned
     pub fn get(id: ULID) -> Option<ServerHandle> {
         let server_handle = {
-            let server_handles = SERVER_HANDLES.read().unwrap();
+            let server_handles = SERVER_HANDLES.read();
             server_handles.get(&id).cloned()
         };
 
@@ -502,7 +501,7 @@ impl ServerHandle {
             } else {
                 // unregister the Serverhandle because pinging the server failed
                 {
-                    let mut server_handles = SERVER_HANDLES.write().unwrap();
+                    let mut server_handles = SERVER_HANDLES.write();
                     server_handles.remove(&id);
                 }
                 None
@@ -514,12 +513,12 @@ impl ServerHandle {
 
     /// returns all registered ServerHandle(s)
     pub fn all() -> Vec<ServerHandle> {
-        SERVER_HANDLES.read().unwrap().values().cloned().collect()
+        SERVER_HANDLES.read().values().cloned().collect()
     }
 
     /// Returns the list of registered ServerHandle ULIDs along with the server's ReqRepId
     pub fn ids() -> Vec<(ULID, ReqRepId)> {
-        let server_handles = SERVER_HANDLES.read().unwrap();
+        let server_handles = SERVER_HANDLES.read();
         server_handles
             .values()
             .map(|server_handle| (server_handle.id, server_handle.reqrep_id))
@@ -528,7 +527,7 @@ impl ServerHandle {
 
     /// Returns ServerHandle(s) that are registered for the specified ReqRepId
     pub fn get_by_reqrep_id(reqrep_id: ReqRepId) -> Vec<ServerHandle> {
-        let server_handles = SERVER_HANDLES.read().unwrap();
+        let server_handles = SERVER_HANDLES.read();
         server_handles
             .values()
             .filter(|server_handle| server_handle.reqrep_id == reqrep_id)

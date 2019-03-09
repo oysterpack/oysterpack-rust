@@ -55,13 +55,9 @@ use futures::{
 use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    num::NonZeroUsize,
-    sync::{Arc, Mutex, RwLock},
-    time::Duration,
-};
+use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 lazy_static! {
      /// Global Client contexts
@@ -82,7 +78,7 @@ pub fn register_client(
     dialer_config: DialerConfig,
     executor: Executor,
 ) -> Result<Client, ClientRegistrationError> {
-    let mut clients = CLIENTS.write().unwrap();
+    let mut clients = CLIENTS.write();
     if clients.contains_key(&reqrep_service_config.reqrep_id()) {
         return Err(ClientRegistrationError::ClientAlreadyRegistered(
             reqrep_service_config.reqrep_id(),
@@ -108,18 +104,18 @@ pub fn register_client(
 
 /// Unregisters the client from the global registry
 pub fn unregister_client(reqrep_id: ReqRepId) -> Option<Client> {
-    let mut clients = CLIENTS.write().unwrap();
+    let mut clients = CLIENTS.write();
     clients.remove(&reqrep_id)
 }
 
 /// Returns the client if it is registered
 pub fn client(reqrep_id: ReqRepId) -> Option<Client> {
-    CLIENTS.read().unwrap().get(&reqrep_id).cloned()
+    CLIENTS.read().get(&reqrep_id).cloned()
 }
 
 /// Returns set of registered ReqRepId(s)
 pub fn registered_client_ids() -> Vec<ReqRepId> {
-    CLIENTS.read().unwrap().keys().cloned().collect()
+    CLIENTS.read().keys().cloned().collect()
 }
 
 /// The context that is required by the NngClient's backend service.
@@ -176,13 +172,11 @@ impl NngClient {
             for i in 0..parallelism {
                 // used to notify the workers when an Aio event has occurred, i.e., the Aio callback has been invoked
                 let (aio_tx, mut aio_rx) = futures::channel::mpsc::unbounded::<()>();
-                // wrap aio_tx within a Mutex in order to make it unwind safe and usable within  Aio callback
-                let aio_tx = Mutex::new(aio_tx);
+                let aio_tx = AssertUnwindSafe(aio_tx);
                 let context = nng::Context::new(ctx.socket.as_ref().unwrap())
                     .map_err(NngClientError::NngContextCreateFailed)?;
                 let callback_ctx = context.clone();
                 let aio = nng::Aio::with_callback(move |_aio| {
-                    let aio_tx = aio_tx.lock().unwrap();
                     if let Err(err) = aio_tx.unbounded_send(()) {
                         // means the channel has been disconnected because the worker Future task has completed
                         // the server is either being stopped, or the worker has crashed
@@ -323,7 +317,7 @@ impl NngClient {
         start_request_sender_pool_task()?;
 
         {
-            let mut clients = CLIENT_CONTEXTS.write().unwrap();
+            let mut clients = CLIENT_CONTEXTS.write();
             clients.insert(ctx.id, Arc::new(ctx));
         }
 
@@ -376,7 +370,7 @@ impl reqrep::Processor<nng::Message, Result<nng::Message, RequestError>> for Nng
 
     fn destroy(&mut self) {
         debug!("NngClient({}) is being destroyed ...", self.id);
-        let mut client_contexts = CLIENT_CONTEXTS.write().unwrap();
+        let mut client_contexts = CLIENT_CONTEXTS.write();
         if let Some(mut context) = client_contexts.remove(&self.id) {
             let context = Arc::get_mut(&mut context).unwrap();
             context.dialer.take().unwrap().close();

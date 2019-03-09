@@ -70,9 +70,10 @@ use futures::{
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use oysterpack_uid::macros::ulid;
+use parking_lot::RwLock;
 use prometheus::core::Collector;
 use serde::{Deserialize, Serialize};
-use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize, sync::RwLock};
+use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize};
 
 pub mod metrics;
 
@@ -84,13 +85,13 @@ lazy_static! {
 /// Returns the registered executor IDs
 /// - the global executor ID is not included
 pub fn executor_ids() -> smallvec::SmallVec<[ExecutorId; 16]> {
-    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read();
     executors.thread_pools.keys().cloned().collect()
 }
 
 /// returns the Executor for the specified ID
 pub fn executor(id: ExecutorId) -> Option<Executor> {
-    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read();
     match executors.thread_pools.get(&id) {
         Some(executor) => Some(executor.clone()),
         None => {
@@ -105,20 +106,20 @@ pub fn executor(id: ExecutorId) -> Option<Executor> {
 /// Returns the global executor
 /// - the thread pool size equals the number of CPU cores.
 pub fn global_executor() -> Executor {
-    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read();
     executors.global_executor.clone()
 }
 
 /// Returns the total number of tasks spawned across all registered Executor(s)
 pub fn spawned_task_count() -> u64 {
-    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read();
     executors.spawned_task_count()
 }
 
 /// Returns the total number of threads that have been started across all Executors
 /// - this is not the active count
 pub fn total_threads() -> usize {
-    let registry = EXECUTOR_REGISTRY.read().unwrap();
+    let registry = EXECUTOR_REGISTRY.read();
     registry
         .thread_pools
         .values()
@@ -129,7 +130,7 @@ pub fn total_threads() -> usize {
 
 /// Returns the current thread pool sizes for the currently registered Executors
 pub fn executor_thread_pool_sizes() -> Vec<(ExecutorId, usize)> {
-    let executors = EXECUTOR_REGISTRY.read().unwrap();
+    let executors = EXECUTOR_REGISTRY.read();
     executors.executor_thread_pool_sizes()
 }
 
@@ -532,7 +533,7 @@ impl ExecutorBuilder {
     /// An executor can only be registered once, and once it is registered, it stays registered for
     /// the life of the app.
     pub fn register(self) -> Result<Executor, ExecutorRegistryError> {
-        let mut executors = EXECUTOR_REGISTRY.write().unwrap();
+        let mut executors = EXECUTOR_REGISTRY.write();
         let mut threadpool_builder = self.builder();
         executors.register(
             self.id,
@@ -678,7 +679,7 @@ mod tests {
     fn executor_spawn_await() {
         configure_logging();
 
-        let executors = EXECUTOR_REGISTRY.read().unwrap();
+        let executors = EXECUTOR_REGISTRY.read();
         let mut executor = executors.global_executor();
         let result = executor.run(
             async {
@@ -748,7 +749,7 @@ mod tests {
         let thread_handles: Vec<thread::JoinHandle<_>> = (1..=2)
             .map(|i| {
                 let handle = thread::spawn(move || {
-                    let executors = EXECUTOR_REGISTRY.read().unwrap();
+                    let executors = EXECUTOR_REGISTRY.read();
                     let mut executor = executors.global_executor();
                     executor
                         .spawn(async move { info!("{:?} : task #{}", thread::current().id(), i) });
@@ -838,7 +839,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTOR_REGISTRY.read().unwrap();
+            let executors = EXECUTOR_REGISTRY.read();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -857,7 +858,7 @@ mod tests {
         configure_logging();
 
         let result = {
-            let executors = EXECUTOR_REGISTRY.read().unwrap();
+            let executors = EXECUTOR_REGISTRY.read();
             let mut executor = executors.global_executor();
             let task_handle = executor
                 .spawn_with_handle(async { panic!("BOOM!!") })
@@ -880,7 +881,7 @@ mod tests {
     fn spawn_panicking_tasks_with_catch_unwind_protection() {
         configure_logging();
 
-        let executors = EXECUTOR_REGISTRY.read().unwrap();
+        let executors = EXECUTOR_REGISTRY.read();
         let mut executor = executors.global_executor();
         let panic_task_count = num_cpus::get() * 2;
         let mut handles = vec![];
