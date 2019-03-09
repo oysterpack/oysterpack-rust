@@ -91,58 +91,24 @@ pub fn metric_ids() -> Vec<crate::metrics::MetricId> {
 
 /// return the ReqRep backend service count
 pub fn service_instance_count(reqrep_id: ReqRepId) -> u64 {
-    let label_name = REQREPID_LABEL_ID.name();
-    let label_value = reqrep_id.to_string();
-    crate::metrics::registry()
-        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
-        .iter()
-        .filter_map(|mf| {
-            mf.get_metric()
-                .iter()
-                .find(|metric| {
-                    metric.get_label().iter().any(|label_pair| {
-                        label_pair.get_name() == label_name && label_pair.get_value() == label_value
-                    })
-                })
-                .map(|mf| mf.get_gauge().get_value() as u64)
-        })
-        .next()
+    let reqrep_metrics = REQ_REP_METRICS.read();
+    reqrep_metrics
+        .get(&reqrep_id)
+        .map(|m| m.service_count.get() as u64)
         .unwrap_or(0)
 }
 
 /// return the ReqRep backend service count
 pub fn service_instance_counts() -> fnv::FnvHashMap<ReqRepId, u64> {
-    crate::metrics::registry()
-        .gather_for_desc_names(&[SERVICE_INSTANCE_COUNT_METRIC_ID.name().as_str()])
-        .first()
-        .map(|mf| {
-            let label_name = REQREPID_LABEL_ID.name();
-            let label_name = label_name.as_str();
-            let metrics = mf.get_metric();
-            let counts = fnv::FnvHashMap::with_capacity_and_hasher(
-                metrics.len(),
-                fnv::FnvBuildHasher::default(),
-            );
-            metrics.iter().fold(counts, |mut counts, metric| {
-                let reqrep_id = metric
-                    .get_label()
-                    .iter()
-                    .find_map(|label_pair| {
-                        if label_pair.get_name() == label_name {
-                            Some(ReqRepId::from(
-                                label_pair.get_value().parse::<ULID>().unwrap(),
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap();
-                let gauge = metric.get_gauge();
-                counts.insert(reqrep_id, gauge.get_value() as u64);
-                counts
-            })
-        })
-        .unwrap_or_else(fnv::FnvHashMap::default)
+    let reqrep_metrics = REQ_REP_METRICS.read();
+    let counts = fnv::FnvHashMap::with_capacity_and_hasher(
+        reqrep_metrics.len(),
+        fnv::FnvBuildHasher::default(),
+    );
+    reqrep_metrics.iter().fold(counts, |mut counts, (k,v)| {
+        counts.insert(k.clone(), v.service_count.get() as u64);
+        counts
+    })
 }
 
 /// return the ReqRep request send count
