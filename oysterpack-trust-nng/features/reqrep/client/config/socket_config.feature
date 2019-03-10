@@ -1,4 +1,4 @@
-Feature: [01D5J3S1EE020NPEGXHJWPNHCT] SocketConfig may be specified when registering the nng Client
+Feature: [01D5J3S1EE020NPEGXHJWPNHCT] The nng Socket is configurable
 
   The socket is always configured as non-blocking. The client may configure the following additional socket options:
   - resend time

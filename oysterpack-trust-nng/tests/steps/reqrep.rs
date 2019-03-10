@@ -14,4 +14,4 @@
  *    limitations under the License.
  */
 
-pub mod reqrep;
+pub mod client;

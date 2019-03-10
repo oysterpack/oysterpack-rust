@@ -24,9 +24,6 @@ extern crate criterion;
 
 use criterion::Criterion;
 
-use oysterpack_trust_nng::{
-    reqrep::{client::*, server},
-};
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
@@ -34,6 +31,7 @@ use oysterpack_trust::{
     },
     metrics,
 };
+use oysterpack_trust_nng::reqrep::{client::*, server};
 use oysterpack_uid::*;
 
 use futures::{

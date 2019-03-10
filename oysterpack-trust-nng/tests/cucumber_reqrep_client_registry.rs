@@ -21,9 +21,9 @@ use cucumber_rust::*;
 mod steps;
 
 cucumber! {
-    features: "./features/reqrep/client",
-    world: steps::messaging::reqrep::client::World,
+    features: "./features/reqrep/client/registry",
+    world: steps::reqrep::client::World,
     steps: &[
-        steps::messaging::reqrep::client::steps
+        steps::reqrep::client::registry::steps
     ]
 }

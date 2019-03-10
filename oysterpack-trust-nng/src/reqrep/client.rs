@@ -39,14 +39,7 @@
 //! tasks. If all Aio context tasks are busy, then requests will wait asynchronously in a non-blocking
 //! manner for an Aio context task.
 
-use oysterpack_trust::concurrent::{
-    execution::Executor,
-    messaging::reqrep::{self, ReqRep, ReqRepId},
-};
-use crate::config::{
-    self,
-    SocketConfigError
-};
+use crate::config::{self, SocketConfigError};
 use failure::Fail;
 use futures::{
     channel::{mpsc, oneshot},
@@ -59,6 +52,10 @@ use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use nng::options::Options;
 use oysterpack_log::*;
+use oysterpack_trust::concurrent::{
+    execution::Executor,
+    messaging::reqrep::{self, ReqRep, ReqRepId},
+};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe, sync::Arc, time::Duration};
@@ -592,14 +589,14 @@ pub struct DialerConfig {
 
 impl DialerConfig {
     /// constructor
-    /// - parallelism = number of logical CPUs
+    /// - parallelism = 1
     pub fn new(url: url::Url) -> DialerConfig {
         DialerConfig {
             url,
             recv_max_size: None,
             no_delay: None,
             keep_alive: None,
-            parallelism: num_cpus::get(),
+            parallelism: 1,
             reconnect_min_time: None,
             reconnect_max_time: None,
         }
@@ -655,7 +652,7 @@ impl DialerConfig {
 
     /// Max number of async IO operations that can be performed concurrently, which corresponds to the number
     /// of socket contexts that will be created.
-    /// - if not specified, then it will default to the number of logical CPUs
+    /// - default = 1
     pub fn parallelism(&self) -> usize {
         self.parallelism
     }
@@ -787,18 +784,18 @@ mod tests {
     use super::*;
     use crate::{
         config::{SocketConfig, SocketConfigError},
-        reqrep::server
+        reqrep::server,
     };
 
+    use crate::configure_logging;
+    use futures::executor::ThreadPoolBuilder;
     use oysterpack_trust::{
         concurrent::{
             execution::{self, *},
             messaging::reqrep::{self, *},
         },
-         metrics,
+        metrics,
     };
-    use crate::configure_logging;
-    use futures::executor::ThreadPoolBuilder;
     use oysterpack_uid::ULID;
     use oysterpack_uid::*;
     use std::{thread, time::Duration};

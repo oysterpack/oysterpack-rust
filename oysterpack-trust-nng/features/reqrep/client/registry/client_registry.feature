@@ -6,5 +6,4 @@ Feature: [01D5J1EQ3W3M40892VXBKSYY0Q] ReqRep clients are globally registered usi
 
   Scenario: [01D5J244J52Y4A7WGZ67ZNP0RS] Try to register 2 ReqRep services using the same ReqRepId
     Given [01D5J244J52Y4A7WGZ67ZNP0RS] the first ReqRep service successfully registers
-    When [01D5J244J52Y4A7WGZ67ZNP0RS] the second service tries to register using the same ReqRepId
-    Then [01D5J244J52Y4A7WGZ67ZNP0RS] the service fails to register with a `ClientRegistrationError::ClientAlreadyRegistered` error
+    Then [01D5J244J52Y4A7WGZ67ZNP0RS] registering a second service using the same ReqRepId fails with a `ClientRegistrationError::ClientAlreadyRegistered` error
