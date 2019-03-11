@@ -17,3 +17,4 @@
 //! protocol buffers
 
 pub mod metrics;
+pub mod message;

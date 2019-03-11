@@ -35,7 +35,8 @@ cucumber_rust = "0.5.1"
 serde_json = "1.0.39"
 
 [build-dependencies]
-protobuf-codegen-pure = "2.4.0"
+protoc-grpcio = "1.0.1"
+protobuf-codegen = "2.4.0"
 
 [badges]
 maintenance = {status = "actively-developed"}

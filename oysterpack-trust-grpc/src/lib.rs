@@ -32,6 +32,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+#[allow(missing_debug_implementations)]
 pub mod protos;
 
 #[cfg(test)]

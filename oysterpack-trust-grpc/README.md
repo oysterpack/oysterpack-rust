@@ -10,3 +10,6 @@ sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
 sudo chmod 755 /usr/local/bin/protoc
 rm -f $PROTOC_ZIP
 ```
+
+## Issues
+- https://github.com/stepancheg/rust-protobuf/issues/397

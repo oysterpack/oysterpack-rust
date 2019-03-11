@@ -16,22 +16,17 @@
 
 fn main() {
     println!("cargo:rerun-if-changed={}", "protos");
+    println!("cargo:rerun-if-changed={}", "protos/**");
 
-    //    let proto_root = "protos";
-    //    protoc_grpcio::compile_grpc_protos(
-    //        &["metrics/metrics.proto"],
-    //        &[proto_root],
-    //        &"src/protos/metrics",
-    //                None
-    //    ).expect("Failed to compile gRPC definitions!");
-
-    protobuf_codegen_pure::run(protobuf_codegen_pure::Args {
-        out_dir: "src/protos",
-        input: &["protos/metrics/metrics.proto"],
-        includes: &["protos"],
-        customize: protobuf_codegen_pure::Customize {
-            ..Default::default()
-        },
-    })
-    .expect("protoc");
+    let proto_root = "protos";
+    protoc_grpcio::compile_grpc_protos(
+        &[
+            "message.proto",
+            "metrics.proto"
+        ],
+        &[proto_root],
+        &"src/protos",
+        None,
+    )
+    .expect("Failed to compile gRPC definitions!");
 }
