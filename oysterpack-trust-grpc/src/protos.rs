@@ -18,3 +18,8 @@
 
 pub mod metrics;
 pub mod message;
+pub mod metrics_grpc;
+
+#[allow(warnings)]
+#[cfg(test)]
+mod tests;

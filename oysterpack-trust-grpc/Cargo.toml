@@ -13,7 +13,8 @@ oysterpack_trust = {path = "../oysterpack-trust", version = "0.1"}
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
 oysterpack_log = {path = "../oysterpack-log", version = "0.1" }
 
-futures-preview = "0.3.0-alpha.13"
+#futures-preview = "0.3.0-alpha.13"
+futures = "0.1.25"
 serde = {version = "1", features = ["derive"] }
 parking_lot = {version ="0.7.1", features = ["nightly"] }
 hashbrown = {version = "0.1.8", features = ["serde"]}

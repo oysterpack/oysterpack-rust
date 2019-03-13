@@ -78,6 +78,8 @@ use std::{fmt, io, iter::ExactSizeIterator, num::NonZeroUsize};
 
 pub mod metrics;
 
+pub use futures;
+
 lazy_static! {
     /// Global Executor registry
     static ref EXECUTOR_REGISTRY: ExecutorRegistry = ExecutorRegistry::default();

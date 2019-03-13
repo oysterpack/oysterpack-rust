@@ -20,10 +20,7 @@ fn main() {
 
     let proto_root = "protos";
     protoc_grpcio::compile_grpc_protos(
-        &[
-            "message.proto",
-            "metrics.proto"
-        ],
+        &["message.proto", "metrics.proto"],
         &[proto_root],
         &"src/protos",
         None,

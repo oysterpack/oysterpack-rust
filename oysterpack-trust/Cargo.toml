@@ -12,7 +12,7 @@ edition = "2018"
 oysterpack_uid = {path = "../oysterpack-uid", version = "0.2"}
 oysterpack_log = {path = "../oysterpack-log", version = "0.1" }
 
-futures-preview = "0.3.0-alpha.13"
+futures-preview = {version = "0.3.0-alpha.13", features = ["compat"] }
 
 num_cpus = "1.10.0"
 failure = "0.1.5"
