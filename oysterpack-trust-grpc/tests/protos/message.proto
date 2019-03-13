@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option optimize_for = SPEED;
+
+package oysterpack_trust_grpc.protos.message;
+
+message MessageHeader {
+    string id = 1;
+    uint64 timestamp = 2;
+}

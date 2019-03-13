@@ -14,16 +14,57 @@
  *    limitations under the License.
  */
 
-fn main() {
-    println!("cargo:rerun-if-changed={}", "protos");
-    println!("cargo:rerun-if-changed={}", "protos/**");
+use protobuf_codegen::Customize;
 
-    let proto_root = "protos";
+fn main() {
+    compile_grpc_protos();
+    compile_test_grpc_protos();
+    compile_bench_grpc_protos();
+}
+
+fn compile_test_grpc_protos() {
+    protoc(
+        vec!["message.proto", "foo.proto"],
+        vec!["tests/protos"],
+        "tests/protos",
+        None
+    );
+}
+
+fn compile_bench_grpc_protos() {
+    protoc(
+        vec!["foo.proto"],
+        vec!["benches/protos"],
+        "benches/protos",
+        None
+    );
+}
+
+fn compile_grpc_protos() {
+    protoc(
+        vec!["message.proto", "metrics.proto"],
+        vec!["protos"],
+        "src/protos",
+        None
+    );
+}
+
+pub fn protoc(
+    inputs: Vec<&str>,
+    includes: Vec<&str>,
+    output: &str,
+    customizations: Option<Customize>
+) {
+    for dir in includes.iter() {
+        println!("cargo:rerun-if-changed={}", dir);
+        println!("cargo:rerun-if-changed={}/**", dir);
+    }
+
     protoc_grpcio::compile_grpc_protos(
-        &["message.proto", "metrics.proto"],
-        &[proto_root],
-        &"src/protos",
-        None,
+        inputs,
+        includes,
+        output,
+        customizations,
     )
-    .expect("Failed to compile gRPC definitions!");
+        .expect("Failed to compile gRPC definitions!");
 }

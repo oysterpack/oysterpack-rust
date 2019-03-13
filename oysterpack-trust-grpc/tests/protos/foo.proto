@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+import "message.proto";
+
+option optimize_for = SPEED;
+
+package oysterpack_trust_grpc.protos.foo;
+
+service Foo {
+    rpc unary(Request) returns (Response) {}
+
+    rpc client_streaming(stream Request) returns (Response) {}
+
+    rpc server_streaming(Request) returns (stream Response) {}
+
+    rpc bidi_streaming(stream Request) returns (stream Response) {}
+}
+
+message Request {
+    uint64 id = 1;
+    uint64 sleep = 2;
+}
+
+message Response {
+    uint64 id = 1;
+}
+
+message Option {
+    message None {}
+
+    oneof setting {
+        uint64 size = 1;
+        None none = 2;
+    }
+}

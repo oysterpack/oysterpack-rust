@@ -14,28 +14,34 @@
  *    limitations under the License.
  */
 
-use crate::protos::{
-    message::*,
-    metrics::*,
-    metrics_grpc::{self, *},
+#![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+
+mod protos;
+
+use protos::{
+    foo::*,
+    foo_grpc::{self, *},
 };
 
-use oysterpack_trust::concurrent::{
-    execution::{
-        self,
-        futures::{
-            compat::{Compat, Compat01As03, Future01CompatExt, Stream01CompatExt},
-            sink::{Sink, SinkExt},
-            stream::{Stream, StreamExt},
-            task::SpawnExt,
-        },
-        global_executor,
+use oysterpack_trust::concurrent::execution::{
+    self,
+    futures::{
+        compat::{Compat, Compat01As03, Future01CompatExt, Stream01CompatExt},
+        sink::SinkExt,
+        stream::StreamExt,
+        task::SpawnExt,
     },
-    messaging::reqrep,
+    global_executor,
 };
+use oysterpack_uid::ULID;
 
 use grpcio::{ChannelBuilder, EnvBuilder, Environment, ServerBuilder, WriteFlags};
-use std::sync::Arc;
+use hashbrown::HashMap;
+use std::{
+    sync::Arc,
+    thread
+};
+use std::time::Duration;
 
 /// converts a futures 0.1 Stream into a futures 0.3 Stream
 pub fn into_stream03<S>(
@@ -61,36 +67,63 @@ where
     Compat01As03::new(future01)
 }
 
+fn format_rpc_context(ctx: &grpcio::RpcContext) -> String {
+    let request_headers =
+        ctx.request_headers()
+            .iter()
+            .fold(HashMap::new(), |mut map, (key, value)| {
+                map.insert(key.to_string(), String::from_utf8_lossy(value));
+                map
+            });
+    format!(
+        "method = {}, host = {}, peer = {}, headers = {:#?}",
+        String::from_utf8_lossy(ctx.method()),
+        String::from_utf8_lossy(ctx.host()),
+        ctx.peer(),
+        request_headers
+    )
+}
+
 #[derive(Clone)]
 struct FooServer;
 
 impl Foo for FooServer {
-    fn unary(
-        &mut self,
-        ctx: grpcio::RpcContext,
-        req: super::metrics::Request,
-        sink: grpcio::UnarySink<super::metrics::Response>,
-    ) {
+    fn unary(&mut self, ctx: grpcio::RpcContext, req: Request, sink: grpcio::UnarySink<Response>) {
+        println!("unary(): {}", format_rpc_context(&ctx));
+        println!("unary(): request: {:?}", req);
+        let ulid_key = ctx.request_headers().iter().find_map(|(key, value)| {
+            if key == "key-bin" {
+                Some(ULID::try_from_bytes(value).unwrap())
+            } else {
+                None
+            }
+        });
+        println!("unary(): ulid_key = {:?}", ulid_key);
+
         let mut response = Response::new();
         response.set_id(1);
+        let sleep_duration = Duration::from_millis(req.sleep);
         global_executor().spawn(
             async move {
+                println!("unary(): sleeping for {:?} ...", sleep_duration);
+                thread::sleep(sleep_duration);
                 sink.success(response);
             },
-        );
+        ).unwrap();
     }
 
     fn client_streaming(
         &mut self,
         ctx: ::grpcio::RpcContext,
-        stream: ::grpcio::RequestStream<super::metrics::Request>,
-        sink: ::grpcio::ClientStreamingSink<super::metrics::Response>,
+        stream: ::grpcio::RequestStream<Request>,
+        sink: ::grpcio::ClientStreamingSink<Response>,
     ) {
+        println!("client_streaming(): {}", format_rpc_context(&ctx));
         global_executor().spawn(
             async move {
                 let mut id = 0;
                 // receive all client request messages
-                let mut stream = into_stream03(stream);
+                let mut stream = stream.compat();
                 while let Some(request) = await!(stream.next()) {
                     println!("client_streaming(): request = {:?}", request);
                     id = request.unwrap().id;
@@ -100,15 +133,16 @@ impl Foo for FooServer {
                 response.set_id(id);
                 sink.success(response);
             },
-        );
+        ).unwrap();
     }
 
     fn server_streaming(
         &mut self,
         ctx: ::grpcio::RpcContext,
-        req: super::metrics::Request,
-        sink: ::grpcio::ServerStreamingSink<super::metrics::Response>,
+        req: Request,
+        sink: ::grpcio::ServerStreamingSink<Response>,
     ) {
+        println!("server_streaming(): {}", format_rpc_context(&ctx));
         println!("server_streaming() request: {:?}", req);
         // the design is to stream messages using channels
         // ServerStreamingSink will send all messages received on the mpsc:Receiver stream
@@ -120,7 +154,7 @@ impl Foo for FooServer {
                 async move {
                     let _ = await!(send_all.compat());
                 },
-            );
+            ).unwrap();
         }
 
         // deliver messages via mpsc::Sender
@@ -137,15 +171,16 @@ impl Foo for FooServer {
                     let _ = await!(tx.send(msg));
                 }
             },
-        );
+        ).unwrap();
     }
 
     fn bidi_streaming(
         &mut self,
         ctx: ::grpcio::RpcContext,
-        stream: ::grpcio::RequestStream<super::metrics::Request>,
-        sink: ::grpcio::DuplexSink<super::metrics::Response>,
+        stream: ::grpcio::RequestStream<Request>,
+        sink: ::grpcio::DuplexSink<Response>,
     ) {
+        println!("bidi_streaming(): {}", format_rpc_context(&ctx));
         // used to stream response messages back to the client
         let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
         let write_flags = WriteFlags::default();
@@ -154,15 +189,13 @@ impl Foo for FooServer {
         // receive all client request messages that are streamed
         global_executor().spawn(
             async move {
-                let mut id = 0_u64;
                 let mut stream = stream.compat();
                 while let Some(request) = await!(stream.next()) {
                     println!("bidi_streaming(): server request = {:?}", request);
                     match request {
                         Ok(request) => {
-                            id = request.id;
                             let mut response = Response::new();
-                            response.id = id + 100;
+                            response.id = request.id + 100;
                             let msg: Result<(Response, WriteFlags), grpcio::Error> =
                                 Ok((response, write_flags));
                             let _ = await!(tx2.send(msg));
@@ -171,16 +204,16 @@ impl Foo for FooServer {
                     }
                 }
             },
-        );
+        ).unwrap();
 
         {
-            use futures::prelude::{Sink, Stream};
+            use futures::prelude::Sink;
             let send_all = sink.send_all(Compat::new(rx)).compat();
             global_executor().spawn(
                 async move {
                     let _ = await!(send_all);
                 },
-            );
+            ).unwrap();
         }
         global_executor().spawn(
             async move {
@@ -192,14 +225,14 @@ impl Foo for FooServer {
                     let _ = await!(tx.send(msg));
                 }
             },
-        );
+        ).unwrap();
     }
 }
 
 #[test]
 fn grpc_unary() {
     let env = Arc::new(Environment::new(1));
-    let service = metrics_grpc::create_foo(FooServer);
+    let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind("127.0.0.1", 0)
@@ -212,7 +245,7 @@ fn grpc_unary() {
 
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
-        let client = metrics_grpc::FooClient::new(ch);
+        let client = foo_grpc::FooClient::new(ch);
         let request = Request::new();
         let response = client.unary(&request).unwrap();
         println!("grpc_unary(): response = {:?}", response);
@@ -229,7 +262,7 @@ fn grpc_unary() {
 #[test]
 fn grpc_unary_async() {
     let env = Arc::new(Environment::new(1));
-    let service = metrics_grpc::create_foo(FooServer);
+    let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind("127.0.0.1", 0)
@@ -242,17 +275,28 @@ fn grpc_unary_async() {
 
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
-        let client = metrics_grpc::FooClient::new(ch);
+        let client = foo_grpc::FooClient::new(ch);
         let request = Request::new();
-        let reply_receiver = client.unary_async(&request).unwrap();
+
+        let call_opt = {
+            let call_opt = grpcio::CallOption::default();
+            let mut headers = grpcio::MetadataBuilder::new();
+            headers.add_str("key", "value").unwrap();
+            let ulid = ULID::generate();
+            headers.add_bytes("key-bin", &ulid.to_bytes()).unwrap();
+            let call_opt = call_opt.headers(headers.build());
+            call_opt
+        };
+
+        let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
 
         let (tx, rx) = execution::futures::channel::oneshot::channel();
         global_executor().spawn(
             async move {
                 let response = await!(reply_receiver.compat()).unwrap();
-                tx.send(response);
+                let _ = tx.send(response);
             },
-        );
+        ).unwrap();
 
         let response = global_executor().run(rx).unwrap();
         println!("grpc_unary_async(): response = {:?}", response);
@@ -267,9 +311,9 @@ fn grpc_unary_async() {
 }
 
 #[test]
-fn client_streaming() {
+fn grpc_unary_async_timeout() {
     let env = Arc::new(Environment::new(1));
-    let service = metrics_grpc::create_foo(FooServer);
+    let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind("127.0.0.1", 0)
@@ -282,17 +326,123 @@ fn client_streaming() {
 
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
-        let client = metrics_grpc::FooClient::new(ch);
+        let client = foo_grpc::FooClient::new(ch);
+
+        let mut request = Request::new();
+        request.sleep = 50;
+
+        let call_opt = {
+            let call_opt = grpcio::CallOption::default();
+            let mut headers = grpcio::MetadataBuilder::new();
+            headers.add_str("key", "value").unwrap();
+            let ulid = ULID::generate();
+            headers.add_bytes("key-bin", &ulid.to_bytes()).unwrap();
+            let call_opt = call_opt.headers(headers.build());
+            let call_opt = call_opt.timeout(Duration::from_millis(10));
+            call_opt
+        };
+
+        let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
+
+        let (tx, rx) = execution::futures::channel::oneshot::channel();
+        global_executor().spawn(
+            async move {
+                let response = await!(reply_receiver.compat());
+                let _ = tx.send(response);
+            },
+        ).unwrap();
+        let response = global_executor().run(rx).unwrap();
+        println!("grpc_unary_async_timeout(): response = {:?}", response);
+    }
+
+    println!("server is shutting down ...");
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
+    println!("server has been shutdown")
+}
+
+#[test]
+fn grpc_unary_async_no_timeout() {
+    let env = Arc::new(Environment::new(1));
+    let service = foo_grpc::create_foo(FooServer);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind("127.0.0.1", 0)
+        .build()
+        .unwrap();
+    server.start();
+
+    for &(ref host, port) in server.bind_addrs() {
+        println!("listening on {}:{}", host, port);
+
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
+        let client = foo_grpc::FooClient::new(ch);
+
+        let mut request = Request::new();
+        request.sleep = 1;
+
+        let call_opt = {
+            let call_opt = grpcio::CallOption::default();
+            let mut headers = grpcio::MetadataBuilder::new();
+            headers.add_str("key", "value").unwrap();
+            let ulid = ULID::generate();
+            headers.add_bytes("key-bin", &ulid.to_bytes()).unwrap();
+            let call_opt = call_opt.headers(headers.build());
+            let call_opt = call_opt.timeout(Duration::from_millis(100));
+            call_opt
+        };
+
+        let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
+
+        let (tx, rx) = execution::futures::channel::oneshot::channel();
+        global_executor().spawn(
+            async move {
+                let response = await!(reply_receiver.compat());
+                let _ = tx.send(response);
+            },
+        ).unwrap();
+        let response = global_executor().run(rx).unwrap();
+        println!("grpc_unary_async_no_timeout(): response = {:?}", response.unwrap());
+    }
+
+    println!("server is shutting down ...");
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
+    println!("server has been shutdown")
+}
+
+#[test]
+fn client_streaming() {
+    let env = Arc::new(Environment::new(1));
+    let service = foo_grpc::create_foo(FooServer);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind("127.0.0.1", 0)
+        .build()
+        .unwrap();
+    server.start();
+
+    for &(ref host, port) in server.bind_addrs() {
+        println!("listening on {}:{}", host, port);
+
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
+        let client = foo_grpc::FooClient::new(ch);
         let (sender, receiver) = client.client_streaming().unwrap();
         let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
         {
-            use futures::prelude::{Sink, Stream};
+            use futures::prelude::Sink;
             let send_all = sender.send_all(Compat::new(rx)).compat();
             global_executor().spawn(
                 async move {
                     let _ = await!(send_all);
                 },
-            );
+            ).unwrap();
         }
         global_executor().spawn(
             async move {
@@ -305,7 +455,7 @@ fn client_streaming() {
                     let _ = await!(tx.send(msg));
                 }
             },
-        );
+        ).unwrap();
         let receiver = receiver.compat();
         let response = global_executor().run(receiver).unwrap();
         println!("client_streaming(): response = {:?}", response);
@@ -322,7 +472,7 @@ fn client_streaming() {
 #[test]
 fn server_streaming() {
     let env = Arc::new(Environment::new(1));
-    let service = metrics_grpc::create_foo(FooServer);
+    let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind("127.0.0.1", 0)
@@ -335,7 +485,7 @@ fn server_streaming() {
 
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
-        let client = metrics_grpc::FooClient::new(ch);
+        let client = foo_grpc::FooClient::new(ch);
         let request = Request::new();
         let receiver = client.server_streaming(&request).unwrap();
         let mut receiver = receiver.compat();
@@ -360,7 +510,7 @@ fn server_streaming() {
 #[test]
 fn bidi_streaming() {
     let env = Arc::new(Environment::new(1));
-    let service = metrics_grpc::create_foo(FooServer);
+    let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
         .bind("127.0.0.1", 0)
@@ -373,19 +523,19 @@ fn bidi_streaming() {
 
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
-        let client = metrics_grpc::FooClient::new(ch);
+        let client = foo_grpc::FooClient::new(ch);
         let (sender, receiver) = client.bidi_streaming().unwrap();
 
         let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
         {
-            use futures::prelude::{Sink, Stream};
+            use futures::prelude::Sink;
             let send_all = sender.send_all(Compat::new(rx)).compat();
             global_executor().spawn(
                 async move {
                     let _ = await!(send_all);
                     println!("bidi_streaming(): client sent all requests");
                 },
-            );
+            ).unwrap();
         }
         global_executor().spawn(
             async move {
@@ -399,7 +549,7 @@ fn bidi_streaming() {
                     println!("bidi_streaming(): client sent request: {:?}", request);
                 }
             },
-        );
+        ).unwrap();
 
         let mut receiver = receiver.compat();
         global_executor().run(

@@ -14,7 +14,3 @@
  *    limitations under the License.
  */
 
-//! protocol buffers
-
-pub mod metrics;
-pub mod message;

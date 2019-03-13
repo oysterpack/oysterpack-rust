@@ -14,7 +14,6 @@
  *    limitations under the License.
  */
 
-//! protocol buffers
-
-pub mod metrics;
+pub mod foo;
 pub mod message;
+pub mod foo_grpc;

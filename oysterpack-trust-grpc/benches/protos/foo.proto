@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+option optimize_for = SPEED;
+
+package oysterpack_trust_grpc.protos.foo;
+
+service Foo {
+    rpc unary(Request) returns (Response) {}
+
+    rpc client_streaming(stream Request) returns (Response) {}
+
+    rpc server_streaming(Request) returns (stream Response) {}
+
+    rpc bidi_streaming(stream Request) returns (stream Response) {}
+}
+
+message Request {
+    ULIDOption ulid = 1;
+}
+
+message Response {
+    ULIDOption ulid = 1;
+}
+
+message ULIDOption {
+    message None {}
+
+    oneof setting {
+        ULID ulid = 1;
+        None none = 2;
+    }
+}
+
+message ULID {
+    uint64 ulid_1 = 1;
+    uint64 ulid_2 = 2;
+}

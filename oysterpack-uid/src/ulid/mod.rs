@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 OysterPack Inc.
+ * Copyright 2019 OysterPack Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -98,6 +98,17 @@ impl ULID {
         let mut bytes: [u8; 16] = [0; 16];
         byteorder::NetworkEndian::write_u64_into(&id, &mut bytes);
         bytes
+    }
+
+    /// tries to parse the bytes into a ULID
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<ULID, DecodingError> {
+        if bytes.len() != 16 {
+            return Err(DecodingError::InvalidLength);
+        }
+
+        let mut ulid: [u8;16] = Default::default();
+        ulid.copy_from_slice(&bytes[0..16]);
+        Ok(ULID::from(ulid))
     }
 
     /// Returns a new ULID with the random part incremented by one.
@@ -233,7 +244,7 @@ impl<'de> Deserialize<'de> for ULID {
 #[derive(Debug, Fail)]
 pub enum DecodingError {
     #[fail(display = "invalid length")]
-    /// The length of the parsed string does not conform to requirements.
+    /// The length of the parsed string or bytes does not conform to requirements.
     InvalidLength,
     /// The parsed string contains a character that is not allowed in a [crockford Base32](https://crockford.com/wrmg/base32.html) string.
     #[fail(display = "invalid char: '{}'", _0)]
