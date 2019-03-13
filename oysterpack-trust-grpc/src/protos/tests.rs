@@ -24,7 +24,7 @@ use oysterpack_trust::concurrent::{
     execution::{
         self,
         futures::{
-            compat::{Compat, Future01CompatExt, Stream01CompatExt},
+            compat::{Compat, Compat01As03, Future01CompatExt, Stream01CompatExt},
             sink::{Sink, SinkExt},
             stream::{Stream, StreamExt},
             task::SpawnExt,
@@ -37,7 +37,29 @@ use oysterpack_trust::concurrent::{
 use grpcio::{ChannelBuilder, EnvBuilder, Environment, ServerBuilder, WriteFlags};
 use std::sync::Arc;
 
-use futures::future::Future;
+/// converts a futures 0.1 Stream into a futures 0.3 Stream
+pub fn into_stream03<S>(
+    stream01: S,
+) -> impl execution::futures::Stream<
+    Item = Result<<S as futures::Stream>::Item, <S as futures::Stream>::Error>,
+>
+where
+    S: futures::Stream,
+{
+    Compat01As03::new(stream01)
+}
+
+/// converts a futures 0.1 Future into a futures 0.3 Future
+pub fn into_future03<F>(
+    future01: F,
+) -> impl execution::futures::Future<
+    Output = Result<<F as futures::Future>::Item, <F as futures::Future>::Error>,
+>
+where
+    F: futures::Future,
+{
+    Compat01As03::new(future01)
+}
 
 #[derive(Clone)]
 struct FooServer;
@@ -67,11 +89,13 @@ impl Foo for FooServer {
         global_executor().spawn(
             async move {
                 let mut id = 0;
-                let mut stream = stream.compat();
+                // receive all client request messages
+                let mut stream = into_stream03(stream);
                 while let Some(request) = await!(stream.next()) {
                     println!("client_streaming(): request = {:?}", request);
                     id = request.unwrap().id;
                 }
+                // once all messages have been received, then send the response
                 let mut response = Response::new();
                 response.set_id(id);
                 sink.success(response);
@@ -86,25 +110,30 @@ impl Foo for FooServer {
         sink: ::grpcio::ServerStreamingSink<super::metrics::Response>,
     ) {
         println!("server_streaming() request: {:?}", req);
+        // the design is to stream messages using channels
+        // ServerStreamingSink will send all messages received on the mpsc:Receiver stream
         let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
         {
-            use futures::prelude::{Sink, Stream};
-            let send_all = sink.send_all(Compat::new(rx)).compat();
+            use futures::prelude::Sink;
+            let send_all = sink.send_all(Compat::new(rx));
             global_executor().spawn(
                 async move {
-                    let _ = await!(send_all);
+                    let _ = await!(send_all.compat());
                 },
             );
         }
 
+        // deliver messages via mpsc::Sender
         global_executor().spawn(
             async move {
                 let write_flags = WriteFlags::default();
                 for i in 0..10 {
                     let mut response = Response::new();
                     response.id = i as u64;
-                    let msg: Result<(Response, WriteFlags), grpcio::Error> =
-                        Ok((response, write_flags));
+                    let msg = Result::<(Response, WriteFlags), grpcio::Error>::Ok((
+                        response,
+                        write_flags,
+                    ));
                     let _ = await!(tx.send(msg));
                 }
             },
@@ -117,6 +146,12 @@ impl Foo for FooServer {
         stream: ::grpcio::RequestStream<super::metrics::Request>,
         sink: ::grpcio::DuplexSink<super::metrics::Response>,
     ) {
+        // used to stream response messages back to the client
+        let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
+        let write_flags = WriteFlags::default();
+
+        let mut tx2 = tx.clone();
+        // receive all client request messages that are streamed
         global_executor().spawn(
             async move {
                 let mut id = 0_u64;
@@ -126,6 +161,11 @@ impl Foo for FooServer {
                     match request {
                         Ok(request) => {
                             id = request.id;
+                            let mut response = Response::new();
+                            response.id = id + 100;
+                            let msg: Result<(Response, WriteFlags), grpcio::Error> =
+                                Ok((response, write_flags));
+                            let _ = await!(tx2.send(msg));
                         }
                         Err(_) => return,
                     }
@@ -133,7 +173,6 @@ impl Foo for FooServer {
             },
         );
 
-        let (mut tx, rx) = execution::futures::channel::mpsc::channel(0);
         {
             use futures::prelude::{Sink, Stream};
             let send_all = sink.send_all(Compat::new(rx)).compat();
@@ -143,10 +182,8 @@ impl Foo for FooServer {
                 },
             );
         }
-
         global_executor().spawn(
             async move {
-                let write_flags = WriteFlags::default();
                 for i in 0..10 {
                     let mut response = Response::new();
                     response.id = i as u64;
@@ -182,7 +219,10 @@ fn grpc_unary() {
     }
 
     println!("server is shutting down ...");
-    let _ = server.shutdown().wait();
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
     println!("server has been shutdown")
 }
 
@@ -219,7 +259,10 @@ fn grpc_unary_async() {
     }
 
     println!("server is shutting down ...");
-    let _ = server.shutdown().wait();
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
     println!("server has been shutdown")
 }
 
@@ -269,7 +312,10 @@ fn client_streaming() {
     }
 
     println!("server is shutting down ...");
-    let _ = server.shutdown().wait();
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
     println!("server has been shutdown")
 }
 
@@ -304,7 +350,10 @@ fn server_streaming() {
     }
 
     println!("server is shutting down ...");
-    let _ = server.shutdown().wait();
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
     println!("server has been shutdown")
 }
 
@@ -364,6 +413,9 @@ fn bidi_streaming() {
     }
 
     println!("server is shutting down ...");
-    let _ = server.shutdown().wait();
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
     println!("server has been shutdown")
 }
