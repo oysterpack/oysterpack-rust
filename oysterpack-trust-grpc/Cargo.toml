@@ -41,3 +41,7 @@ protobuf-codegen = "2.4.0"
 
 [badges]
 maintenance = {status = "actively-developed"}
+
+[[bench]]
+name = "grpc_bench"
+harness = false

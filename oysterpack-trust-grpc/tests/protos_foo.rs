@@ -37,11 +37,8 @@ use oysterpack_uid::ULID;
 
 use grpcio::{ChannelBuilder, EnvBuilder, Environment, ServerBuilder, WriteFlags};
 use hashbrown::HashMap;
-use std::{
-    sync::Arc,
-    thread
-};
 use std::time::Duration;
+use std::{sync::Arc, thread};
 
 /// converts a futures 0.1 Stream into a futures 0.3 Stream
 pub fn into_stream03<S>(
@@ -101,15 +98,18 @@ impl Foo for FooServer {
         println!("unary(): ulid_key = {:?}", ulid_key);
 
         let mut response = Response::new();
-        response.set_id(1);
+        response.set_id(req.id);
         let sleep_duration = Duration::from_millis(req.sleep);
-        global_executor().spawn(
-            async move {
-                println!("unary(): sleeping for {:?} ...", sleep_duration);
-                thread::sleep(sleep_duration);
-                sink.success(response);
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    println!("unary(): sleeping for {:?} ...", sleep_duration);
+                    thread::sleep(sleep_duration);
+                    sink.success(response.clone());
+                    println!("[{:?}]: unary(): sent response: {:?}",thread::current().id(), response);
+                },
+            )
+            .unwrap();
     }
 
     fn client_streaming(
@@ -119,21 +119,23 @@ impl Foo for FooServer {
         sink: ::grpcio::ClientStreamingSink<Response>,
     ) {
         println!("client_streaming(): {}", format_rpc_context(&ctx));
-        global_executor().spawn(
-            async move {
-                let mut id = 0;
-                // receive all client request messages
-                let mut stream = stream.compat();
-                while let Some(request) = await!(stream.next()) {
-                    println!("client_streaming(): request = {:?}", request);
-                    id = request.unwrap().id;
-                }
-                // once all messages have been received, then send the response
-                let mut response = Response::new();
-                response.set_id(id);
-                sink.success(response);
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let mut id = 0;
+                    // receive all client request messages
+                    let mut stream = stream.compat();
+                    while let Some(request) = await!(stream.next()) {
+                        println!("client_streaming(): request = {:?}", request);
+                        id = request.unwrap().id;
+                    }
+                    // once all messages have been received, then send the response
+                    let mut response = Response::new();
+                    response.set_id(id);
+                    sink.success(response);
+                },
+            )
+            .unwrap();
     }
 
     fn server_streaming(
@@ -150,28 +152,32 @@ impl Foo for FooServer {
         {
             use futures::prelude::Sink;
             let send_all = sink.send_all(Compat::new(rx));
-            global_executor().spawn(
-                async move {
-                    let _ = await!(send_all.compat());
-                },
-            ).unwrap();
+            global_executor()
+                .spawn(
+                    async move {
+                        let _ = await!(send_all.compat());
+                    },
+                )
+                .unwrap();
         }
 
         // deliver messages via mpsc::Sender
-        global_executor().spawn(
-            async move {
-                let write_flags = WriteFlags::default();
-                for i in 0..10 {
-                    let mut response = Response::new();
-                    response.id = i as u64;
-                    let msg = Result::<(Response, WriteFlags), grpcio::Error>::Ok((
-                        response,
-                        write_flags,
-                    ));
-                    let _ = await!(tx.send(msg));
-                }
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let write_flags = WriteFlags::default();
+                    for i in 0..10 {
+                        let mut response = Response::new();
+                        response.id = i as u64;
+                        let msg = Result::<(Response, WriteFlags), grpcio::Error>::Ok((
+                            response,
+                            write_flags,
+                        ));
+                        let _ = await!(tx.send(msg));
+                    }
+                },
+            )
+            .unwrap();
     }
 
     fn bidi_streaming(
@@ -187,45 +193,51 @@ impl Foo for FooServer {
 
         let mut tx2 = tx.clone();
         // receive all client request messages that are streamed
-        global_executor().spawn(
-            async move {
-                let mut stream = stream.compat();
-                while let Some(request) = await!(stream.next()) {
-                    println!("bidi_streaming(): server request = {:?}", request);
-                    match request {
-                        Ok(request) => {
-                            let mut response = Response::new();
-                            response.id = request.id + 100;
-                            let msg: Result<(Response, WriteFlags), grpcio::Error> =
-                                Ok((response, write_flags));
-                            let _ = await!(tx2.send(msg));
+        global_executor()
+            .spawn(
+                async move {
+                    let mut stream = stream.compat();
+                    while let Some(request) = await!(stream.next()) {
+                        println!("bidi_streaming(): server request = {:?}", request);
+                        match request {
+                            Ok(request) => {
+                                let mut response = Response::new();
+                                response.id = request.id + 100;
+                                let msg: Result<(Response, WriteFlags), grpcio::Error> =
+                                    Ok((response, write_flags));
+                                let _ = await!(tx2.send(msg));
+                            }
+                            Err(_) => return,
                         }
-                        Err(_) => return,
                     }
-                }
-            },
-        ).unwrap();
+                },
+            )
+            .unwrap();
 
         {
             use futures::prelude::Sink;
             let send_all = sink.send_all(Compat::new(rx)).compat();
-            global_executor().spawn(
-                async move {
-                    let _ = await!(send_all);
-                },
-            ).unwrap();
+            global_executor()
+                .spawn(
+                    async move {
+                        let _ = await!(send_all);
+                    },
+                )
+                .unwrap();
         }
-        global_executor().spawn(
-            async move {
-                for i in 0..10 {
-                    let mut response = Response::new();
-                    response.id = i as u64;
-                    let msg: Result<(Response, WriteFlags), grpcio::Error> =
-                        Ok((response, write_flags));
-                    let _ = await!(tx.send(msg));
-                }
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    for i in 0..10 {
+                        let mut response = Response::new();
+                        response.id = i as u64;
+                        let msg: Result<(Response, WriteFlags), grpcio::Error> =
+                            Ok((response, write_flags));
+                        let _ = await!(tx.send(msg));
+                    }
+                },
+            )
+            .unwrap();
     }
 }
 
@@ -291,15 +303,66 @@ fn grpc_unary_async() {
         let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
 
         let (tx, rx) = execution::futures::channel::oneshot::channel();
-        global_executor().spawn(
-            async move {
-                let response = await!(reply_receiver.compat()).unwrap();
-                let _ = tx.send(response);
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let response = await!(reply_receiver.compat()).unwrap();
+                    let _ = tx.send(response);
+                },
+            )
+            .unwrap();
 
         let response = global_executor().run(rx).unwrap();
         println!("grpc_unary_async(): response = {:?}", response);
+    }
+
+    println!("server is shutting down ...");
+    {
+        use futures::Future;
+        let _ = server.shutdown().wait();
+    }
+    println!("server has been shutdown")
+}
+
+#[test]
+fn grpc_unary_async_send_next_req_before_receiving_reply() {
+    let env = Arc::new(Environment::new(1));
+    let service = foo_grpc::create_foo(FooServer);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind("127.0.0.1", 0)
+        .build()
+        .unwrap();
+    server.start();
+
+    for &(ref host, port) in server.bind_addrs() {
+        println!("listening on {}:{}", host, port);
+
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
+        let client = foo_grpc::FooClient::new(ch);
+        let mut request = Request::new();
+        request.id = 1;
+
+        // Given: an async request has been sent
+        let reply_receiver = client.unary_async(&request).unwrap();
+        // And: a sync request is sent before receiving the async reply
+        request.id = 2;
+        let response = client.unary(&request).unwrap();
+        println!("grpc_unary_async_send_next_req_before_receiving_reply(): sync response = {:?}", response);
+        let (tx, rx) = execution::futures::channel::oneshot::channel();
+        global_executor()
+            .spawn(
+                async move {
+                    let response = await!(reply_receiver.compat()).unwrap();
+                    let _ = tx.send(response);
+                },
+            )
+            .unwrap();
+
+        // Then: the async response can be retrieved after receiving the sync response
+        let response = global_executor().run(rx).unwrap();
+        println!("grpc_unary_async_send_next_req_before_receiving_reply(): async response = {:?}", response);
     }
 
     println!("server is shutting down ...");
@@ -345,12 +408,14 @@ fn grpc_unary_async_timeout() {
         let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
 
         let (tx, rx) = execution::futures::channel::oneshot::channel();
-        global_executor().spawn(
-            async move {
-                let response = await!(reply_receiver.compat());
-                let _ = tx.send(response);
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let response = await!(reply_receiver.compat());
+                    let _ = tx.send(response);
+                },
+            )
+            .unwrap();
         let response = global_executor().run(rx).unwrap();
         println!("grpc_unary_async_timeout(): response = {:?}", response);
     }
@@ -398,14 +463,19 @@ fn grpc_unary_async_no_timeout() {
         let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
 
         let (tx, rx) = execution::futures::channel::oneshot::channel();
-        global_executor().spawn(
-            async move {
-                let response = await!(reply_receiver.compat());
-                let _ = tx.send(response);
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let response = await!(reply_receiver.compat());
+                    let _ = tx.send(response);
+                },
+            )
+            .unwrap();
         let response = global_executor().run(rx).unwrap();
-        println!("grpc_unary_async_no_timeout(): response = {:?}", response.unwrap());
+        println!(
+            "grpc_unary_async_no_timeout(): response = {:?}",
+            response.unwrap()
+        );
     }
 
     println!("server is shutting down ...");
@@ -438,24 +508,28 @@ fn client_streaming() {
         {
             use futures::prelude::Sink;
             let send_all = sender.send_all(Compat::new(rx)).compat();
-            global_executor().spawn(
-                async move {
-                    let _ = await!(send_all);
-                },
-            ).unwrap();
+            global_executor()
+                .spawn(
+                    async move {
+                        let _ = await!(send_all);
+                    },
+                )
+                .unwrap();
         }
-        global_executor().spawn(
-            async move {
-                let write_flags = WriteFlags::default();
-                for i in 0..10 {
-                    let mut request = Request::new();
-                    request.id = i;
-                    let msg: Result<(Request, WriteFlags), grpcio::Error> =
-                        Ok((request, write_flags));
-                    let _ = await!(tx.send(msg));
-                }
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let write_flags = WriteFlags::default();
+                    for i in 0..10 {
+                        let mut request = Request::new();
+                        request.id = i;
+                        let msg: Result<(Request, WriteFlags), grpcio::Error> =
+                            Ok((request, write_flags));
+                        let _ = await!(tx.send(msg));
+                    }
+                },
+            )
+            .unwrap();
         let receiver = receiver.compat();
         let response = global_executor().run(receiver).unwrap();
         println!("client_streaming(): response = {:?}", response);
@@ -530,26 +604,30 @@ fn bidi_streaming() {
         {
             use futures::prelude::Sink;
             let send_all = sender.send_all(Compat::new(rx)).compat();
-            global_executor().spawn(
-                async move {
-                    let _ = await!(send_all);
-                    println!("bidi_streaming(): client sent all requests");
-                },
-            ).unwrap();
+            global_executor()
+                .spawn(
+                    async move {
+                        let _ = await!(send_all);
+                        println!("bidi_streaming(): client sent all requests");
+                    },
+                )
+                .unwrap();
         }
-        global_executor().spawn(
-            async move {
-                let write_flags = WriteFlags::default();
-                for i in 0..10 {
-                    let mut request = Request::new();
-                    request.id = i;
-                    let msg: Result<(Request, WriteFlags), grpcio::Error> =
-                        Ok((request.clone(), write_flags));
-                    let _ = await!(tx.send(msg));
-                    println!("bidi_streaming(): client sent request: {:?}", request);
-                }
-            },
-        ).unwrap();
+        global_executor()
+            .spawn(
+                async move {
+                    let write_flags = WriteFlags::default();
+                    for i in 0..10 {
+                        let mut request = Request::new();
+                        request.id = i;
+                        let msg: Result<(Request, WriteFlags), grpcio::Error> =
+                            Ok((request.clone(), write_flags));
+                        let _ = await!(tx.send(msg));
+                        println!("bidi_streaming(): client sent request: {:?}", request);
+                    }
+                },
+            )
+            .unwrap();
 
         let mut receiver = receiver.compat();
         global_executor().run(

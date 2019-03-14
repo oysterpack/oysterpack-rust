@@ -17,11 +17,11 @@ service Foo {
 }
 
 message Request {
-    ULIDOption ulid = 1;
+    ULID ulid = 1;
 }
 
 message Response {
-    ULIDOption ulid = 1;
+    ULID ulid = 1;
 }
 
 message ULIDOption {

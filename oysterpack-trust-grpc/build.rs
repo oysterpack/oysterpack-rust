@@ -27,7 +27,7 @@ fn compile_test_grpc_protos() {
         vec!["message.proto", "foo.proto"],
         vec!["tests/protos"],
         "tests/protos",
-        None
+        None,
     );
 }
 
@@ -36,7 +36,7 @@ fn compile_bench_grpc_protos() {
         vec!["foo.proto"],
         vec!["benches/protos"],
         "benches/protos",
-        None
+        None,
     );
 }
 
@@ -45,7 +45,7 @@ fn compile_grpc_protos() {
         vec!["message.proto", "metrics.proto"],
         vec!["protos"],
         "src/protos",
-        None
+        None,
     );
 }
 
@@ -53,18 +53,13 @@ pub fn protoc(
     inputs: Vec<&str>,
     includes: Vec<&str>,
     output: &str,
-    customizations: Option<Customize>
+    customizations: Option<Customize>,
 ) {
     for dir in includes.iter() {
         println!("cargo:rerun-if-changed={}", dir);
         println!("cargo:rerun-if-changed={}/**", dir);
     }
 
-    protoc_grpcio::compile_grpc_protos(
-        inputs,
-        includes,
-        output,
-        customizations,
-    )
+    protoc_grpcio::compile_grpc_protos(inputs, includes, output, customizations)
         .expect("Failed to compile gRPC definitions!");
 }
