@@ -35,6 +35,10 @@ extern crate pretty_assertions;
 #[allow(missing_debug_implementations)]
 pub mod protos;
 
+#[allow(warnings)]
+#[cfg(test)]
+mod tests;
+
 #[cfg(test)]
 fn log_config() -> oysterpack_log::LogConfig {
     oysterpack_log::config::LogConfigBuilder::new(oysterpack_log::Level::Info)

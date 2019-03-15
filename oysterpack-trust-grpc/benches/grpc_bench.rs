@@ -47,38 +47,15 @@ use parking_lot::Mutex;
 use std::time::Duration;
 use std::{num::NonZeroUsize, sync::Arc};
 
-criterion_group!(
-    benches,
-    grpc_bench
-);
+criterion_group!(benches, grpc_bench, grpc_secure_bench);
 
 criterion_main!(benches);
 
 /// The benchmarks expose an issue: it appears the server cancels requests under load.
 fn grpc_bench(c: &mut Criterion) {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer::default());
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .requests_slot_per_cq(1024*16)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
-    let statuses = Arc::new(Mutex::new((0, Vec::with_capacity(16))));
-    let statuses_clone = statuses.clone();
-    let print_statuses = move || {
-        let mut statuses = statuses_clone.lock();
-        println!(
-            "grpc_unary_async_run_bench(): error count = {}",
-            statuses.1.len()
-        );
-        println!("grpc_unary_async_run_bench(): statuses: {:#?}", *statuses);
-        statuses.1.clear();
-    };
     for &(ref host, port) in server.bind_addrs() {
-
         println!(
             "grpc_unary_run_bench(): grpc server listening on {}:{}",
             host, port
@@ -89,67 +66,118 @@ fn grpc_bench(c: &mut Criterion) {
         let client = foo_grpc::FooClient::new(ch);
 
         {
-            let statuses = statuses.clone();
             let client = client.clone();
-            c.bench_function("executor_run_bench", move |b| {
-
+            c.bench_function("grpc_unary_run_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
-                    let response = client.unary(&request);
-                    let mut errs = statuses.lock();
-                    errs.0 += 1;
-                    if let Err(err) = response {
-                        errs.1.push(err);
-                    }
+                    client.unary(&request).unwrap();
                 });
             });
-            print_statuses();
         }
 
         {
-            let statuses = statuses.clone();
             let client = client.clone();
             c.bench_function("grpc_unary_async_run_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
                     let reply_receiver = client.unary_async(&request).unwrap();
-                    let response =
-                        global_executor().run(async move { await!(reply_receiver.compat()) });
-                    let mut errs = statuses.lock();
-                    errs.0 += 1;
-                    if let Err(err) = response {
-                        errs.1.push(err);
-                    }
-                });
-            });
-            print_statuses();
-        }
-
-        {
-            let statuses = statuses.clone();
-            let client = client.clone();
-            c.bench_function("grpc_unary_async_response_run_bench", move |b| {
-                b.iter(|| {
-                    let request = Request::new();
-                    let reply_receiver = client.unary_async(&request).unwrap();
                     global_executor()
-                        .spawn(
-                            async move {
-                                await!(reply_receiver.compat());
-                            },
-                        )
+                        .run(async move { await!(reply_receiver.compat()) })
                         .unwrap();
                 });
             });
         }
     }
 
-    println!("grpc_unary_run_bench(): server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
+    stop_server(server);
+}
+
+fn grpc_secure_bench(c: &mut Criterion) {
+    let (server, cert_pem) = start_secure_server();
+
+    for &(ref host, port) in server.bind_addrs() {
+        println!(
+            "grpc_unary_run_bench(): grpc server listening on {}:{}",
+            host, port
+        );
+
+        let channel_credentials = grpcio::ChannelCredentialsBuilder::new()
+            .root_cert(cert_pem.as_bytes().to_vec())
+            .build();
+
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env)
+            .secure_connect(format!("{}:{}", host, port).as_str(), channel_credentials);
+        let client = foo_grpc::FooClient::new(ch);
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_secure_unary_run_bench", move |b| {
+                b.iter(|| {
+                    let request = Request::new();
+                    client.unary(&request).unwrap();
+                });
+            });
+        }
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_secure_unary_async_run_bench", move |b| {
+                b.iter(|| {
+                    let request = Request::new();
+                    let reply_receiver = client.unary_async(&request).unwrap();
+                    global_executor()
+                        .run(async move { await!(reply_receiver.compat()) })
+                        .unwrap();
+                });
+            });
+        }
     }
-    println!("grpc_unary_run_bench(): server has been shutdown")
+
+    stop_server(server);
+}
+
+fn start_server() -> grpcio::Server {
+    let env = Arc::new(Environment::new(num_cpus::get()));
+    let service = foo_grpc::create_foo(FooServer::default());
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind("127.0.0.1", 0)
+        .build()
+        .unwrap();
+    server.start();
+    server
+}
+
+fn start_secure_server() -> (grpcio::Server, String) {
+    let subject_alt_names: &[_] = &["127.0.0.1".to_string()];
+
+    let cert = rcgen::generate_simple_self_signed(subject_alt_names);
+    let cert_pem = cert.serialize_pem();
+    let cert_private_key_pem = cert.serialize_private_key_pem();
+    let server_credentials = grpcio::ServerCredentialsBuilder::new()
+        .add_cert(
+            cert_pem.as_bytes().to_vec(),
+            cert_private_key_pem.as_bytes().to_vec(),
+        )
+        .build();
+
+    let env = Arc::new(Environment::new(1));
+    let service = foo_grpc::create_foo(FooServer::default());
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind_secure("127.0.0.1", 0, server_credentials)
+        .build()
+        .unwrap();
+    server.start();
+    (server, cert_pem)
+}
+
+fn stop_server(mut server: grpcio::Server) {
+    use futures::Future;
+    if let Err(err) = server.shutdown().wait() {
+        println!("Error occurred while shutting down server: {:?}", err);
+    }
 }
 
 #[derive(Clone)]
@@ -176,7 +204,8 @@ impl Foo for FooServer {
         self.executor
             .spawn(
                 async move {
-                    sink.success(response);
+                    use futures::Future;
+                    let _ = await!(sink.success(response).compat());
                 },
             )
             .unwrap();

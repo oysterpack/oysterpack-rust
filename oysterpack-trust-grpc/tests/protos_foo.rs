@@ -73,7 +73,10 @@ fn format_rpc_context(ctx: &grpcio::RpcContext) -> String {
                 map
             });
     format!(
-        "method = {}, host = {}, peer = {}, headers = {:#?}",
+        "[{:?}]: method = {}, host = {}, peer = {}, headers = {:#?}",
+        thread::current()
+            .name()
+            .unwrap_or(format!("{:?}", thread::current().id()).as_str()),
         String::from_utf8_lossy(ctx.method()),
         String::from_utf8_lossy(ctx.host()),
         ctx.peer(),
@@ -98,15 +101,20 @@ impl Foo for FooServer {
         println!("unary(): ulid_key = {:?}", ulid_key);
 
         let mut response = Response::new();
-        response.set_id(req.id);
+        response.set_id(req.id + 1);
         let sleep_duration = Duration::from_millis(req.sleep);
         global_executor()
             .spawn(
                 async move {
                     println!("unary(): sleeping for {:?} ...", sleep_duration);
                     thread::sleep(sleep_duration);
-                    sink.success(response.clone());
-                    println!("[{:?}]: unary(): sent response: {:?}",thread::current().id(), response);
+                    use futures::Future;
+                    let _ = await!(sink.success(response.clone()).compat());
+                    println!(
+                        "[{:?}]: unary(): sent response: {:?}",
+                        thread::current().id(),
+                        response
+                    );
                 },
             )
             .unwrap();
@@ -241,9 +249,8 @@ impl Foo for FooServer {
     }
 }
 
-#[test]
-fn grpc_unary() {
-    let env = Arc::new(Environment::new(1));
+fn start_server() -> grpcio::Server {
+    let env = Arc::new(Environment::new(num_cpus::get()));
     let service = foo_grpc::create_foo(FooServer);
     let mut server = ServerBuilder::new(env)
         .register_service(service)
@@ -251,6 +258,43 @@ fn grpc_unary() {
         .build()
         .unwrap();
     server.start();
+    server
+}
+
+fn start_secure_server() -> (grpcio::Server, String) {
+    let subject_alt_names: &[_] = &["127.0.0.1".to_string()];
+
+    let cert = rcgen::generate_simple_self_signed(subject_alt_names);
+    let cert_pem = cert.serialize_pem();
+    let cert_private_key_pem = cert.serialize_private_key_pem();
+    let server_credentials = grpcio::ServerCredentialsBuilder::new()
+        .add_cert(
+            cert_pem.as_bytes().to_vec(),
+            cert_private_key_pem.as_bytes().to_vec(),
+        )
+        .build();
+
+    let env = Arc::new(Environment::new(1));
+    let service = foo_grpc::create_foo(FooServer);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind_secure("127.0.0.1", 0, server_credentials)
+        .build()
+        .unwrap();
+    server.start();
+    (server, cert_pem)
+}
+
+fn stop_server(mut server: grpcio::Server) {
+    use futures::Future;
+    if let Err(err) = server.shutdown().wait() {
+        println!("Error occurred while shutting down server: {:?}", err);
+    }
+}
+
+#[test]
+fn grpc_unary() {
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -263,24 +307,35 @@ fn grpc_unary() {
         println!("grpc_unary(): response = {:?}", response);
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
+    stop_server(server);
+}
+
+#[test]
+fn grpc_unary_secure() {
+    let (server, cert_pem) = start_secure_server();
+
+    for &(ref host, port) in server.bind_addrs() {
+        println!("listening on {}:{}", host, port);
+
+        let channel_credentials = grpcio::ChannelCredentialsBuilder::new()
+            .root_cert(cert_pem.as_bytes().to_vec())
+            .build();
+
+        let env = Arc::new(EnvBuilder::new().build());
+        let ch = ChannelBuilder::new(env)
+            .secure_connect(format!("{}:{}", host, port).as_str(), channel_credentials);
+        let client = foo_grpc::FooClient::new(ch);
+        let request = Request::new();
+        let response = client.unary(&request).unwrap();
+        println!("grpc_unary(): response = {:?}", response);
     }
-    println!("server has been shutdown")
+
+    stop_server(server);
 }
 
 #[test]
 fn grpc_unary_async() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -316,24 +371,12 @@ fn grpc_unary_async() {
         println!("grpc_unary_async(): response = {:?}", response);
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn grpc_unary_async_send_next_req_before_receiving_reply() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -341,48 +384,38 @@ fn grpc_unary_async_send_next_req_before_receiving_reply() {
         let env = Arc::new(EnvBuilder::new().build());
         let ch = ChannelBuilder::new(env).connect(format!("{}:{}", host, port).as_str());
         let client = foo_grpc::FooClient::new(ch);
-        let mut request = Request::new();
-        request.id = 1;
 
-        // Given: an async request has been sent
-        let reply_receiver = client.unary_async(&request).unwrap();
-        // And: a sync request is sent before receiving the async reply
-        request.id = 2;
-        let response = client.unary(&request).unwrap();
-        println!("grpc_unary_async_send_next_req_before_receiving_reply(): sync response = {:?}", response);
-        let (tx, rx) = execution::futures::channel::oneshot::channel();
-        global_executor()
-            .spawn(
-                async move {
-                    let response = await!(reply_receiver.compat()).unwrap();
-                    let _ = tx.send(response);
-                },
-            )
-            .unwrap();
+        for i in 1..=10 {
+            let mut request = Request::new();
+            request.id = i;
 
-        // Then: the async response can be retrieved after receiving the sync response
-        let response = global_executor().run(rx).unwrap();
-        println!("grpc_unary_async_send_next_req_before_receiving_reply(): async response = {:?}", response);
+            // Given: an async request has been sent
+            request.sleep = 0;
+            let reply_receiver = client.unary_async(&request).unwrap();
+            // And: a sync request is sent before receiving the async reply
+            request.id = i + 1;
+            request.sleep = 10;
+            let response = client.unary(&request).unwrap();
+            println!(
+                "grpc_unary_async_send_next_req_before_receiving_reply(): sync response = {:?}",
+                response
+            );
+
+            // Then: the async response can be retrieved after receiving the sync response
+            let response = global_executor().run(reply_receiver.compat()).unwrap();
+            println!(
+                "grpc_unary_async_send_next_req_before_receiving_reply(): async response = {:?}",
+                response
+            );
+        }
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn grpc_unary_async_timeout() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -420,24 +453,12 @@ fn grpc_unary_async_timeout() {
         println!("grpc_unary_async_timeout(): response = {:?}", response);
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn grpc_unary_async_no_timeout() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -478,24 +499,12 @@ fn grpc_unary_async_no_timeout() {
         );
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn client_streaming() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -535,24 +544,12 @@ fn client_streaming() {
         println!("client_streaming(): response = {:?}", response);
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn server_streaming() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -573,24 +570,12 @@ fn server_streaming() {
         );
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
 
 #[test]
 fn bidi_streaming() {
-    let env = Arc::new(Environment::new(1));
-    let service = foo_grpc::create_foo(FooServer);
-    let mut server = ServerBuilder::new(env)
-        .register_service(service)
-        .bind("127.0.0.1", 0)
-        .build()
-        .unwrap();
-    server.start();
+    let server = start_server();
 
     for &(ref host, port) in server.bind_addrs() {
         println!("listening on {}:{}", host, port);
@@ -640,10 +625,5 @@ fn bidi_streaming() {
         );
     }
 
-    println!("server is shutting down ...");
-    {
-        use futures::Future;
-        let _ = server.shutdown().wait();
-    }
-    println!("server has been shutdown")
+    stop_server(server);
 }
