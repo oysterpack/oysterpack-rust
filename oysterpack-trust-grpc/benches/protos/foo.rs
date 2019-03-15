@@ -41,6 +41,7 @@ use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 pub struct Request {
     // message fields
     pub ulid: ::protobuf::SingularPtrField<ULID>,
+    pub futures_version: Request_Futures,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -83,6 +84,21 @@ impl Request {
     pub fn get_ulid(&self) -> &ULID {
         self.ulid.as_ref().unwrap_or_else(|| ULID::default_instance())
     }
+
+    // .oysterpack_trust_grpc.protos.foo.Request.Futures futures_version = 2;
+
+    pub fn clear_futures_version(&mut self) {
+        self.futures_version = Request_Futures::ONE;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_futures_version(&mut self, v: Request_Futures) {
+        self.futures_version = v;
+    }
+
+    pub fn get_futures_version(&self) -> Request_Futures {
+        self.futures_version
+    }
 }
 
 impl ::protobuf::Message for Request {
@@ -102,6 +118,9 @@ impl ::protobuf::Message for Request {
                 1 => {
                     ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.ulid)?;
                 },
+                2 => {
+                    ::protobuf::rt::read_proto3_enum_with_unknown_fields_into(wire_type, is, &mut self.futures_version, 2, &mut self.unknown_fields)?
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -118,6 +137,9 @@ impl ::protobuf::Message for Request {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
         }
+        if self.futures_version != Request_Futures::ONE {
+            my_size += ::protobuf::rt::enum_size(2, self.futures_version);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -128,6 +150,9 @@ impl ::protobuf::Message for Request {
             os.write_tag(1, ::protobuf::wire_format::WireTypeLengthDelimited)?;
             os.write_raw_varint32(v.get_cached_size())?;
             v.write_to_with_cached_sizes(os)?;
+        }
+        if self.futures_version != Request_Futures::ONE {
+            os.write_enum(2, self.futures_version.value())?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -176,6 +201,11 @@ impl ::protobuf::Message for Request {
                     |m: &Request| { &m.ulid },
                     |m: &mut Request| { &mut m.ulid },
                 ));
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeEnum<Request_Futures>>(
+                    "futures_version",
+                    |m: &Request| { &m.futures_version },
+                    |m: &mut Request| { &mut m.futures_version },
+                ));
                 ::protobuf::reflect::MessageDescriptor::new::<Request>(
                     "Request",
                     fields,
@@ -199,6 +229,7 @@ impl ::protobuf::Message for Request {
 impl ::protobuf::Clear for Request {
     fn clear(&mut self) {
         self.clear_ulid();
+        self.clear_futures_version();
         self.unknown_fields.clear();
     }
 }
@@ -212,6 +243,61 @@ impl ::std::fmt::Debug for Request {
 impl ::protobuf::reflect::ProtobufValue for Request {
     fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
         ::protobuf::reflect::ProtobufValueRef::Message(self)
+    }
+}
+
+#[derive(Clone,PartialEq,Eq,Debug,Hash)]
+pub enum Request_Futures {
+    ONE = 0,
+    THREE = 1,
+}
+
+impl ::protobuf::ProtobufEnum for Request_Futures {
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<Request_Futures> {
+        match value {
+            0 => ::std::option::Option::Some(Request_Futures::ONE),
+            1 => ::std::option::Option::Some(Request_Futures::THREE),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn values() -> &'static [Self] {
+        static values: &'static [Request_Futures] = &[
+            Request_Futures::ONE,
+            Request_Futures::THREE,
+        ];
+        values
+    }
+
+    fn enum_descriptor_static() -> &'static ::protobuf::reflect::EnumDescriptor {
+        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const ::protobuf::reflect::EnumDescriptor,
+        };
+        unsafe {
+            descriptor.get(|| {
+                ::protobuf::reflect::EnumDescriptor::new("Request_Futures", file_descriptor_proto())
+            })
+        }
+    }
+}
+
+impl ::std::marker::Copy for Request_Futures {
+}
+
+impl ::std::default::Default for Request_Futures {
+    fn default() -> Self {
+        Request_Futures::ONE
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Request_Futures {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Enum(self.descriptor())
     }
 }
 
@@ -388,412 +474,6 @@ impl ::std::fmt::Debug for Response {
 }
 
 impl ::protobuf::reflect::ProtobufValue for Response {
-    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
-        ::protobuf::reflect::ProtobufValueRef::Message(self)
-    }
-}
-
-#[derive(PartialEq,Clone,Default)]
-pub struct ULIDOption {
-    // message oneof groups
-    pub setting: ::std::option::Option<ULIDOption_oneof_setting>,
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-#[derive(Clone,PartialEq)]
-pub enum ULIDOption_oneof_setting {
-    ulid(ULID),
-    none(ULIDOption_None),
-}
-
-impl ULIDOption {
-    pub fn new() -> ULIDOption {
-        ::std::default::Default::default()
-    }
-
-    // .oysterpack_trust_grpc.protos.foo.ULID ulid = 1;
-
-    pub fn clear_ulid(&mut self) {
-        self.setting = ::std::option::Option::None;
-    }
-
-    pub fn has_ulid(&self) -> bool {
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_ulid(&mut self, v: ULID) {
-        self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_ulid(&mut self) -> &mut ULID {
-        if let ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(_)) = self.setting {
-        } else {
-            self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(ULID::new()));
-        }
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_ulid(&mut self) -> ULID {
-        if self.has_ulid() {
-            match self.setting.take() {
-                ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            ULID::new()
-        }
-    }
-
-    pub fn get_ulid(&self) -> &ULID {
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(ref v)) => v,
-            _ => ULID::default_instance(),
-        }
-    }
-
-    // .oysterpack_trust_grpc.protos.foo.ULIDOption.None none = 2;
-
-    pub fn clear_none(&mut self) {
-        self.setting = ::std::option::Option::None;
-    }
-
-    pub fn has_none(&self) -> bool {
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::none(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_none(&mut self, v: ULIDOption_None) {
-        self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::none(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_none(&mut self) -> &mut ULIDOption_None {
-        if let ::std::option::Option::Some(ULIDOption_oneof_setting::none(_)) = self.setting {
-        } else {
-            self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::none(ULIDOption_None::new()));
-        }
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::none(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_none(&mut self) -> ULIDOption_None {
-        if self.has_none() {
-            match self.setting.take() {
-                ::std::option::Option::Some(ULIDOption_oneof_setting::none(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            ULIDOption_None::new()
-        }
-    }
-
-    pub fn get_none(&self) -> &ULIDOption_None {
-        match self.setting {
-            ::std::option::Option::Some(ULIDOption_oneof_setting::none(ref v)) => v,
-            _ => ULIDOption_None::default_instance(),
-        }
-    }
-}
-
-impl ::protobuf::Message for ULIDOption {
-    fn is_initialized(&self) -> bool {
-        if let Some(ULIDOption_oneof_setting::ulid(ref v)) = self.setting {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        if let Some(ULIDOption_oneof_setting::none(ref v)) = self.setting {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                1 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::ulid(is.read_message()?));
-                },
-                2 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.setting = ::std::option::Option::Some(ULIDOption_oneof_setting::none(is.read_message()?));
-                },
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        if let ::std::option::Option::Some(ref v) = self.setting {
-            match v {
-                &ULIDOption_oneof_setting::ulid(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-                &ULIDOption_oneof_setting::none(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-            };
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        if let ::std::option::Option::Some(ref v) = self.setting {
-            match v {
-                &ULIDOption_oneof_setting::ulid(ref v) => {
-                    os.write_tag(1, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-                &ULIDOption_oneof_setting::none(ref v) => {
-                    os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-            };
-        }
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
-        self as &mut ::std::any::Any
-    }
-    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> ULIDOption {
-        ULIDOption::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ULID>(
-                    "ulid",
-                    ULIDOption::has_ulid,
-                    ULIDOption::get_ulid,
-                ));
-                fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, ULIDOption_None>(
-                    "none",
-                    ULIDOption::has_none,
-                    ULIDOption::get_none,
-                ));
-                ::protobuf::reflect::MessageDescriptor::new::<ULIDOption>(
-                    "ULIDOption",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-
-    fn default_instance() -> &'static ULIDOption {
-        static mut instance: ::protobuf::lazy::Lazy<ULIDOption> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ULIDOption,
-        };
-        unsafe {
-            instance.get(ULIDOption::new)
-        }
-    }
-}
-
-impl ::protobuf::Clear for ULIDOption {
-    fn clear(&mut self) {
-        self.clear_ulid();
-        self.clear_none();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for ULIDOption {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for ULIDOption {
-    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
-        ::protobuf::reflect::ProtobufValueRef::Message(self)
-    }
-}
-
-#[derive(PartialEq,Clone,Default)]
-pub struct ULIDOption_None {
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-impl ULIDOption_None {
-    pub fn new() -> ULIDOption_None {
-        ::std::default::Default::default()
-    }
-}
-
-impl ::protobuf::Message for ULIDOption_None {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
-        self as &mut ::std::any::Any
-    }
-    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> ULIDOption_None {
-        ULIDOption_None::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let fields = ::std::vec::Vec::new();
-                ::protobuf::reflect::MessageDescriptor::new::<ULIDOption_None>(
-                    "ULIDOption_None",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-
-    fn default_instance() -> &'static ULIDOption_None {
-        static mut instance: ::protobuf::lazy::Lazy<ULIDOption_None> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ULIDOption_None,
-        };
-        unsafe {
-            instance.get(ULIDOption_None::new)
-        }
-    }
-}
-
-impl ::protobuf::Clear for ULIDOption_None {
-    fn clear(&mut self) {
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for ULIDOption_None {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for ULIDOption_None {
     fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
         ::protobuf::reflect::ProtobufValueRef::Message(self)
     }
@@ -992,22 +672,21 @@ impl ::protobuf::reflect::ProtobufValue for ULID {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\tfoo.proto\x12\x20oysterpack_trust_grpc.protos.foo\x1a\x19google/prot\
-    obuf/any.proto\"E\n\x07Request\x12:\n\x04ulid\x18\x01\x20\x01(\x0b2&.oys\
-    terpack_trust_grpc.protos.foo.ULIDR\x04ulid\"F\n\x08Response\x12:\n\x04u\
-    lid\x18\x01\x20\x01(\x0b2&.oysterpack_trust_grpc.protos.foo.ULIDR\x04uli\
-    d\"\xa6\x01\n\nULIDOption\x12<\n\x04ulid\x18\x01\x20\x01(\x0b2&.oysterpa\
-    ck_trust_grpc.protos.foo.ULIDH\0R\x04ulid\x12G\n\x04none\x18\x02\x20\x01\
-    (\x0b21.oysterpack_trust_grpc.protos.foo.ULIDOption.NoneH\0R\x04none\x1a\
-    \x06\n\x04NoneB\t\n\x07setting\"4\n\x04ULID\x12\x15\n\x06ulid_1\x18\x01\
-    \x20\x01(\x04R\x05ulid1\x12\x15\n\x06ulid_2\x18\x02\x20\x01(\x04R\x05uli\
-    d22\xb4\x03\n\x03Foo\x12`\n\x05unary\x12).oysterpack_trust_grpc.protos.f\
-    oo.Request\x1a*.oysterpack_trust_grpc.protos.foo.Response\"\0\x12m\n\x10\
-    client_streaming\x12).oysterpack_trust_grpc.protos.foo.Request\x1a*.oyst\
-    erpack_trust_grpc.protos.foo.Response\"\0(\x01\x12m\n\x10server_streamin\
-    g\x12).oysterpack_trust_grpc.protos.foo.Request\x1a*.oysterpack_trust_gr\
-    pc.protos.foo.Response\"\00\x01\x12m\n\x0ebidi_streaming\x12).oysterpack\
-    _trust_grpc.protos.foo.Request\x1a*.oysterpack_trust_grpc.protos.foo.Res\
-    ponse\"\0(\x010\x01B\x02H\x01b\x06proto3\
+    obuf/any.proto\"\xc0\x01\n\x07Request\x12:\n\x04ulid\x18\x01\x20\x01(\
+    \x0b2&.oysterpack_trust_grpc.protos.foo.ULIDR\x04ulid\x12Z\n\x0ffutures_\
+    version\x18\x02\x20\x01(\x0e21.oysterpack_trust_grpc.protos.foo.Request.\
+    FuturesR\x0efuturesVersion\"\x1d\n\x07Futures\x12\x07\n\x03ONE\x10\0\x12\
+    \t\n\x05THREE\x10\x01\"F\n\x08Response\x12:\n\x04ulid\x18\x01\x20\x01(\
+    \x0b2&.oysterpack_trust_grpc.protos.foo.ULIDR\x04ulid\"4\n\x04ULID\x12\
+    \x15\n\x06ulid_1\x18\x01\x20\x01(\x04R\x05ulid1\x12\x15\n\x06ulid_2\x18\
+    \x02\x20\x01(\x04R\x05ulid22\xb4\x03\n\x03Foo\x12`\n\x05unary\x12).oyste\
+    rpack_trust_grpc.protos.foo.Request\x1a*.oysterpack_trust_grpc.protos.fo\
+    o.Response\"\0\x12m\n\x10client_streaming\x12).oysterpack_trust_grpc.pro\
+    tos.foo.Request\x1a*.oysterpack_trust_grpc.protos.foo.Response\"\0(\x01\
+    \x12m\n\x10server_streaming\x12).oysterpack_trust_grpc.protos.foo.Reques\
+    t\x1a*.oysterpack_trust_grpc.protos.foo.Response\"\00\x01\x12m\n\x0ebidi\
+    _streaming\x12).oysterpack_trust_grpc.protos.foo.Request\x1a*.oysterpack\
+    _trust_grpc.protos.foo.Response\"\0(\x010\x01B\x02H\x01b\x06proto3\
 ";
 
 static mut file_descriptor_proto_lazy: ::protobuf::lazy::Lazy<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::lazy::Lazy {

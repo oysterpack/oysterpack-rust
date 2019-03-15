@@ -42,6 +42,7 @@ pub struct Request {
     // message fields
     pub id: u64,
     pub sleep: u64,
+    pub futures_version: Request_Futures,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -81,6 +82,21 @@ impl Request {
     pub fn get_sleep(&self) -> u64 {
         self.sleep
     }
+
+    // .oysterpack_trust_grpc.protos.foo.Request.Futures futures_version = 3;
+
+    pub fn clear_futures_version(&mut self) {
+        self.futures_version = Request_Futures::ONE;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_futures_version(&mut self, v: Request_Futures) {
+        self.futures_version = v;
+    }
+
+    pub fn get_futures_version(&self) -> Request_Futures {
+        self.futures_version
+    }
 }
 
 impl ::protobuf::Message for Request {
@@ -106,6 +122,9 @@ impl ::protobuf::Message for Request {
                     let tmp = is.read_uint64()?;
                     self.sleep = tmp;
                 },
+                3 => {
+                    ::protobuf::rt::read_proto3_enum_with_unknown_fields_into(wire_type, is, &mut self.futures_version, 3, &mut self.unknown_fields)?
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -124,6 +143,9 @@ impl ::protobuf::Message for Request {
         if self.sleep != 0 {
             my_size += ::protobuf::rt::value_size(2, self.sleep, ::protobuf::wire_format::WireTypeVarint);
         }
+        if self.futures_version != Request_Futures::ONE {
+            my_size += ::protobuf::rt::enum_size(3, self.futures_version);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -135,6 +157,9 @@ impl ::protobuf::Message for Request {
         }
         if self.sleep != 0 {
             os.write_uint64(2, self.sleep)?;
+        }
+        if self.futures_version != Request_Futures::ONE {
+            os.write_enum(3, self.futures_version.value())?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -188,6 +213,11 @@ impl ::protobuf::Message for Request {
                     |m: &Request| { &m.sleep },
                     |m: &mut Request| { &mut m.sleep },
                 ));
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeEnum<Request_Futures>>(
+                    "futures_version",
+                    |m: &Request| { &m.futures_version },
+                    |m: &mut Request| { &mut m.futures_version },
+                ));
                 ::protobuf::reflect::MessageDescriptor::new::<Request>(
                     "Request",
                     fields,
@@ -212,6 +242,7 @@ impl ::protobuf::Clear for Request {
     fn clear(&mut self) {
         self.clear_id();
         self.clear_sleep();
+        self.clear_futures_version();
         self.unknown_fields.clear();
     }
 }
@@ -225,6 +256,61 @@ impl ::std::fmt::Debug for Request {
 impl ::protobuf::reflect::ProtobufValue for Request {
     fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
         ::protobuf::reflect::ProtobufValueRef::Message(self)
+    }
+}
+
+#[derive(Clone,PartialEq,Eq,Debug,Hash)]
+pub enum Request_Futures {
+    ONE = 0,
+    THREE = 1,
+}
+
+impl ::protobuf::ProtobufEnum for Request_Futures {
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<Request_Futures> {
+        match value {
+            0 => ::std::option::Option::Some(Request_Futures::ONE),
+            1 => ::std::option::Option::Some(Request_Futures::THREE),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn values() -> &'static [Self] {
+        static values: &'static [Request_Futures] = &[
+            Request_Futures::ONE,
+            Request_Futures::THREE,
+        ];
+        values
+    }
+
+    fn enum_descriptor_static() -> &'static ::protobuf::reflect::EnumDescriptor {
+        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const ::protobuf::reflect::EnumDescriptor,
+        };
+        unsafe {
+            descriptor.get(|| {
+                ::protobuf::reflect::EnumDescriptor::new("Request_Futures", file_descriptor_proto())
+            })
+        }
+    }
+}
+
+impl ::std::marker::Copy for Request_Futures {
+}
+
+impl ::std::default::Default for Request_Futures {
+    fn default() -> Self {
+        Request_Futures::ONE
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Request_Futures {
+    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
+        ::protobuf::reflect::ProtobufValueRef::Enum(self.descriptor())
     }
 }
 
@@ -384,388 +470,14 @@ impl ::protobuf::reflect::ProtobufValue for Response {
     }
 }
 
-#[derive(PartialEq,Clone,Default)]
-pub struct Option {
-    // message oneof groups
-    pub setting: ::std::option::Option<Option_oneof_setting>,
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-#[derive(Clone,PartialEq)]
-pub enum Option_oneof_setting {
-    size(u64),
-    none(Option_None),
-}
-
-impl Option {
-    pub fn new() -> Option {
-        ::std::default::Default::default()
-    }
-
-    // uint64 size = 1;
-
-    pub fn clear_size(&mut self) {
-        self.setting = ::std::option::Option::None;
-    }
-
-    pub fn has_size(&self) -> bool {
-        match self.setting {
-            ::std::option::Option::Some(Option_oneof_setting::size(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_size(&mut self, v: u64) {
-        self.setting = ::std::option::Option::Some(Option_oneof_setting::size(v))
-    }
-
-    pub fn get_size(&self) -> u64 {
-        match self.setting {
-            ::std::option::Option::Some(Option_oneof_setting::size(v)) => v,
-            _ => 0,
-        }
-    }
-
-    // .oysterpack_trust_grpc.protos.foo.Option.None none = 2;
-
-    pub fn clear_none(&mut self) {
-        self.setting = ::std::option::Option::None;
-    }
-
-    pub fn has_none(&self) -> bool {
-        match self.setting {
-            ::std::option::Option::Some(Option_oneof_setting::none(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_none(&mut self, v: Option_None) {
-        self.setting = ::std::option::Option::Some(Option_oneof_setting::none(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_none(&mut self) -> &mut Option_None {
-        if let ::std::option::Option::Some(Option_oneof_setting::none(_)) = self.setting {
-        } else {
-            self.setting = ::std::option::Option::Some(Option_oneof_setting::none(Option_None::new()));
-        }
-        match self.setting {
-            ::std::option::Option::Some(Option_oneof_setting::none(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_none(&mut self) -> Option_None {
-        if self.has_none() {
-            match self.setting.take() {
-                ::std::option::Option::Some(Option_oneof_setting::none(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            Option_None::new()
-        }
-    }
-
-    pub fn get_none(&self) -> &Option_None {
-        match self.setting {
-            ::std::option::Option::Some(Option_oneof_setting::none(ref v)) => v,
-            _ => Option_None::default_instance(),
-        }
-    }
-}
-
-impl ::protobuf::Message for Option {
-    fn is_initialized(&self) -> bool {
-        if let Some(Option_oneof_setting::none(ref v)) = self.setting {
-            if !v.is_initialized() {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                1 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.setting = ::std::option::Option::Some(Option_oneof_setting::size(is.read_uint64()?));
-                },
-                2 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeLengthDelimited {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    self.setting = ::std::option::Option::Some(Option_oneof_setting::none(is.read_message()?));
-                },
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        if let ::std::option::Option::Some(ref v) = self.setting {
-            match v {
-                &Option_oneof_setting::size(v) => {
-                    my_size += ::protobuf::rt::value_size(1, v, ::protobuf::wire_format::WireTypeVarint);
-                },
-                &Option_oneof_setting::none(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
-                },
-            };
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        if let ::std::option::Option::Some(ref v) = self.setting {
-            match v {
-                &Option_oneof_setting::size(v) => {
-                    os.write_uint64(1, v)?;
-                },
-                &Option_oneof_setting::none(ref v) => {
-                    os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
-                    os.write_raw_varint32(v.get_cached_size())?;
-                    v.write_to_with_cached_sizes(os)?;
-                },
-            };
-        }
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
-        self as &mut ::std::any::Any
-    }
-    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> Option {
-        Option::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_singular_u64_accessor::<_>(
-                    "size",
-                    Option::has_size,
-                    Option::get_size,
-                ));
-                fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, Option_None>(
-                    "none",
-                    Option::has_none,
-                    Option::get_none,
-                ));
-                ::protobuf::reflect::MessageDescriptor::new::<Option>(
-                    "Option",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-
-    fn default_instance() -> &'static Option {
-        static mut instance: ::protobuf::lazy::Lazy<Option> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const Option,
-        };
-        unsafe {
-            instance.get(Option::new)
-        }
-    }
-}
-
-impl ::protobuf::Clear for Option {
-    fn clear(&mut self) {
-        self.clear_size();
-        self.clear_none();
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for Option {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for Option {
-    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
-        ::protobuf::reflect::ProtobufValueRef::Message(self)
-    }
-}
-
-#[derive(PartialEq,Clone,Default)]
-pub struct Option_None {
-    // special fields
-    pub unknown_fields: ::protobuf::UnknownFields,
-    pub cached_size: ::protobuf::CachedSize,
-}
-
-impl Option_None {
-    pub fn new() -> Option_None {
-        ::std::default::Default::default()
-    }
-}
-
-impl ::protobuf::Message for Option_None {
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {
-        while !is.eof()? {
-            let (field_number, wire_type) = is.read_tag_unpack()?;
-            match field_number {
-                _ => {
-                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u32 {
-        let mut my_size = 0;
-        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
-        self.cached_size.set(my_size);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {
-        os.write_unknown_fields(self.get_unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn get_cached_size(&self) -> u32 {
-        self.cached_size.get()
-    }
-
-    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
-        &self.unknown_fields
-    }
-
-    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
-        &mut self.unknown_fields
-    }
-
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
-    }
-    fn as_any_mut(&mut self) -> &mut ::std::any::Any {
-        self as &mut ::std::any::Any
-    }
-    fn into_any(self: Box<Self>) -> ::std::boxed::Box<::std::any::Any> {
-        self
-    }
-
-    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
-        Self::descriptor_static()
-    }
-
-    fn new() -> Option_None {
-        Option_None::new()
-    }
-
-    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
-        static mut descriptor: ::protobuf::lazy::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ::protobuf::reflect::MessageDescriptor,
-        };
-        unsafe {
-            descriptor.get(|| {
-                let fields = ::std::vec::Vec::new();
-                ::protobuf::reflect::MessageDescriptor::new::<Option_None>(
-                    "Option_None",
-                    fields,
-                    file_descriptor_proto()
-                )
-            })
-        }
-    }
-
-    fn default_instance() -> &'static Option_None {
-        static mut instance: ::protobuf::lazy::Lazy<Option_None> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const Option_None,
-        };
-        unsafe {
-            instance.get(Option_None::new)
-        }
-    }
-}
-
-impl ::protobuf::Clear for Option_None {
-    fn clear(&mut self) {
-        self.unknown_fields.clear();
-    }
-}
-
-impl ::std::fmt::Debug for Option_None {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for Option_None {
-    fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
-        ::protobuf::reflect::ProtobufValueRef::Message(self)
-    }
-}
-
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\tfoo.proto\x12\x20oysterpack_trust_grpc.protos.foo\x1a\x19google/prot\
-    obuf/any.proto\x1a\rmessage.proto\"/\n\x07Request\x12\x0e\n\x02id\x18\
-    \x01\x20\x01(\x04R\x02id\x12\x14\n\x05sleep\x18\x02\x20\x01(\x04R\x05sle\
-    ep\"\x1a\n\x08Response\x12\x0e\n\x02id\x18\x01\x20\x01(\x04R\x02id\"v\n\
-    \x06Option\x12\x14\n\x04size\x18\x01\x20\x01(\x04H\0R\x04size\x12C\n\x04\
-    none\x18\x02\x20\x01(\x0b2-.oysterpack_trust_grpc.protos.foo.Option.None\
-    H\0R\x04none\x1a\x06\n\x04NoneB\t\n\x07setting2\xb4\x03\n\x03Foo\x12`\n\
+    obuf/any.proto\x1a\rmessage.proto\"\xaa\x01\n\x07Request\x12\x0e\n\x02id\
+    \x18\x01\x20\x01(\x04R\x02id\x12\x14\n\x05sleep\x18\x02\x20\x01(\x04R\
+    \x05sleep\x12Z\n\x0ffutures_version\x18\x03\x20\x01(\x0e21.oysterpack_tr\
+    ust_grpc.protos.foo.Request.FuturesR\x0efuturesVersion\"\x1d\n\x07Future\
+    s\x12\x07\n\x03ONE\x10\0\x12\t\n\x05THREE\x10\x01\"\x1a\n\x08Response\
+    \x12\x0e\n\x02id\x18\x01\x20\x01(\x04R\x02id2\xb4\x03\n\x03Foo\x12`\n\
     \x05unary\x12).oysterpack_trust_grpc.protos.foo.Request\x1a*.oysterpack_\
     trust_grpc.protos.foo.Response\"\0\x12m\n\x10client_streaming\x12).oyste\
     rpack_trust_grpc.protos.foo.Request\x1a*.oysterpack_trust_grpc.protos.fo\

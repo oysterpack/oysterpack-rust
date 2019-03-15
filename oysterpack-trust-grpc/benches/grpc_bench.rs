@@ -51,7 +51,6 @@ criterion_group!(benches, grpc_bench, grpc_secure_bench);
 
 criterion_main!(benches);
 
-/// The benchmarks expose an issue: it appears the server cancels requests under load.
 fn grpc_bench(c: &mut Criterion) {
     let server = start_server();
 
@@ -67,7 +66,7 @@ fn grpc_bench(c: &mut Criterion) {
 
         {
             let client = client.clone();
-            c.bench_function("grpc_unary_run_bench", move |b| {
+            c.bench_function("grpc_unary_futures_01_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
                     client.unary(&request).unwrap();
@@ -77,9 +76,34 @@ fn grpc_bench(c: &mut Criterion) {
 
         {
             let client = client.clone();
-            c.bench_function("grpc_unary_async_run_bench", move |b| {
+            c.bench_function("grpc_unary_futures_03_bench", move |b| {
+                b.iter(|| {
+                    let mut request = Request::new();
+                    request.futures_version = Request_Futures::THREE;
+                    client.unary(&request).unwrap();
+                });
+            });
+        }
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_unary_async_01_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
+                    let reply_receiver = client.unary_async(&request).unwrap();
+                    global_executor()
+                        .run(async move { await!(reply_receiver.compat()) })
+                        .unwrap();
+                });
+            });
+        }
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_unary_async_03_bench", move |b| {
+                b.iter(|| {
+                    let mut request = Request::new();
+                    request.futures_version = Request_Futures::THREE;
                     let reply_receiver = client.unary_async(&request).unwrap();
                     global_executor()
                         .run(async move { await!(reply_receiver.compat()) })
@@ -112,7 +136,7 @@ fn grpc_secure_bench(c: &mut Criterion) {
 
         {
             let client = client.clone();
-            c.bench_function("grpc_secure_unary_run_bench", move |b| {
+            c.bench_function("grpc_secure_unary_futures_01_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
                     client.unary(&request).unwrap();
@@ -122,9 +146,34 @@ fn grpc_secure_bench(c: &mut Criterion) {
 
         {
             let client = client.clone();
-            c.bench_function("grpc_secure_unary_async_run_bench", move |b| {
+            c.bench_function("grpc_secure_unary_futures_03_bench", move |b| {
+                b.iter(|| {
+                    let mut request = Request::new();
+                    request.futures_version = Request_Futures::THREE;
+                    client.unary(&request).unwrap();
+                });
+            });
+        }
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_secure_unary_async_futures_01_bench", move |b| {
                 b.iter(|| {
                     let request = Request::new();
+                    let reply_receiver = client.unary_async(&request).unwrap();
+                    global_executor()
+                        .run(async move { await!(reply_receiver.compat()) })
+                        .unwrap();
+                });
+            });
+        }
+
+        {
+            let client = client.clone();
+            c.bench_function("grpc_secure_unary_async_futures_03_bench", move |b| {
+                b.iter(|| {
+                    let mut request = Request::new();
+                    request.futures_version = Request_Futures::THREE;
                     let reply_receiver = client.unary_async(&request).unwrap();
                     global_executor()
                         .run(async move { await!(reply_receiver.compat()) })
@@ -194,21 +243,25 @@ impl Default for FooServer {
 }
 
 impl Foo for FooServer {
-    fn unary(
-        &mut self,
-        _ctx: grpcio::RpcContext,
-        _req: Request,
-        sink: grpcio::UnarySink<Response>,
-    ) {
-        let response = Response::new();
-        self.executor
-            .spawn(
-                async move {
-                    use futures::Future;
-                    let _ = await!(sink.success(response).compat());
-                },
-            )
-            .unwrap();
+    fn unary(&mut self, ctx: grpcio::RpcContext, req: Request, sink: grpcio::UnarySink<Response>) {
+        match req.futures_version {
+            Request_Futures::ONE => {
+                use futures::Future;
+                ctx.spawn(sink.success(Response::new()).map_err(|err| {
+                    println!("unary(): failed to send response: {:?}", err);
+                }));
+            }
+            Request_Futures::THREE => {
+                self.executor
+                    .spawn(
+                        async move {
+                            use futures::Future;
+                            let _ = await!(sink.success(Response::new()).compat());
+                        },
+                    )
+                    .unwrap();
+            }
+        }
     }
 
     fn client_streaming(

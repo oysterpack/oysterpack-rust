@@ -18,19 +18,16 @@ service Foo {
 }
 
 message Request {
+    enum Futures {
+        ONE = 0;
+        THREE = 1;
+    }
+
     uint64 id = 1;
     uint64 sleep = 2;
+    Futures futures_version = 3;
 }
 
 message Response {
     uint64 id = 1;
-}
-
-message Option {
-    message None {}
-
-    oneof setting {
-        uint64 size = 1;
-        None none = 2;
-    }
 }

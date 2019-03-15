@@ -103,18 +103,26 @@ impl Foo for FooServer {
         let mut response = Response::new();
         response.set_id(req.id + 1);
         let sleep_duration = Duration::from_millis(req.sleep);
+
         global_executor()
             .spawn(
                 async move {
                     println!("unary(): sleeping for {:?} ...", sleep_duration);
                     thread::sleep(sleep_duration);
                     use futures::Future;
-                    let _ = await!(sink.success(response.clone()).compat());
-                    println!(
-                        "[{:?}]: unary(): sent response: {:?}",
-                        thread::current().id(),
-                        response
-                    );
+                    if let Err(err) = await!(sink.success(response.clone()).compat()) {
+                        println!(
+                            "[{:?}]: unary(): failed to send response: {:?}",
+                            thread::current().id(),
+                            err
+                        );
+                    } else {
+                        println!(
+                            "[{:?}]: unary(): sent response: {:?}",
+                            thread::current().id(),
+                            response
+                        );
+                    }
                 },
             )
             .unwrap();
@@ -140,7 +148,14 @@ impl Foo for FooServer {
                     // once all messages have been received, then send the response
                     let mut response = Response::new();
                     response.set_id(id);
-                    sink.success(response);
+
+                    if let Err(err) = await!(sink.success(response).compat()) {
+                        println!(
+                            "[{:?}]: unary(): failed to send response: {:?}",
+                            thread::current().id(),
+                            err
+                        );
+                    }
                 },
             )
             .unwrap();
@@ -163,7 +178,13 @@ impl Foo for FooServer {
             global_executor()
                 .spawn(
                     async move {
-                        let _ = await!(send_all.compat());
+                        if let Err(err) = await!(send_all.compat()) {
+                            println!(
+                                "[{:?}]: unary(): failed to send response: {:?}",
+                                thread::current().id(),
+                                err
+                            );
+                        }
                     },
                 )
                 .unwrap();
@@ -181,7 +202,13 @@ impl Foo for FooServer {
                             response,
                             write_flags,
                         ));
-                        let _ = await!(tx.send(msg));
+                        if let Err(err) = await!(tx.send(msg)) {
+                            println!(
+                                "[{:?}]: unary(): failed to put response on channel: {:?}",
+                                thread::current().id(),
+                                err
+                            );
+                        }
                     }
                 },
             )

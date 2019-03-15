@@ -17,20 +17,17 @@ service Foo {
 }
 
 message Request {
+    enum Futures {
+        ONE = 0;
+        THREE = 1;
+    }
+
     ULID ulid = 1;
+    Futures futures_version = 2;
 }
 
 message Response {
     ULID ulid = 1;
-}
-
-message ULIDOption {
-    message None {}
-
-    oneof setting {
-        ULID ulid = 1;
-        None none = 2;
-    }
 }
 
 message ULID {
