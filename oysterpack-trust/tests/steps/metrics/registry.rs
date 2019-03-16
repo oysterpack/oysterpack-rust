@@ -191,7 +191,6 @@ steps!(World => {
         assert!(metrics::registry().register_int_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
 
         assert!(metrics::registry().register_histogram(world.metric_id, help.clone(), buckets.clone(), Some(labels.clone())).is_err());
-        assert!(metrics::registry().register_histogram_timer(world.metric_id, help.clone(), vec![Duration::from_millis(1)].into(), Some(labels.clone())).is_err());
         assert!(metrics::registry().register_histogram_vec(world.metric_id, help.clone(), &label_ids, buckets.clone(), Some(labels.clone())).is_err());
     };
 
@@ -319,7 +318,6 @@ steps!(World => {
         assert!(metrics::registry().register_int_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
 
         assert!(metrics::registry().register_histogram(world.metric_id, help.clone(), buckets.clone(), Some(labels.clone())).is_err());
-        assert!(metrics::registry().register_histogram_timer(world.metric_id, help.clone(), vec![Duration::from_millis(1)].into(), Some(labels.clone())).is_err());
         assert!(metrics::registry().register_histogram_vec(world.metric_id, help.clone(), &label_ids, buckets.clone(), Some(labels.clone())).is_err());
     };
 
@@ -510,7 +508,6 @@ steps!(World => {
         assert!(metrics::registry().register_int_gauge_vec(world.metric_id, help.clone(), &label_ids, Some(labels.clone())).is_err());
 
         assert!(metrics::registry().register_histogram(world.metric_id, help.clone(), buckets.clone(), Some(labels.clone())).is_err());
-        assert!(metrics::registry().register_histogram_timer(world.metric_id, help.clone(), vec![Duration::from_millis(1)].into(), Some(labels.clone())).is_err());
         assert!(metrics::registry().register_histogram_vec(world.metric_id, help.clone(), &label_ids, buckets.clone(), Some(labels.clone())).is_err());
     };
 

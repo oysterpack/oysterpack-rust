@@ -91,10 +91,10 @@
 //! const REQREP_ID: ReqRepId = ReqRepId(1872692872983539779132843447162269015);
 //!
 //! // configure the timer histogram bucket according to your use case
-//! let timer_buckets = metrics::TimerBuckets::from(vec![
+//! let timer_buckets = metrics::DurationBuckets::Custom(vec![
 //!     Duration::from_millis(500),
 //!     Duration::from_millis(1000)]
-//! );
+//! ).buckets().unwrap();
 //! let config = ReqRepConfig::new(REQREP_ID, timer_buckets);
 //! let mut client = config.start_service(Inc, global_executor()).unwrap();
 //! global_executor().spawn( async move {
@@ -132,7 +132,7 @@ pub mod metrics;
 pub struct ReqRepConfig {
     reqrep_id: ReqRepId,
     chan_buf_size: usize,
-    metric_timer_buckets: crate::metrics::TimerBuckets,
+    metric_timer_buckets: Vec<f64>,
 }
 
 impl ReqRepConfig {
@@ -147,14 +147,14 @@ impl ReqRepConfig {
     }
 
     /// Returns TimerBuckets used to configure the Histogram timer metric
-    pub fn metric_timer_buckets(&self) -> &crate::metrics::TimerBuckets {
+    pub fn metric_timer_buckets(&self) -> &[f64] {
         &self.metric_timer_buckets
     }
 
     /// constructor
     /// - the chan_buf_size default = 1
     /// - the TimerBuckets should be based on expected response times
-    pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: crate::metrics::TimerBuckets) -> Self {
+    pub fn new(reqrep_id: ReqRepId, metric_timer_buckets: Vec<f64>) -> Self {
         Self {
             reqrep_id,
             chan_buf_size: 0,
@@ -292,7 +292,7 @@ where
         chan_buf_size: usize,
         processor: Service,
         mut executor: Executor,
-        metric_timer_buckets: crate::metrics::TimerBuckets,
+        metric_timer_buckets: Vec<f64>,
     ) -> Result<ReqRep<Req, Rep>, SpawnError>
     where
         Service: Processor<Req, Rep> + Send + 'static,
@@ -303,7 +303,7 @@ where
                 .entry(reqrep_id)
                 .or_insert_with(|| {
                     let timer = crate::metrics::registry()
-                        .register_histogram_timer(
+                        .register_histogram(
                             metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                             "ReqRep message processor timer in seconds",
                             metric_timer_buckets,
@@ -566,9 +566,9 @@ mod tests {
         }
         // ReqRep processor //
 
-        let timer_buckets = crate::metrics::TimerBuckets::from(
-            vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
-        );
+        let timer_buckets = crate::metrics::DurationBuckets::Custom(
+            vec![Duration::from_millis(500), Duration::from_millis(1000)],
+        ).buckets().unwrap();
 
         // GIVEN: a ReqRep client
         let mut req_rep =
@@ -612,9 +612,9 @@ mod tests {
         }
         // ReqRep processor //
 
-        let timer_buckets = crate::metrics::TimerBuckets::from(
-            vec![Duration::from_millis(500), Duration::from_millis(1000)].as_slice(),
-        );
+        let timer_buckets = crate::metrics::DurationBuckets::Custom(
+            vec![Duration::from_millis(500), Duration::from_millis(1000)],
+        ).buckets().unwrap();
         let mut client = ReqRepConfig::new(REQREP_ID, timer_buckets)
             .start_service(Inc, executor.clone())
             .unwrap();
@@ -681,15 +681,17 @@ mod tests {
         // multiple metrics with the same MetricId can be registered as long as they have the same help
         // string and the same label names (aka label dimensions) in each, constLabels and variableLabels,
         // but they must differ in the values of the constLabels.
-        for i in 0..5 {
+        for i in 1..=5 {
             crate::metrics::registry()
-                .register_histogram_timer(
+                .register_histogram(
                     metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                     "ReqRep message processor timer in seconds",
-                    crate::metrics::TimerBuckets::from(vec![
+                    crate::metrics::DurationBuckets::Custom(vec![
                         Duration::from_millis(i),
                         Duration::from_millis(i + 1),
-                    ]),
+                    ])
+                    .buckets()
+                    .unwrap(),
                     Some(hashmap! {
                         metrics::REQREPID_LABEL_ID => ReqRepId::generate().to_string()
                     }),
@@ -697,14 +699,16 @@ mod tests {
                 .unwrap();
         }
         crate::metrics::registry()
-            .register_histogram_timer(
+            .register_histogram(
                 metrics::REQREP_PROCESS_TIMER_METRIC_ID,
                 "ReqRep message processor timer in seconds",
-                crate::metrics::TimerBuckets::from(vec![
+                crate::metrics::DurationBuckets::Custom(vec![
                     Duration::from_millis(1),
                     Duration::from_millis(2),
                     Duration::from_millis(3),
-                ]),
+                ])
+                .buckets()
+                .unwrap(),
                 Some(hashmap! {
                     metrics::REQREPID_LABEL_ID => ReqRepId::generate().to_string()
                 }),

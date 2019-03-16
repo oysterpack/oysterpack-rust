@@ -15,9 +15,11 @@
  */
 
 #![feature(await_macro, async_await, futures_api, arbitrary_self_types)]
+#![allow(warnings)]
 
 use cucumber_rust::*;
 
+#[allow(warnings)]
 mod steps;
 
 cucumber! {

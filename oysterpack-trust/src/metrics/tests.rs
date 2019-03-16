@@ -1030,3 +1030,145 @@ fn registry_gather_metrics_by_name() {
     });
     assert_eq!(collectors.len(), 2);
 }
+
+#[test]
+fn exponential_timer_buckets() {
+    let buckets = super::exponential_timer_buckets(Duration::from_millis(1), 2.0, 10).unwrap();
+    println!("buckets = {:?}", buckets);
+    assert_eq!(buckets.len(), 10);
+    let expected_buckets = vec![
+        0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512,
+    ];
+    assert_eq!(format!("{:?}", buckets), format!("{:?}", expected_buckets));
+
+    // start cannot be zero
+    let result = super::exponential_timer_buckets(Duration::from_millis(0), 2.0, 10);
+    println!(
+        "exponential_timer_buckets(Duration::from_millis(0), 2.0, 10) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+
+    // factor must be > 1
+    let result = super::exponential_timer_buckets(Duration::from_millis(1), 1.0, 10);
+    println!(
+        "exponential_timer_buckets(Duration::from_millis(1), 1.0, 10) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+
+    // count must be > 0
+    let result = super::exponential_timer_buckets(Duration::from_millis(1), 2.0, 0);
+    println!(
+        "exponential_timer_buckets(Duration::from_millis(1), 2.0, 0) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn linear_timer_buckets() {
+    let buckets =
+        super::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(50), 10)
+            .unwrap();
+    println!("buckets = {:?}", buckets);
+    assert_eq!(buckets.len(), 10);
+    let expected_buckets = vec![0.01, 0.06, 0.11, 0.16, 0.21, 0.26, 0.31, 0.36, 0.41, 0.46];
+    use float_cmp::ApproxEq;
+    buckets
+        .iter()
+        .zip(expected_buckets)
+        .for_each(|(left, right)| assert!(right.approx_eq(left, std::f64::EPSILON, 2)));
+
+    // start cannot be zero
+    let result =
+        super::linear_timer_buckets(Duration::from_millis(0), Duration::from_millis(50), 10);
+    println!(
+        "linear_timer_buckets(Duration::from_millis(0), Duration::from_millis(50), 10) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+
+    // width cannot be zero
+    let result =
+        super::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(0), 10);
+    println!(
+        "linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(0), 10) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+
+    // count cannot be zero
+    let result =
+        super::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(50), 0);
+    println!(
+        "linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(50), 0) -> {:?}",
+        result
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn duration_buckets() {
+    let buckets = DurationBuckets::Custom(vec![Duration::from_millis(1)])
+        .buckets()
+        .unwrap();
+    let buckets =
+        DurationBuckets::Custom(vec![Duration::from_millis(1), Duration::from_millis(10)])
+            .buckets()
+            .unwrap();
+    let buckets = DurationBuckets::Custom(vec![
+        Duration::from_millis(1),
+        Duration::from_millis(10),
+        Duration::from_millis(10),
+    ])
+    .buckets()
+    .unwrap();
+    let buckets =
+        DurationBuckets::Custom(vec![Duration::from_millis(10), Duration::from_millis(1)])
+            .buckets()
+            .unwrap();
+
+    let result =
+        DurationBuckets::Custom(vec![Duration::from_millis(0), Duration::from_millis(1)]).buckets();
+    println!(
+        "DurationBuckets::Custom(vec![Duration::from_millis(0), Duration::from_millis(1)])-> {:?}",
+        result
+    );
+    assert!(result.is_err());
+
+    let result = DurationBuckets::Custom(vec![]).buckets();
+    println!("DurationBuckets::Custom(vec![])-> {:?}", result);
+    assert!(result.is_err());
+
+    use float_cmp::ApproxEq;
+
+    let buckets = DurationBuckets::Exponential {
+        start: Duration::from_millis(10),
+        factor: 2.0,
+        count: 10,
+    }
+    .buckets()
+    .unwrap();
+    let expected_buckets =
+        super::exponential_timer_buckets(Duration::from_millis(10), 2.0, 10).unwrap();
+    buckets
+        .iter()
+        .zip(expected_buckets)
+        .for_each(|(left, right)| assert!(right.approx_eq(left, std::f64::EPSILON, 2)));
+
+    let buckets = DurationBuckets::Linear {
+        start: Duration::from_millis(10),
+        width: Duration::from_millis(10),
+        count: 10,
+    }
+    .buckets()
+    .unwrap();
+    let expected_buckets =
+        super::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(10), 10)
+            .unwrap();
+    buckets
+        .iter()
+        .zip(expected_buckets)
+        .for_each(|(left, right)| assert!(right.approx_eq(left, std::f64::EPSILON, 2)));
+}

@@ -82,7 +82,7 @@ use std::{fmt, num::NonZeroUsize, panic::AssertUnwindSafe};
 
 lazy_static! {
 
-    /// Global Executor registry
+    /// Global ServerHandle registry
     static ref SERVER_HANDLES: RwLock<HashMap<ULID, ServerHandle>> = RwLock::new(HashMap::new());
 
     /// the metric is incremented on nng::PipeEvent::AddPost and decremented on nng::PipeEvent::RemovePost

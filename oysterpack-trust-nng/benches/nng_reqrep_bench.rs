@@ -31,7 +31,10 @@ use oysterpack_trust::{
     },
     metrics,
 };
-use oysterpack_trust_nng::reqrep::{client::*, server};
+use oysterpack_trust_nng::reqrep::{
+    client::*,
+    server::{self, ServerHandle},
+};
 use oysterpack_uid::*;
 
 use futures::{
@@ -51,18 +54,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-criterion_group!(benches, nng_reqrep_bench,);
+criterion_group!(benches, nng_reqrep_inproc_bench, nng_reqrep_tcp_bench);
 
 criterion_main!(benches);
 
-const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
-
-lazy_static! {
-    static ref URL: url::Url = url::Url::parse(&format!("inproc://{}", ULID::generate())).unwrap();
-    static ref CLIENT: Arc<Mutex<Client>> = Arc::new(Mutex::new(start_client()));
-}
-
-fn start_server() -> ReqRep<nng::Message, nng::Message> {
+fn start_server(url: url::Url, reqrep_id: ReqRepId) -> ServerHandle {
     let timer_buckets = metrics::TimerBuckets::from(
         vec![
             Duration::from_nanos(50),
@@ -72,13 +68,23 @@ fn start_server() -> ReqRep<nng::Message, nng::Message> {
         ]
         .as_slice(),
     );
-    ReqRepConfig::new(REQREP_ID, timer_buckets)
+    let reqrep_service = ReqRepConfig::new(reqrep_id, timer_buckets)
         .set_chan_buf_size(1)
         .start_service(EchoService, global_executor().clone())
-        .unwrap()
+        .unwrap();
+
+    server::spawn(
+        None,
+        server::ListenerConfig::new(url),
+        reqrep_service,
+        execution::ExecutorBuilder::new(ExecutorId::generate())
+            .register()
+            .unwrap(),
+    )
+    .unwrap()
 }
 
-fn start_client() -> Client {
+fn start_client(url: url::Url, reqrep_id: ReqRepId) -> Client {
     let timer_buckets = metrics::TimerBuckets::from(
         vec![
             Duration::from_nanos(50),
@@ -90,9 +96,9 @@ fn start_client() -> Client {
     );
 
     register_client(
-        ReqRepConfig::new(REQREP_ID, timer_buckets).set_chan_buf_size(1),
+        ReqRepConfig::new(reqrep_id, timer_buckets).set_chan_buf_size(1),
         None,
-        DialerConfig::new(URL.clone()),
+        DialerConfig::new(url),
         execution::ExecutorBuilder::new(ExecutorId::generate())
             .register()
             .unwrap(),
@@ -101,25 +107,34 @@ fn start_client() -> Client {
 }
 
 /// measures how long a request/reply message flow takes
-fn nng_reqrep_bench(c: &mut Criterion) {
-    let server_executor_id = ExecutorId::generate();
-    let mut server_handle = server::spawn(
-        None,
-        server::ListenerConfig::new(URL.clone()),
-        start_server(),
-        execution::ExecutorBuilder::new(server_executor_id)
-            .register()
-            .unwrap(),
-    )
-    .unwrap();
+fn nng_reqrep_inproc_bench(c: &mut Criterion) {
+    let reqrep_id = ReqRepId::generate();
+    let url = url::Url::parse(format!("inproc://{}", ULID::generate()).as_str()).unwrap();
+    let mut server_handle = start_server(url.clone(), reqrep_id);
     assert!(server_handle.ping());
 
-    let mut req_rep = CLIENT.lock().unwrap();
+    let mut client = start_client(url, reqrep_id);
 
-    c.bench_function("nng_reqrep_bench", move |b| {
+    c.bench_function("nng_reqrep_inproc_bench", move |b| {
         let mut executor = global_executor();
         b.iter(|| {
-            executor.run(async { await!(req_rep.send(nng::Message::new().unwrap())).unwrap() });
+            executor.run(async { await!(client.send(nng::Message::new().unwrap())).unwrap() });
+        })
+    });
+}
+
+fn nng_reqrep_tcp_bench(c: &mut Criterion) {
+    let reqrep_id = ReqRepId::generate();
+    let url = url::Url::parse("tcp://127.0.0.1:4747").unwrap();
+    let mut server_handle = start_server(url.clone(), reqrep_id);
+    assert!(server_handle.ping());
+
+    let mut client = start_client(url, reqrep_id);
+
+    c.bench_function("nng_reqrep_tcp_bench", move |b| {
+        let mut executor = global_executor();
+        b.iter(|| {
+            executor.run(async { await!(client.send(nng::Message::new().unwrap())).unwrap() });
         })
     });
 }

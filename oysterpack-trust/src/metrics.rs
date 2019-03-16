@@ -516,20 +516,6 @@ impl HistogramBuilder {
         }
     }
 
-    /// constructor
-    pub fn new_timer<Help: AsRef<str>>(
-        metric_id: MetricId,
-        help: Help,
-        buckets: TimerBuckets,
-    ) -> Self {
-        Self {
-            metric_id,
-            help: help.as_ref().to_string(),
-            const_labels: None,
-            buckets: buckets.into(),
-        }
-    }
-
     /// add a constant label pair
     pub fn with_label<Value: AsRef<str>>(mut self, id: LabelId, value: Value) -> Self {
         let mut labels = self.const_labels.take().unwrap_or_else(HashMap::default);
@@ -580,22 +566,6 @@ impl HistogramVecBuilder {
             help: help.as_ref().to_string(),
             const_labels: None,
             buckets,
-            variable_label_ids,
-        }
-    }
-
-    /// constructor
-    pub fn new_timer<Help: AsRef<str>>(
-        metric_id: MetricId,
-        help: Help,
-        buckets: TimerBuckets,
-        variable_label_ids: Vec<LabelId>,
-    ) -> Self {
-        Self {
-            metric_id,
-            help: help.as_ref().to_string(),
-            const_labels: None,
-            buckets: buckets.into(),
             variable_label_ids,
         }
     }
@@ -1207,17 +1177,6 @@ impl MetricRegistry {
         Ok(metric)
     }
 
-    /// Tries to register a Histogram metric that is meant to be used as timer metric
-    pub fn register_histogram_timer<Help: AsRef<str>>(
-        &self,
-        metric_id: MetricId,
-        help: Help,
-        buckets: TimerBuckets,
-        const_labels: Option<HashMap<LabelId, String>>,
-    ) -> prometheus::Result<prometheus::Histogram> {
-        self.register_histogram(metric_id, help, buckets.into(), const_labels)
-    }
-
     /// Tries to register a HistogramVec metric
     pub fn register_histogram_vec<Help: AsRef<str>>(
         &self,
@@ -1230,18 +1189,6 @@ impl MetricRegistry {
         let metric = new_histogram_vec(metric_id, help, label_ids, buckets, const_labels)?;
         self.register(metric.clone())?;
         Ok(metric)
-    }
-
-    /// Tries to register a HistogramVec metric that is meant to be used as timer metric
-    pub fn register_histogram_vec_timer<Help: AsRef<str>>(
-        &self,
-        metric_id: MetricId,
-        help: Help,
-        label_ids: &[LabelId],
-        buckets: TimerBuckets,
-        const_labels: Option<HashMap<LabelId, String>>,
-    ) -> prometheus::Result<prometheus::HistogramVec> {
-        self.register_histogram_vec(metric_id, help, label_ids, buckets.into(), const_labels)
     }
 
     fn check_help<Help: AsRef<str>>(help: Help) -> Result<String, prometheus::Error> {
@@ -1687,39 +1634,102 @@ pub fn duration_as_secs_f64(duration: Duration) -> f64 {
     (duration.as_secs() as f64) + (duration.as_nanos() as f64) / f64::from(NANOS_PER_SEC)
 }
 
-/// Used to specify histogram buckets that will be used as timer
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TimerBuckets(smallvec::SmallVec<[Duration; 10]>);
+/// Each bucket represents a duration
+/// - the bucket time unit is in seconds
+#[derive(Debug)]
+pub enum DurationBuckets {
+    /// exponentially spaced durations
+    Exponential {
+        /// 'start` is used to specify the upper bound for the first bucket - must be > 0
+        start: Duration,
+        /// the buckets are spaced exponentially apart based on the `factor`. The factor is used to
+        /// compute the next bucket by multiplying the previous bucket upper bound by the factor.
+        /// The factor must be > 1.
+        factor: f64,
+        /// `count` is the number of buckets and must be > 0
+        count: usize,
+    },
+    /// equally spaced durations
+    Linear {
+        /// 'start` is used to specify the upper bound for the first bucket - must be > 0
+        start: Duration,
+        /// the buckets are spaced equally apart based on the `width` - must be > 0
+        width: Duration,
+        /// `count` is the number of buckets - must be > 0
+        count: usize,
+    },
+    /// custom specified list of durations
+    /// - at least 1 duration must be specified
+    Custom(Vec<Duration>),
+}
 
-impl TimerBuckets {
-    /// adds a new bucket
-    pub fn add_bucket(mut self, upper_boundary: Duration) -> TimerBuckets {
-        self.0.push(upper_boundary);
-        self
-    }
-
-    /// returns the buckets
-    pub fn buckets(&self) -> &[Duration] {
-        self.0.as_slice()
+impl DurationBuckets {
+    /// tries to compute the buckets
+    pub fn buckets(&self) -> Result<Vec<f64>, prometheus::Error> {
+        match self {
+            DurationBuckets::Exponential {
+                start,
+                factor,
+                count,
+            } => exponential_timer_buckets(*start, *factor, *count),
+            DurationBuckets::Linear {
+                start,
+                width,
+                count,
+            } => linear_timer_buckets(*start, *width, *count),
+            DurationBuckets::Custom(durations) => {
+                let durations: hashbrown::HashSet<_> = durations.iter().cloned().collect();
+                if durations.is_empty() {
+                    return Err(prometheus::Error::Msg(
+                        "At least 1 duration must be specified".to_string(),
+                    ));
+                }
+                let mut durations: Vec<_> = durations.iter().cloned().collect();
+                durations.sort();
+                if durations[0].as_nanos() == 0 {
+                    return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
+                }
+                Ok(durations
+                    .into_iter()
+                    .map(duration_as_secs_f64)
+                    .collect::<Vec<_>>())
+            }
+        }
     }
 }
 
-impl From<&[Duration]> for TimerBuckets {
-    fn from(buckets: &[Duration]) -> Self {
-        Self(smallvec::SmallVec::from_slice(buckets))
-    }
+/// constructs new buckets that are meant to be used for a timer based histogram
+/// - 'start` is used to specify the upper bound for the first bucket - must be > 0 ns
+/// - the buckets are spaced exponentially apart based on the `factor`. The factor is used to compute
+///   the next bucket by multiplying the previous bucket upper bound by the factor. The factor must be > 1.
+/// - `count` is the number of buckets - must be > 0
+/// - the bucket time unit is in seconds
+pub fn exponential_timer_buckets(
+    start: Duration,
+    factor: f64,
+    count: usize,
+) -> Result<Vec<f64>, prometheus::Error> {
+    prometheus::exponential_buckets(duration_as_secs_f64(start), factor, count)
 }
 
-impl From<Vec<Duration>> for TimerBuckets {
-    fn from(buckets: Vec<Duration>) -> Self {
-        Self(smallvec::SmallVec::from_slice(buckets.as_slice()))
+/// constructs new buckets that are meant to be used for a timer based histogram
+/// - 'start` is used to specify the upper bound for the first bucket - must be > 0 ns
+/// - the buckets are spaced equally apart based on the `width` - width must be > 0
+/// - `count` is the number of buckets - must be > 0
+/// - the bucket time unit is in seconds
+pub fn linear_timer_buckets(
+    start: Duration,
+    width: Duration,
+    count: usize,
+) -> Result<Vec<f64>, prometheus::Error> {
+    if start.as_nanos() == 0 {
+        return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
     }
-}
-
-impl Into<Vec<f64>> for TimerBuckets {
-    fn into(self) -> Vec<f64> {
-        self.0.into_iter().map(duration_as_secs_f64).collect()
-    }
+    prometheus::linear_buckets(
+        duration_as_secs_f64(start),
+        duration_as_secs_f64(width),
+        count,
+    )
 }
 
 /// Arc wrapped metrics collector

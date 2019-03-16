@@ -134,8 +134,8 @@ mod test {
 
     use super::*;
     use crate::concurrent::execution::*;
-    use std::{num::NonZeroUsize, thread};
     use futures::task::SpawnExt;
+    use std::{num::NonZeroUsize, thread};
 
     #[test]
     fn task_counts() {

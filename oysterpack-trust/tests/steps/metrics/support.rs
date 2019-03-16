@@ -145,7 +145,7 @@ steps!(World => {
 
     // Scenario: [01D4G04V16ZSWAKBMADJ5M2ZS9] Construct a new histogram timer and register it
     then regex "01D4G04V16ZSWAKBMADJ5M2ZS9" | _world, _matches, _step| {
-        let builder = metrics::HistogramBuilder::new_timer(metrics::MetricId::generate(), "help", metrics::TimerBuckets::from(vec![Duration::from_millis(50)]));
+        let builder = metrics::HistogramBuilder::new(metrics::MetricId::generate(), "help", metrics::DurationBuckets::Custom(vec![Duration::from_millis(50)]).buckets().unwrap());
         let metric = builder.build().unwrap();
         println!("{:#?}", metric.desc());
         metrics::registry().register(metric).unwrap();
@@ -153,8 +153,8 @@ steps!(World => {
 
     // Scenario: [01D4G04E4XCY5SFC0XAYSMH9G6] Construct a new histogram timer vec and register it
     then regex "01D4G04E4XCY5SFC0XAYSMH9G6" | _world, _matches, _step| {
-        let buckets = metrics::TimerBuckets::from(vec![Duration::from_millis(50)]);
-        let builder = metrics::HistogramVecBuilder::new_timer(metrics::MetricId::generate(), "help",buckets,vec![metrics::LabelId::generate()]);
+        let buckets = metrics::DurationBuckets::Custom(vec![Duration::from_millis(50)]).buckets().unwrap();
+        let builder = metrics::HistogramVecBuilder::new(metrics::MetricId::generate(), "help",buckets,vec![metrics::LabelId::generate()]);
         let metric = builder.build().unwrap();
         println!("{:#?}", metric.desc());
         metrics::registry().register(metric).unwrap();
