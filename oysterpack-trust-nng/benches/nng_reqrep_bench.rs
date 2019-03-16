@@ -48,6 +48,7 @@ use futures::{
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use std::{
+    num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, Mutex},
     thread,
@@ -59,15 +60,12 @@ criterion_group!(benches, nng_reqrep_inproc_bench, nng_reqrep_tcp_bench);
 criterion_main!(benches);
 
 fn start_server(url: url::Url, reqrep_id: ReqRepId) -> ServerHandle {
-    let timer_buckets = metrics::TimerBuckets::from(
-        vec![
-            Duration::from_nanos(50),
-            Duration::from_nanos(100),
-            Duration::from_nanos(150),
-            Duration::from_nanos(200),
-        ]
-        .as_slice(),
-    );
+    let timer_buckets = metrics::exponential_timer_buckets(
+        Duration::from_nanos(100),
+        2.0,
+        NonZeroUsize::new(20).unwrap(),
+    )
+    .unwrap();
     let reqrep_service = ReqRepConfig::new(reqrep_id, timer_buckets)
         .set_chan_buf_size(1)
         .start_service(EchoService, global_executor().clone())
@@ -85,15 +83,12 @@ fn start_server(url: url::Url, reqrep_id: ReqRepId) -> ServerHandle {
 }
 
 fn start_client(url: url::Url, reqrep_id: ReqRepId) -> Client {
-    let timer_buckets = metrics::TimerBuckets::from(
-        vec![
-            Duration::from_nanos(50),
-            Duration::from_nanos(100),
-            Duration::from_nanos(150),
-            Duration::from_nanos(200),
-        ]
-        .as_slice(),
-    );
+    let timer_buckets = metrics::exponential_timer_buckets(
+        Duration::from_nanos(100),
+        2.0,
+        NonZeroUsize::new(20).unwrap(),
+    )
+    .unwrap();
 
     register_client(
         ReqRepConfig::new(reqrep_id, timer_buckets).set_chan_buf_size(1),

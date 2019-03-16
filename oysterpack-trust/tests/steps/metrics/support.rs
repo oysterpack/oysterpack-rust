@@ -16,9 +16,9 @@
 
 use cucumber_rust::*;
 
-use oysterpack_trust::metrics;
+use oysterpack_trust::metrics::{self, timer_buckets};
 use prometheus::core::Collector;
-use std::{thread, time::Duration};
+use std::{num::NonZeroUsize, thread, time::Duration};
 
 steps!(World => {
     // Feature: [01D3VG4CEEPF8NNBM348PKRDH3] Metric builders are provided for each of the supported metrics.
@@ -145,7 +145,7 @@ steps!(World => {
 
     // Scenario: [01D4G04V16ZSWAKBMADJ5M2ZS9] Construct a new histogram timer and register it
     then regex "01D4G04V16ZSWAKBMADJ5M2ZS9" | _world, _matches, _step| {
-        let builder = metrics::HistogramBuilder::new(metrics::MetricId::generate(), "help", metrics::DurationBuckets::Custom(vec![Duration::from_millis(50)]).buckets().unwrap());
+        let builder = metrics::HistogramBuilder::new(metrics::MetricId::generate(), "help", timer_buckets(vec![Duration::from_millis(50)]).unwrap());
         let metric = builder.build().unwrap();
         println!("{:#?}", metric.desc());
         metrics::registry().register(metric).unwrap();
@@ -153,7 +153,7 @@ steps!(World => {
 
     // Scenario: [01D4G04E4XCY5SFC0XAYSMH9G6] Construct a new histogram timer vec and register it
     then regex "01D4G04E4XCY5SFC0XAYSMH9G6" | _world, _matches, _step| {
-        let buckets = metrics::DurationBuckets::Custom(vec![Duration::from_millis(50)]).buckets().unwrap();
+        let buckets = timer_buckets(vec![Duration::from_millis(50)]).unwrap();
         let builder = metrics::HistogramVecBuilder::new(metrics::MetricId::generate(), "help",buckets,vec![metrics::LabelId::generate()]);
         let metric = builder.build().unwrap();
         println!("{:#?}", metric.desc());
@@ -265,6 +265,120 @@ steps!(World => {
         let secs = metrics::duration_as_secs_f64(Duration::from_millis(1));
         assert!(secs >= 0.001 && secs < 0.0011);
     };
+
+    // Feature: [01D63TZ7T07W3K8K6QTR1CN9HH] Creating histogram timer buckets based on time durations
+
+    // Scenario: [01D63V3G7Q3S9F1JV4A3TJYJQH] metrics::timer_buckets()
+    then regex "01D63V3G7Q3S9F1JV4A3TJYJQH" | _world, _matches, _step| {
+        let buckets = metrics::timer_buckets(vec![Duration::from_millis(1)]).unwrap();
+        let buckets = metrics::timer_buckets(vec![Duration::from_millis(1), Duration::from_millis(10)]).unwrap();
+        let buckets = metrics::timer_buckets(vec![
+            Duration::from_millis(1),
+            Duration::from_millis(10),
+            Duration::from_millis(10),
+        ])
+        .unwrap();
+        let buckets = metrics::timer_buckets(vec![Duration::from_millis(10), Duration::from_millis(1)]).unwrap();
+    };
+
+    // Scenario: [01D63V8E55T03C161QTGHP0THK] metrics::exponential_timer_buckets()
+    then regex "01D63V8E55T03C161QTGHP0THK" | _world, _matches, _step| {
+        let buckets = metrics::exponential_timer_buckets(Duration::from_millis(1), 2.0, NonZeroUsize::new(10).unwrap()).unwrap();
+        println!("buckets = {:?}", buckets);
+        assert_eq!(buckets.len(), 10);
+        let expected_buckets = vec![
+            0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512,
+        ];
+        use float_cmp::ApproxEq;
+        buckets
+            .iter()
+            .zip(expected_buckets)
+            .for_each(|(left, right)| assert!(right.approx_eq(left, std::f64::EPSILON, 2)));
+    };
+
+    // Scenario: [01D63V9Z9J1HC5NBGM64JJMXXZ] metrics::linear_timer_buckets()
+    then regex "01D63V9Z9J1HC5NBGM64JJMXXZ" | _world, _matches, _step| {
+        let buckets =
+            metrics::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(50), NonZeroUsize::new(10).unwrap())
+                .unwrap();
+        println!("buckets = {:?}", buckets);
+        assert_eq!(buckets.len(), 10);
+        let expected_buckets = vec![0.01, 0.06, 0.11, 0.16, 0.21, 0.26, 0.31, 0.36, 0.41, 0.46];
+        use float_cmp::ApproxEq;
+        buckets
+            .iter()
+            .zip(expected_buckets)
+            .for_each(|(left, right)| assert!(right.approx_eq(left, std::f64::EPSILON, 2)));
+    };
+
+    // Rule: the starting bucket upper bound must be greater than 0 ns
+
+    // Scenario: [01D63VEPJZMH40CKH872E1CB8X] metrics::timer_buckets(): start = Duration::from_millis(0)
+    then regex "01D63VEPJZMH40CKH872E1CB8X" | _world, _matches, _step| {
+        let result =
+            metrics::timer_buckets(vec![Duration::from_millis(0), Duration::from_millis(1)]);
+        println!(
+            "timer_buckets(vec![Duration::from_millis(0), Duration::from_millis(1)])-> {:?}",
+            result
+        );
+        assert!(result.is_err());
+    };
+
+    // Scenario: [01D63VEX6RSDMCQ8P83WEX0ND6] metrics::exponential_timer_buckets(): start = Duration::from_millis(0)
+    then regex "01D63VEX6RSDMCQ8P83WEX0ND6" | _world, _matches, _step| {
+        let result = metrics::exponential_timer_buckets(Duration::from_millis(0), 2.0, NonZeroUsize::new(10).unwrap());
+        println!(
+            "exponential_timer_buckets(Duration::from_millis(0), 2.0, 10) -> {:?}",
+            result
+        );
+        assert!(result.is_err());
+    };
+
+    // Scenario: [01D63VF3AZHA0SH3KYEDZC1W4P] metrics::linear_timer_buckets(): start = Duration::from_millis(0)
+    then regex "01D63VF3AZHA0SH3KYEDZC1W4P" | _world, _matches, _step| {
+        let result =
+            metrics::linear_timer_buckets(Duration::from_millis(0), Duration::from_millis(50), NonZeroUsize::new(10).unwrap());
+        println!(
+            "linear_timer_buckets(Duration::from_millis(0), Duration::from_millis(50), 10) -> {:?}",
+            result
+        );
+        assert!(result.is_err());
+    };
+
+    // Rule: at least 1 bucket must be specified
+
+    // Scenario: [01D63W11BGS89YFSZRK7A4JHP7] metrics::timer_buckets() with empty durations
+    then regex "01D63W11BGS89YFSZRK7A4JHP7" | _world, _matches, _step| {
+        let result = metrics::timer_buckets(vec![]);
+        println!("timer_bucketsvec![])-> {:?}", result);
+        assert!(result.is_err());
+    };
+
+    // Rule: tmetrics::exponential_timer_buckets(): factor must be > 1
+
+    // Scenario: [01D63W0QCYEB6P6Z4YP4ZZ75C9] metrics::exponential_timer_buckets(): factor = 1.0
+    then regex "01D63W0QCYEB6P6Z4YP4ZZ75C9" | _world, _matches, _step| {
+        let result = metrics::exponential_timer_buckets(Duration::from_millis(1), 1.0, NonZeroUsize::new(10).unwrap());
+        println!(
+            "exponential_timer_buckets(Duration::from_millis(1), 1.0, 10) -> {:?}",
+            result
+        );
+        assert!(result.is_err());
+    };
+
+    // Rule: metrics::linear_timer_buckets(): width must be > 0 ns
+
+    // Scenario: [01D63W389MA1H1HQJ45Y7GPXM5] metrics::linear_timer_buckets(): width = Duration::from_millis(0)
+    then regex "01D63W389MA1H1HQJ45Y7GPXM5" | _world, _matches, _step| {
+        let result =
+            metrics::linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(0), NonZeroUsize::new(10).unwrap());
+        println!(
+            "linear_timer_buckets(Duration::from_millis(10), Duration::from_millis(0), 10) -> {:?}",
+            result
+        );
+        assert!(result.is_err());
+    };
+
 });
 
 #[derive(Clone, Default)]

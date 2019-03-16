@@ -21,7 +21,7 @@ use oysterpack_trust::concurrent::{
     execution::{self, *},
     messaging::reqrep::{self, metrics::*, *},
 };
-use oysterpack_trust::metrics::DurationBuckets;
+use oysterpack_trust::metrics::timer_buckets;
 use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
@@ -237,22 +237,24 @@ enum CounterRequest {
 }
 
 fn counter_service() -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .start_service(Counter::default(), global_executor())
         .unwrap()
 }
 
 fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .set_chan_buf_size(chan_size)
         .start_service(Counter::default(), global_executor())

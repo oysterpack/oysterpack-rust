@@ -842,15 +842,13 @@ mod tests {
     const REQREP_ID: ReqRepId = ReqRepId(1871557337320005579010710867531265404);
 
     fn start_service() -> ReqRep<nng::Message, nng::Message> {
-        let timer_buckets = metrics::TimerBuckets::from(
-            vec![
-                Duration::from_nanos(50),
-                Duration::from_nanos(100),
-                Duration::from_nanos(150),
-                Duration::from_nanos(200),
-            ]
-            .as_slice(),
-        );
+        let timer_buckets = metrics::timer_buckets(vec![
+            Duration::from_nanos(50),
+            Duration::from_nanos(100),
+            Duration::from_nanos(150),
+            Duration::from_nanos(200),
+        ])
+        .unwrap();
 
         ReqRepConfig::new(REQREP_ID, timer_buckets)
             .start_service(EchoService, global_executor().clone())

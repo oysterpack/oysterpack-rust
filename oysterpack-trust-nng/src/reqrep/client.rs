@@ -812,15 +812,13 @@ mod tests {
     }
 
     fn start_server_with_reqrep_id(reqrep_id: ReqRepId) -> ReqRep<nng::Message, nng::Message> {
-        let timer_buckets = metrics::TimerBuckets::from(
-            vec![
-                Duration::from_nanos(50),
-                Duration::from_nanos(100),
-                Duration::from_nanos(150),
-                Duration::from_nanos(200),
-            ]
-            .as_slice(),
-        );
+        let timer_buckets = metrics::timer_buckets(vec![
+            Duration::from_nanos(50),
+            Duration::from_nanos(100),
+            Duration::from_nanos(150),
+            Duration::from_nanos(200),
+        ])
+        .unwrap();
         ReqRepConfig::new(reqrep_id, timer_buckets)
             .start_service(EchoService, global_executor().clone())
             .unwrap()
@@ -834,15 +832,13 @@ mod tests {
         reqrep_id: ReqRepId,
         dialer_config: DialerConfig,
     ) -> (Client, ExecutorId) {
-        let timer_buckets = metrics::TimerBuckets::from(
-            vec![
-                Duration::from_nanos(50),
-                Duration::from_nanos(100),
-                Duration::from_nanos(150),
-                Duration::from_nanos(200),
-            ]
-            .as_slice(),
-        );
+        let timer_buckets = metrics::timer_buckets(vec![
+            Duration::from_nanos(50),
+            Duration::from_nanos(100),
+            Duration::from_nanos(150),
+            Duration::from_nanos(200),
+        ])
+        .unwrap();
 
         let client_executor_id = ExecutorId::generate();
         let client = super::register_client(
@@ -996,8 +992,8 @@ mod tests {
 
         // WHEN: the client is started
         let (mut client, client_executor_id) = start_client(reqrep_id, url.clone());
-        // THEN: we expect the Client to have N number of tasks running = 1 Aio worker per logical cpu + 1 ReqRep backend service task + 1 request sender pool task
-        let expected_task_count = num_cpus::get() as u64 + 2;
+        // THEN: we expect the Client to have 3 tasks running = 1 Aio worker + 1 ReqRep backend service task + 1 request sender pool task
+        let expected_task_count = 3;
         let executor = execution::executor(client_executor_id).unwrap();
         info!("active task count = {}", executor.task_active_count());
         for _ in 0..10 {

@@ -118,6 +118,7 @@ use std::{
     io::Write,
     iter::Extend,
     iter::Iterator,
+    num::NonZeroUsize,
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -1634,104 +1635,6 @@ pub fn duration_as_secs_f64(duration: Duration) -> f64 {
     (duration.as_secs() as f64) + (duration.as_nanos() as f64) / f64::from(NANOS_PER_SEC)
 }
 
-/// Each bucket represents a duration
-/// - the bucket time unit is in seconds
-#[derive(Debug)]
-pub enum DurationBuckets {
-    /// exponentially spaced durations
-    Exponential {
-        /// 'start` is used to specify the upper bound for the first bucket - must be > 0
-        start: Duration,
-        /// the buckets are spaced exponentially apart based on the `factor`. The factor is used to
-        /// compute the next bucket by multiplying the previous bucket upper bound by the factor.
-        /// The factor must be > 1.
-        factor: f64,
-        /// `count` is the number of buckets and must be > 0
-        count: usize,
-    },
-    /// equally spaced durations
-    Linear {
-        /// 'start` is used to specify the upper bound for the first bucket - must be > 0
-        start: Duration,
-        /// the buckets are spaced equally apart based on the `width` - must be > 0
-        width: Duration,
-        /// `count` is the number of buckets - must be > 0
-        count: usize,
-    },
-    /// custom specified list of durations
-    /// - at least 1 duration must be specified
-    Custom(Vec<Duration>),
-}
-
-impl DurationBuckets {
-    /// tries to compute the buckets
-    pub fn buckets(&self) -> Result<Vec<f64>, prometheus::Error> {
-        match self {
-            DurationBuckets::Exponential {
-                start,
-                factor,
-                count,
-            } => exponential_timer_buckets(*start, *factor, *count),
-            DurationBuckets::Linear {
-                start,
-                width,
-                count,
-            } => linear_timer_buckets(*start, *width, *count),
-            DurationBuckets::Custom(durations) => {
-                let durations: hashbrown::HashSet<_> = durations.iter().cloned().collect();
-                if durations.is_empty() {
-                    return Err(prometheus::Error::Msg(
-                        "At least 1 duration must be specified".to_string(),
-                    ));
-                }
-                let mut durations: Vec<_> = durations.iter().cloned().collect();
-                durations.sort();
-                if durations[0].as_nanos() == 0 {
-                    return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
-                }
-                Ok(durations
-                    .into_iter()
-                    .map(duration_as_secs_f64)
-                    .collect::<Vec<_>>())
-            }
-        }
-    }
-}
-
-/// constructs new buckets that are meant to be used for a timer based histogram
-/// - 'start` is used to specify the upper bound for the first bucket - must be > 0 ns
-/// - the buckets are spaced exponentially apart based on the `factor`. The factor is used to compute
-///   the next bucket by multiplying the previous bucket upper bound by the factor. The factor must be > 1.
-/// - `count` is the number of buckets - must be > 0
-/// - the bucket time unit is in seconds
-pub fn exponential_timer_buckets(
-    start: Duration,
-    factor: f64,
-    count: usize,
-) -> Result<Vec<f64>, prometheus::Error> {
-    prometheus::exponential_buckets(duration_as_secs_f64(start), factor, count)
-}
-
-/// constructs new buckets that are meant to be used for a timer based histogram
-/// - 'start` is used to specify the upper bound for the first bucket - must be > 0 ns
-/// - the buckets are spaced equally apart based on the `width` - width must be > 0
-/// - `count` is the number of buckets - must be > 0
-/// - the bucket time unit is in seconds
-pub fn linear_timer_buckets(
-    start: Duration,
-    width: Duration,
-    count: usize,
-) -> Result<Vec<f64>, prometheus::Error> {
-    if start.as_nanos() == 0 {
-        return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
-    }
-    prometheus::linear_buckets(
-        duration_as_secs_f64(start),
-        duration_as_secs_f64(width),
-        count,
-    )
-}
-
 /// Arc wrapped metrics collector
 /// - metric collectors that are registered are stored within the MetricRegistry within an ArcCollector
 /// - this enables the collectors to be shared and used across threads
@@ -1864,6 +1767,65 @@ impl ProcessMetrics {
     pub fn start_time_seconds(&self) -> f64 {
         self.start_time_seconds
     }
+}
+
+/// constructs new buckets that are meant to be used for a timer based histogram
+/// - 'start` is used to specify the upper bound for the first bucket
+///   - must be > 0 ns
+/// - the buckets are spaced exponentially apart based on the `factor`. The factor is used to compute
+///   the next bucket by multiplying the previous bucket upper bound by the factor.
+///   - must be > 1.
+/// - `count` is the number of buckets
+/// - the bucket time unit is in seconds
+pub fn exponential_timer_buckets(
+    start: Duration,
+    factor: f64,
+    count: NonZeroUsize,
+) -> Result<Vec<f64>, prometheus::Error> {
+    prometheus::exponential_buckets(duration_as_secs_f64(start), factor, count.get())
+}
+
+/// constructs new buckets that are meant to be used for a timer based histogram
+/// - 'start` is used to specify the upper bound for the first bucket
+///    - must be > 0 ns
+/// - the buckets are spaced equally apart based on the `width`
+///   - must be > 0
+/// - `count` is the number of buckets
+/// - the bucket time unit is in seconds
+pub fn linear_timer_buckets(
+    start: Duration,
+    width: Duration,
+    count: NonZeroUsize,
+) -> Result<Vec<f64>, prometheus::Error> {
+    if start.as_nanos() == 0 {
+        return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
+    }
+    prometheus::linear_buckets(
+        duration_as_secs_f64(start),
+        duration_as_secs_f64(width),
+        count.get(),
+    )
+}
+
+/// constructs new buckets that are meant to be used for a timer based histogram
+/// - at least 1 duration must be specified
+/// - the starting bucket upper bound duration must be > ns
+pub fn timer_buckets(durations: Vec<Duration>) -> Result<Vec<f64>, prometheus::Error> {
+    let durations: hashbrown::HashSet<_> = durations.iter().cloned().collect();
+    if durations.is_empty() {
+        return Err(prometheus::Error::Msg(
+            "At least 1 duration must be specified".to_string(),
+        ));
+    }
+    let mut durations: Vec<_> = durations.iter().cloned().collect();
+    durations.sort();
+    if durations[0].as_nanos() == 0 {
+        return Err(prometheus::Error::Msg("start must be > 0 ns".to_string()));
+    }
+    Ok(durations
+        .into_iter()
+        .map(duration_as_secs_f64)
+        .collect::<Vec<_>>())
 }
 
 #[allow(warnings)]

@@ -19,7 +19,7 @@ use oysterpack_trust::{
         execution::global_executor,
         messaging::reqrep::{ReqRepConfig, ReqRepId},
     },
-    metrics::TimerBuckets,
+    metrics,
 };
 use oysterpack_trust_nng::reqrep::client::{self, Client, ClientRegistrationError};
 use std::time::Duration;
@@ -31,8 +31,8 @@ fn server_url(reqrep_id: ReqRepId) -> Url {
     Url::parse(format!("inproc://{}", reqrep_id).as_str()).unwrap()
 }
 
-fn timer_buckets() -> TimerBuckets {
-    vec![
+fn timer_buckets() -> Vec<f64> {
+    metrics::timer_buckets(vec![
         Duration::from_micros(100),
         Duration::from_micros(200),
         Duration::from_micros(300),
@@ -43,8 +43,8 @@ fn timer_buckets() -> TimerBuckets {
         Duration::from_micros(3400),
         Duration::from_micros(5500),
         Duration::from_micros(8900),
-    ]
-    .into()
+    ])
+    .unwrap()
 }
 
 fn register_basic_client(reqrep_id: ReqRepId) -> Client {

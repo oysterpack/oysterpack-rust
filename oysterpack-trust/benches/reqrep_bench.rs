@@ -42,6 +42,7 @@ use futures::{
 use lazy_static::lazy_static;
 use oysterpack_log::*;
 use std::{
+    num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, Mutex},
     thread,
@@ -90,19 +91,11 @@ impl Processor<(), ()> for EchoService {
     }
 }
 
-fn timer_buckets() -> metrics::TimerBuckets {
-    metrics::TimerBuckets::from(
-        vec![
-            Duration::from_nanos(10),
-            Duration::from_nanos(25),
-            Duration::from_nanos(50),
-            Duration::from_nanos(75),
-            Duration::from_nanos(100),
-            Duration::from_nanos(125),
-            Duration::from_nanos(150),
-            Duration::from_nanos(200),
-            Duration::from_nanos(250),
-        ]
-        .as_slice(),
+fn timer_buckets() -> Vec<f64> {
+    metrics::exponential_timer_buckets(
+        Duration::from_nanos(10),
+        2.0,
+        NonZeroUsize::new(10).unwrap(),
     )
+    .unwrap()
 }

@@ -18,7 +18,7 @@ use cucumber_rust::*;
 
 use float_cmp::ApproxEq;
 use futures::{channel::oneshot, prelude::*, task::SpawnExt};
-use oysterpack_trust::metrics::DurationBuckets;
+use oysterpack_trust::metrics::timer_buckets;
 use oysterpack_trust::{
     concurrent::{
         execution::{self, *},
@@ -42,11 +42,11 @@ steps!(World => {
 
     // Scenario: [01D4Z9S1E16YN6YSFXEHHY1KQT] Startup 10 ReqRep services on a single-threaded Executor
     given regex "01D4Z9S1E16YN6YSFXEHHY1KQT" | world, _matches, _step | {
-        let buckets = DurationBuckets::Custom(vec![
+        let buckets = timer_buckets(vec![
             Duration::from_nanos(100),
             Duration::from_nanos(200),
             Duration::from_nanos(300),
-        ]).buckets().unwrap();
+        ]).unwrap();
         let executor = ExecutorBuilder::new(ExecutorId::generate())
             .set_pool_size(NonZeroUsize::new(1).unwrap())
             .register()
@@ -101,11 +101,11 @@ steps!(World => {
 
     // Scenario: [01D4ZANG5S4SZ07AZ0QJ0A8XJW] Startup 10 ReqRep services on one Executor and send requests on different Executor
     given regex "01D4ZANG5S4SZ07AZ0QJ0A8XJW" | world, _matches, _step | {
-        let buckets = DurationBuckets::Custom(vec![
+        let buckets = timer_buckets(vec![
             Duration::from_nanos(100),
             Duration::from_nanos(200),
             Duration::from_nanos(300),
-        ]).buckets().unwrap();
+        ]).unwrap();
         let executor = ExecutorBuilder::new(ExecutorId::generate())
             .register()
             .unwrap();
@@ -257,22 +257,24 @@ enum CounterRequest {
 }
 
 fn counter_service() -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .start_service(Counter::default(), global_executor())
         .unwrap()
 }
 
 fn counter_service_ignoring_panics() -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .start_service(
             Counter {
@@ -285,11 +287,12 @@ fn counter_service_ignoring_panics() -> ReqRep<CounterRequest, usize> {
 }
 
 fn counter_service_with_reqrep_id(reqrep_id: ReqRepId) -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(reqrep_id, buckets)
         .start_service(Counter::default(), global_executor())
         .unwrap()
@@ -302,11 +305,12 @@ fn counter_service_with_timer_buckets(buckets: Vec<f64>) -> ReqRep<CounterReques
 }
 
 fn counter_service_with_channel_size(chan_size: usize) -> ReqRep<CounterRequest, usize> {
-    let buckets = DurationBuckets::Custom(vec![
+    let buckets = timer_buckets(vec![
         Duration::from_nanos(100),
         Duration::from_nanos(200),
         Duration::from_nanos(300),
-    ]).buckets().unwrap();
+    ])
+    .unwrap();
     ReqRepConfig::new(ReqRepId::generate(), buckets)
         .set_chan_buf_size(chan_size)
         .start_service(Counter::default(), global_executor())
