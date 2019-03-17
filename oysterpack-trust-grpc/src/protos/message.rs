@@ -41,7 +41,7 @@ use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 pub struct MessageHeader {
     // message fields
     pub id: ::std::string::String,
-    pub timestamp: u64,
+    pub timestamp: ::protobuf::SingularPtrField<::protobuf::well_known_types::Timestamp>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -78,24 +78,47 @@ impl MessageHeader {
         &self.id
     }
 
-    // uint64 timestamp = 2;
+    // .google.protobuf.Timestamp timestamp = 2;
 
     pub fn clear_timestamp(&mut self) {
-        self.timestamp = 0;
+        self.timestamp.clear();
+    }
+
+    pub fn has_timestamp(&self) -> bool {
+        self.timestamp.is_some()
     }
 
     // Param is passed by value, moved
-    pub fn set_timestamp(&mut self, v: u64) {
-        self.timestamp = v;
+    pub fn set_timestamp(&mut self, v: ::protobuf::well_known_types::Timestamp) {
+        self.timestamp = ::protobuf::SingularPtrField::some(v);
     }
 
-    pub fn get_timestamp(&self) -> u64 {
-        self.timestamp
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_timestamp(&mut self) -> &mut ::protobuf::well_known_types::Timestamp {
+        if self.timestamp.is_none() {
+            self.timestamp.set_default();
+        }
+        self.timestamp.as_mut().unwrap()
+    }
+
+    // Take field
+    pub fn take_timestamp(&mut self) -> ::protobuf::well_known_types::Timestamp {
+        self.timestamp.take().unwrap_or_else(|| ::protobuf::well_known_types::Timestamp::new())
+    }
+
+    pub fn get_timestamp(&self) -> &::protobuf::well_known_types::Timestamp {
+        self.timestamp.as_ref().unwrap_or_else(|| ::protobuf::well_known_types::Timestamp::default_instance())
     }
 }
 
 impl ::protobuf::Message for MessageHeader {
     fn is_initialized(&self) -> bool {
+        for v in &self.timestamp {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
         true
     }
 
@@ -107,11 +130,7 @@ impl ::protobuf::Message for MessageHeader {
                     ::protobuf::rt::read_singular_proto3_string_into(wire_type, is, &mut self.id)?;
                 },
                 2 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_uint64()?;
-                    self.timestamp = tmp;
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.timestamp)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -128,8 +147,9 @@ impl ::protobuf::Message for MessageHeader {
         if !self.id.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.id);
         }
-        if self.timestamp != 0 {
-            my_size += ::protobuf::rt::value_size(2, self.timestamp, ::protobuf::wire_format::WireTypeVarint);
+        if let Some(ref v) = self.timestamp.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -140,8 +160,10 @@ impl ::protobuf::Message for MessageHeader {
         if !self.id.is_empty() {
             os.write_string(1, &self.id)?;
         }
-        if self.timestamp != 0 {
-            os.write_uint64(2, self.timestamp)?;
+        if let Some(ref v) = self.timestamp.as_ref() {
+            os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -190,7 +212,7 @@ impl ::protobuf::Message for MessageHeader {
                     |m: &MessageHeader| { &m.id },
                     |m: &mut MessageHeader| { &mut m.id },
                 ));
-                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
+                fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<::protobuf::well_known_types::Timestamp>>(
                     "timestamp",
                     |m: &MessageHeader| { &m.timestamp },
                     |m: &mut MessageHeader| { &mut m.timestamp },
@@ -236,9 +258,10 @@ impl ::protobuf::reflect::ProtobufValue for MessageHeader {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\rmessage.proto\x12$oysterpack_trust_grpc.protos.message\"=\n\rMessage\
-    Header\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x1c\n\ttimestamp\
-    \x18\x02\x20\x01(\x04R\ttimestampB\x02H\x01b\x06proto3\
+    \n\rmessage.proto\x12$oysterpack_trust_grpc.protos.message\x1a\x1fgoogle\
+    /protobuf/timestamp.proto\"Y\n\rMessageHeader\x12\x0e\n\x02id\x18\x01\
+    \x20\x01(\tR\x02id\x128\n\ttimestamp\x18\x02\x20\x01(\x0b2\x1a.google.pr\
+    otobuf.TimestampR\ttimestampB\x02H\x01b\x06proto3\
 ";
 
 static mut file_descriptor_proto_lazy: ::protobuf::lazy::Lazy<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::lazy::Lazy {

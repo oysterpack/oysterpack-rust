@@ -1,10 +1,12 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 option optimize_for = SPEED;
 
 package oysterpack_trust_grpc.protos.message;
 
 message MessageHeader {
     string id = 1;
-    uint64 timestamp = 2;
+    google.protobuf.Timestamp timestamp = 2;
 }

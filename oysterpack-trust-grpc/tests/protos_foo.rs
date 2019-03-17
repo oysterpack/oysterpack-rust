@@ -109,7 +109,6 @@ impl Foo for FooServer {
                 async move {
                     println!("unary(): sleeping for {:?} ...", sleep_duration);
                     thread::sleep(sleep_duration);
-                    use futures::Future;
                     if let Err(err) = await!(sink.success(response.clone()).compat()) {
                         println!(
                             "[{:?}]: unary(): failed to send response: {:?}",
@@ -288,6 +287,18 @@ fn start_server() -> grpcio::Server {
     server
 }
 
+fn start_server_with_port(port: u16) -> grpcio::Server {
+    let env = Arc::new(Environment::new(num_cpus::get()));
+    let service = foo_grpc::create_foo(FooServer);
+    let mut server = ServerBuilder::new(env)
+        .register_service(service)
+        .bind("127.0.0.1", port)
+        .build()
+        .unwrap();
+    server.start();
+    server
+}
+
 fn start_secure_server() -> (grpcio::Server, String) {
     let subject_alt_names: &[_] = &["127.0.0.1".to_string()];
 
@@ -383,20 +394,78 @@ fn grpc_unary_async() {
         };
 
         let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
-
-        let (tx, rx) = execution::futures::channel::oneshot::channel();
-        global_executor()
-            .spawn(
-                async move {
-                    let response = await!(reply_receiver.compat()).unwrap();
-                    let _ = tx.send(response);
-                },
-            )
-            .unwrap();
-
-        let response = global_executor().run(rx).unwrap();
+        let response = global_executor().run(reply_receiver.compat()).unwrap();
         println!("grpc_unary_async(): response = {:?}", response);
     }
+
+    stop_server(server);
+}
+
+#[test]
+fn grpc_unary_async_start_server_after_client() {
+    const HOST: &'static str = "127.0.0.1";
+    const PORT: u16 = 4747;
+
+    let env = Arc::new(EnvBuilder::new().build());
+    let ch = ChannelBuilder::new(env).connect(format!("{}:{}", HOST, PORT).as_str());
+    let client = foo_grpc::FooClient::new(ch);
+    let request = Request::new();
+
+    let call_opt = {
+        let call_opt = grpcio::CallOption::default();
+        // the client will wait until the server is ready
+        let call_opt = call_opt.wait_for_ready(true);
+        call_opt
+    };
+
+    // GIVEN: the request is sent before the server is running
+    let reply_receiver = client.unary_async_opt(&request, call_opt).unwrap();
+    // sleep to ensure the client is tries to connect
+    thread::sleep(Duration::from_millis(1));
+    // WHEN: the server is started
+    let server = start_server_with_port(PORT);
+    // THEN: the client is able to send the request and receive the reply
+    let response = global_executor().run(reply_receiver.compat()).unwrap();
+    println!("grpc_unary_async(): response = {:?}", response);
+
+    stop_server(server);
+}
+
+#[test]
+fn grpc_unary_async_restart_server_in_middle_of_request() {
+    const HOST: &'static str = "127.0.0.1";
+    const PORT: u16 = 4848;
+    // GIVEN: the server is started
+    let server = start_server_with_port(PORT);
+
+    let env = Arc::new(EnvBuilder::new().build());
+    let ch = ChannelBuilder::new(env).connect(format!("{}:{}", HOST, PORT).as_str());
+    let client = foo_grpc::FooClient::new(ch);
+    let mut request = Request::new();
+    request.sleep = 50;
+
+    let call_opt = {
+        let call_opt = grpcio::CallOption::default();
+        // the client will wait until the server is ready
+        let call_opt = call_opt.wait_for_ready(true);
+        call_opt
+    };
+
+    // GIVEN: client sends a request that takes 50 ms to process
+    let reply_receiver = client.unary_async_opt(&request, call_opt.clone()).unwrap();
+    // WHEN: the server is restarted
+    stop_server(server);
+    let server = start_server_with_port(PORT);
+    // THEN: the request fails because the socket is disconnected
+    let result = global_executor().run(reply_receiver.compat());
+    println!("grpc_unary_async(): response = {:?}", result);
+    assert!(result.is_err());
+
+    // WHEN: the client sends another request after the server is restarted
+    request.sleep = 0;
+    // THEN: the request succeeds because the client is able to automatically reconnect
+    let response = client.unary_opt(&request, call_opt).unwrap();
+    println!("grpc_unary_async(): response = {:?}", response);
 
     stop_server(server);
 }
