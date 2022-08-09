@@ -28,7 +28,7 @@ smallvec = { version = "0.6.9", features = ["serde"] }
 prometheus = {version = "0.5.0", features = ["nightly", "gen", "push", "process"] }
 
 [dev-dependencies]
-version-sync = "0.7"
+version-sync = "0.9"
 criterion = "0.2.10"
 pretty_assertions = "0.6.1"
 cucumber_rust = "0.5.1"

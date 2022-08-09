@@ -37,7 +37,7 @@ release_max_level_trace = ["log/release_max_level_trace"]
 std = ["log/std"]
 
 [dev-dependencies]
-version-sync = "0.7"
+version-sync = "0.9"
 
 [badges]
 maintenance = {status = "actively-developed"}
