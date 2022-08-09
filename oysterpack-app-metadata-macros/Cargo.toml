@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde", "time"] }
 
 [dev-dependencies]
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
-version-sync = "0.7"
+version-sync = "0.9"
 serde_json = "1"
 
 [badges]

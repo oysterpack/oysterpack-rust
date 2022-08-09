@@ -12,7 +12,7 @@ keywords = ["macros"]
 edition = "2018"
 
 [dev-dependencies]
-version-sync = "0.7"
+version-sync = "0.9"
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
 serde = "1.0.80"
 serde_derive = "1.0.80"

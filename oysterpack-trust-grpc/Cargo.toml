@@ -30,7 +30,7 @@ rcgen = "0.2.0"
 pnet = "0.22.0"
 
 [dev-dependencies]
-version-sync = "0.7"
+version-sync = "0.9"
 criterion = "0.2.10"
 pretty_assertions = "0.6.1"
 cucumber_rust = "0.5.1"

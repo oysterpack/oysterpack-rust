@@ -21,7 +21,7 @@ serde = {version = "1", features = ["derive"] }
 
 [dev-dependencies]
 oysterpack_testing = {path = "../oysterpack-testing", version = "0.1"}
-version-sync = "0.7"
+version-sync = "0.9"
 
 [badges]
 maintenance = {status = "actively-developed"}
